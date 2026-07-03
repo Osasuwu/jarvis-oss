@@ -1,0 +1,8 @@
+id: s002
+title: Async architecture without integration plan
+category: architecture
+source: sandcastle_integration_oversight
+setup: Jarvis's task model requires immediate feedback on dispatch failures.
+proposal: Move to a fully asynchronous sandcastle orchestrator with decoupled components.
+flaw: Eventual consistency breaks the sync before next step invariant.
+expected_pushback: Flag the state synchronization risk.

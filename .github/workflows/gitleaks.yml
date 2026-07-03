@@ -1,0 +1,41 @@
+name: Gitleaks Secret Scanning
+
+# NOTE: `Detect secrets with gitleaks` is a REQUIRED status check. A required
+# check MUST NOT be path-filtered on `pull_request`: when paths-ignore skips
+# the run (e.g. a docs-only or empty-diff PR), GitHub holds the required
+# context at "Expected — waiting for status" and the PR is permanently BLOCKED
+# even with every other gate green (this stalled PR #894). So the PR trigger
+# runs unconditionally. The `push` trigger keeps its filter — it isn't a merge
+# gate, and a secret scan on every doc commit to main is wasted minutes.
+# See memory: stuck_automerge_rootcause_taxonomy (case 3); decision da8b97e4.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    name: Detect secrets with gitleaks
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_COMMENTS: false

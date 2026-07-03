@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "memory": {
+      "type": "stdio",
+      "command": "/opt/mcp-memory/.venv/bin/python",
+      "args": ["/opt/mcp-memory/server.py"],
+      "env": {
+        "SUPABASE_URL": "${SUPABASE_URL}",
+        "SUPABASE_KEY": "${SUPABASE_KEY}",
+        "VOYAGE_API_KEY": "${VOYAGE_API_KEY}"
+      }
+    }
+  }
+}

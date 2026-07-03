@@ -1,0 +1,27 @@
+{
+  "_comment": "Per-repo path-list consumed by /to-issues AFK-fit checklist. Replace the placeholder repo slugs below with your own owner/repo. Adding a new repo MUST NOT require editing any SKILL.md — only this file. Paths are gitignore-style globs evaluated against an issue's declared-changed file list; an intersection => AFK-no => slice does NOT receive the `sandcastle` label and routes via interactive /implement. The first entry lists the framework's own Tier-2 sensitive files (mirrors docs/security/agent-boundaries.md — sync manually when that changes). The second entry is an example of protecting safety-critical zones in a second repo.",
+  "your-username/your-repo": [
+    ".mcp.json",
+    "config/SOUL.md",
+    "CLAUDE.md",
+    "mcp-memory/server.py",
+    "mcp-memory/client.py",
+    "mcp-memory/embeddings.py",
+    "mcp-memory/tools_schema.py",
+    "mcp-memory/classifier.py",
+    "mcp-memory/episode_extractor.py",
+    "mcp-memory/handlers/**",
+    ".claude/settings.json",
+    ".gitleaks.toml",
+    ".pre-commit-config.yaml",
+    ".claude-userlevel/settings.json",
+    ".claude-userlevel/.mcp.json",
+    ".claude-userlevel/CLAUDE.md",
+    ".claude-userlevel/SOUL.md"
+  ],
+  "your-username/your-second-repo": [
+    "driver/**",
+    "planning/**",
+    "mujoco/**"
+  ]
+}

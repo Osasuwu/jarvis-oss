@@ -1,0 +1,393 @@
+name: Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review
+        required: true
+        type: string
+
+jobs:
+  review:
+    # Skip fork PRs (untrusted code on main runner) and Dependabot (the
+    # plugin will mark these as trivial and exit anyway, but bail earlier
+    # to save Claude tokens). Draft PRs are skipped at the step-1 eligibility
+    # check inside the plugin.
+    #
+    # The Dependabot guard keys off the PR AUTHOR (pull_request.user.login),
+    # NOT the triggering actor (github.actor). github.actor changes to the
+    # pusher on `synchronize` events — when merge-train.yml updates a stale
+    # Dependabot branch, the actor becomes the App token, the old
+    # `github.actor != 'dependabot[bot]'` guard passed, the job ran on a
+    # Dependabot PR and failed, code-review-retry re-dispatched, and the
+    # `review` check went red on a trivial dep bump (#944). The author is
+    # stable across every pull_request event type for a given PR.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login != 'dependabot[bot]')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Resolve PR number
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "number=${{ inputs.pr_number }}" >> $GITHUB_OUTPUT
+          else
+            echo "number=${{ github.event.pull_request.number }}" >> $GITHUB_OUTPUT
+          fi
+
+      # Skip review entirely when the diff has no substantive code changes.
+      # EOL/whitespace-only diffs (common on Windows with CRLF) trigger the
+      # plugin, which posts a non-standard "no code changes" verdict the
+      # verdict-guard can't parse → fail-closed → forced admin-merge.
+      # When has_code=false the review step is skipped; verdict-guard sees
+      # total=0 comments and exits 0 — no review needed, nothing to block.
+      # Mirror of the same fix applied in a sibling repo.
+      - name: Check substantive diff
+        id: diff
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_BASE=$(gh pr view "${{ steps.pr.outputs.number }}" \
+            --repo "${{ github.repository }}" \
+            --json baseRefName -q .baseRefName)
+          git fetch origin "$PR_BASE"
+          LINES=$(git diff "origin/$PR_BASE"...HEAD -- \
+            '*.py' '*.ts' '*.tsx' '*.js' '*.jsx' \
+            '*.yaml' '*.yml' '*.json' '*.sh' '*.md' \
+            | grep -cE '^[+-][^+-]' 2>/dev/null || echo 0)
+          HAS=$( [ "$LINES" -gt 0 ] && echo true || echo false )
+          echo "lines=$LINES" >> "$GITHUB_OUTPUT"
+          echo "has_code=$HAS" >> "$GITHUB_OUTPUT"
+          echo "Substantive diff lines: $LINES (has_code=$HAS)"
+
+      # Skip review when the push comes from the auto-rebase bot. jarvis-ci[bot]
+      # exclusively pushes "Merge branch 'main' into <feature>" commits — pure
+      # housekeeping with no new code. Without this guard, each rebase triggers a
+      # full review run: PR #963 accumulated 28 auto-rebase pushes → 23 spurious
+      # review comments despite only 4-5 real rework rounds (incident 2026-06-29).
+      #
+      # MUST stay at step level (not job `if:`): the job-level condition must not
+      # use github.actor — the dependabot[bot] guard already keys off PR author
+      # for stability across synchronize events, and test_code_review_dependabot_skip.py
+      # asserts that github.actor is absent from the job `if:` (#944 regression pin).
+      - name: Skip auto-rebase push
+        id: autobase
+        if: github.event_name == 'pull_request' && github.actor == 'jarvis-ci[bot]'
+        run: |
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Push by jarvis-ci[bot] is an auto-rebase only (no new code); skipping code review."
+
+      - name: Run /code-review
+        id: review
+        if: steps.autobase.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || steps.diff.outputs.has_code == 'true')
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: ./.claude/marketplace
+          plugins: code-review@jarvis-fork-plugins
+          # claude-code-action@v1 added an `allowed_bots` gate that hard-fails
+          # ("Workflow initiated by non-human actor") when the triggering actor
+          # is a Bot. Two LEGITIMATE bot triggers exist in this pipeline and
+          # both jammed the `review` check across every in-flight PR:
+          #   - code-review-retry.yml re-dispatches via workflow_dispatch
+          #     (actor: github-actions[bot]) on a failed run.
+          #   - merge-train.yml's update-branch fires a `synchronize` whose
+          #     actor is the merge-train GitHub App token (a [bot] login).
+          # "*" is safe here despite the action's public-repo warning: the
+          # job-level `if:` requires head.repo.full_name == github.repository,
+          # so fork/external PRs never reach this step, and workflow_dispatch /
+          # branch pushes both require repo write access. No untrusted external
+          # actor can initiate this run. Allowed-tools are locked read-only
+          # below, except Write(//tmp/**) — the plugin composes its verdict
+          # comment there and posts via `gh pr comment --body-file` so review
+          # prose never passes through shell string-interpretation (#971).
+          # Uniform across owned repos for the M48 baseline.
+          allowed_bots: "*"
+          prompt: |
+            Run /code-review for PR #${{ steps.pr.outputs.number }} in repo ${{ github.repository }}.
+
+            The /code-review slash command is provided by the code-review plugin
+            (loaded via the action's plugins input). Follow its instructions
+            verbatim — eligibility check, guideline-file gather, 8 parallel
+            reviewers, confidence scoring, post comment.
+
+            Do NOT load Jarvis SOUL.md, do NOT call memory_recall/memory_store
+            (not available in this runner). This is plugin invocation only.
+          claude_args: |
+            # MUST stay a superset of the plugin command's own frontmatter
+            # allowed-tools (commands/code-review.md). The action runs headless,
+            # so any tool the plugin uses that is absent here is DENIED (no human
+            # to approve) — agent #9 (structural-growth) runs `git show <sha>:<f>
+            # | wc -l`, agent #3 reads `git blame`/`git log`, so the missing
+            # git/wc tools produced repeated permission_denials and made agents
+            # burn turns and flail at the final comment-post step (test/placeholder
+            # probe comments, fragment comments, or no post at all → verdict gate
+            # fails closed → admin-merge). Keep this list and the plugin frontmatter
+            # in lockstep (tests/ci/test_code_review_allowed_tools.py pins it).
+            --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(python -m py_compile:*),Bash(python3 -m py_compile:*),Bash(bash -n:*),Bash(node --check:*),Bash(git show:*),Bash(git blame:*),Bash(git log:*),Bash(wc:*),Write(//tmp/**)"
+
+      # Auto-merge MERGE gate (Gate 1 of the two-gate model, #988). Without
+      # this step the `review` check is SUCCESS as long as the bot ran —
+      # auto-merge can't distinguish "ran cleanly" from "found CRITICAL bugs".
+      # This step turns the `review` check into a real verdict.
+      #
+      # TWO-GATE MODEL: the MERGE gate (here) blocks ONLY on a merge-blocking
+      # finding — an all-caps CRITICAL/MAJOR/BLOCKING severity heading. MINOR /
+      # NITPICK / LOW / INFO / MEDIUM and a bare "Found N issues:" line do NOT
+      # block. This matches the REWORK-done gate (scripts/rework_policy.py:
+      # n_critical==0 AND n_major==0): a PR clean of real bugs but carrying
+      # minor nits no longer ping-pongs between "rework thinks it's done" and
+      # "merge gate rejects it" (#976 — PRs were taking 3-5 rework rounds).
+      # Minors are swept best-effort by /rework only while it is already in
+      # context for a bug-triggered round; they never trigger rework alone.
+      #
+      # Incident still guarded (PR #957): the bot posted findings under a
+      # deviant title "## Claude Code Review — PR #957" with "### MAJOR
+      # findings" / "### MINOR findings" sections. The old selector matched
+      # only the literal `### Code review` prefix, so the comment counted as
+      # "no comment → pass" and the PR auto-merged unreviewed. The deviation is
+      # routine — observed shapes: "### MAJOR findings" (#957), bare
+      # "### MAJOR" (#956), "### 🔴 BLOCKING" (#954). Hardened contract
+      # (mirrored by tests/ci/test_code_review_verdict_guard.py):
+      #   - SELECT the latest comment containing any heading line that looks
+      #     like a code-review title (1-6 #'s, optional "Claude", any case,
+      #     anywhere in the body — deviant bots may prepend preamble).
+      #   - BLOCK signal checked FIRST so no pass signal can shadow it:
+      #     all-caps CRITICAL/MAJOR/BLOCKING severity heading (1-6 #'s,
+      #     optional decoration, optional findings/issues suffix). MINOR is
+      #     NOT in the alternation; the check is case-SENSITIVE (grep -qE, not
+      #     -qiE) so title-case "Blocking issues — None" (#962) is not a false
+      #     block (#976).
+      #   - PASS signals (all exit 0; reached only when no block heading):
+      #     "No issues found." (clean), "Blocking issues — None" (#962 APPROVE,
+      #     case-insensitive), "Found N issues:" (advisory findings, #956), and
+      #     MINOR/NITPICK/LOW/INFO/MEDIUM-only severity sections (#963).
+      #   - Selected comment matching none of the above → exit 1, fail-closed.
+      #   - No selected comment at all → pass (plugin legitimately skips
+      #     drafts / already-reviewed / not-eligible PRs). Residual risk: a
+      #     review title with no "Code Review" wording at all still slips
+      #     through here; accepted — selection can't be author-based (other
+      #     bots comment too) and findings-shaped selection would wrongly
+      #     gate on `### Simplification opportunities` comments, which are
+      #     informational-only by design (see event-dispatch.yml).
+      #
+      # Runs on BOTH pull_request and workflow_dispatch. The dispatch path is
+      # the retry (code-review-retry.yml dispatches with --ref <head_branch>,
+      # so its check attaches to the PR head SHA and feeds the `review` gate).
+      # If the verdict step were gated to pull_request only, a retry that
+      # surfaced findings would post them but skip this gate → the run goes
+      # green → auto-merge with findings. That hole was dormant only because
+      # the `allowed_bots` jam made retries fail at the action level; closing
+      # that jam (above) makes retries succeed, so this gate must enforce on
+      # the dispatch path too. steps.pr.outputs.number resolves on dispatch
+      # via inputs.pr_number, so the lookup works for both events.
+      # Loud-fail diagnostic (mirror of the same fix in a sibling repo). The
+      # verdict guard below fails CLOSED on a missing/unparseable comment — which
+      # masks two very different causes as one "re-run code-review" message:
+      #   (a) the model genuinely posted no blocking verdict, vs
+      #   (b) the review run itself broke — is_error=true, or its subagents were
+      #       permission-denied tools they need (allowlist drift between this
+      #       workflow's claude_args --allowed-tools and the plugin command's
+      #       frontmatter), so the orchestrator burned turns and never posted.
+      # When (b) happens the verdict guard says "errored, re-run" but a re-run
+      # hits the SAME wall silently. This step reads the action's execution log
+      # and fails LOUDLY with the exact denied tool calls, so allowlist drift is
+      # self-diagnosing instead of presenting as a flaky verdict gate. jarvis is
+      # the allowlist source-of-truth (already a superset), so in steady state
+      # this should always pass with 0 denials — it is a regression tripwire.
+      - name: Verify review ran cleanly
+        if: steps.autobase.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || steps.diff.outputs.has_code == 'true')
+        env:
+          EXEC_FILE: ${{ steps.review.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
+            echo "::notice::No execution log (review skipped or produced no output); nothing to verify."
+            exit 0
+          fi
+          result=$(jq -c '[.[] | select(.type == "result")] | last // {}' "$EXEC_FILE")
+          is_error=$(jq -r '.is_error // false' <<<"$result")
+          denials=$(jq -r '.permission_denials_count // 0' <<<"$result")
+          echo "Review result: is_error=$is_error permission_denials_count=$denials"
+          if [ "$is_error" = "true" ]; then
+            echo "::error::Code review run reported is_error=true — the model call failed. Failing loudly (not masking as a verdict-guard fail-closed)."
+            exit 1
+          fi
+          if [ "$denials" -gt 0 ]; then
+            echo "::error::Code review hit $denials permission denial(s) — its subagents were blocked from tools they need, so the review is incomplete and may not have posted. Add the tools below to the claude_args --allowed-tools and re-run."
+            echo "Denied tool calls:"
+            jq -r '[.[] | select(.type == "result")] | last
+                   | (.permission_denials // [])[]
+                   | "  - \(.tool_name): \(.tool_input | tostring | .[0:160])"' \
+              "$EXEC_FILE" 2>/dev/null | sort -u || true
+            exit 1
+          fi
+          echo "::notice::Code review ran cleanly (0 permission denials)."
+
+      - name: Verify review verdict
+        if: steps.autobase.outputs.skip != 'true' && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ steps.pr.outputs.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Freshness anchor (#993): a /code-review comment is a verdict only for
+          # the CURRENT head commit. The review action sometimes errors on turn 1
+          # (is_error, ~$0 cost, no comment posted for this SHA). Without a
+          # freshness check the selection below falls back to a STALE comment
+          # from a PRIOR head SHA — wrongly BLOCKING a clean head (a stale MAJOR
+          # lingers) or, worse, wrongly PASSING a dirty head (a stale "No issues
+          # found." green-lights code the plugin never saw). So we anchor on the
+          # head commit's committer time and treat any comment older than it as
+          # not-a-verdict-for-this-head. ISO-8601 UTC timestamps (…Z) from the
+          # API compare correctly as plain strings.
+          HEAD_SHA=$(gh pr view "$PR" --repo "$REPO" --json headRefOid -q .headRefOid)
+          HEAD_TIME=$(gh api "repos/$REPO/commits/$HEAD_SHA" -q .commit.committer.date)
+
+          # Selection happens in standalone jq, not gh's --jq:
+          #   - gh rejects `--slurp` combined with `--jq` (despite the help
+          #     text), and without slurping, --jq runs per page so `.[-1]`
+          #     is per-page latest, not global-latest. `gh api --paginate`
+          #     emits one JSON array per page back-to-back; `jq -s` slurps
+          #     them and `add` flattens to one comment list.
+          #   - gh's --jq is gojq (Go regexp), where ^ matches string start
+          #     only. The (^|\n) anchor is line-anchored in every engine —
+          #     keep it even under Oniguruma jq, so the pattern survives
+          #     being moved between the two.
+          # `total` = all code-review-titled comments (any age); `freshBody` =
+          # body of the latest one created at/after the head commit ($head).
+          sel=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            | jq -rs --arg head "$HEAD_TIME" 'add
+                | map(select(.body | test("(^|\\n)#{1,6}[ \\t]*(Claude[ \\t]+)?Code[ \\t]+Review"; "i")))
+                | { total: length,
+                    freshBody: ( map(select(.created_at >= $head)) | (.[-1].body // "") ) }
+                | @json')
+          total=$(jq -r '.total' <<<"$sel")
+          body=$(jq -r '.freshBody' <<<"$sel")
+
+          if [ "$total" -eq 0 ]; then
+            # No /code-review comment at all — the plugin legitimately skipped
+            # this PR (draft / closed / already reviewed / not-eligible). No
+            # verdict expected; leave merge gating to the eligibility logic
+            # upstream. (No regression: skipped PRs still pass.)
+            echo "::notice::No /code-review comment present; plugin likely skipped. Treating as pass."
+            exit 0
+          fi
+
+          if [ -z "$body" ]; then
+            # The plugin HAS reviewed this PR before, but no comment is newer
+            # than the current head commit — the latest review run errored or
+            # never posted for $HEAD_SHA. A stale prior-SHA comment is not a
+            # verdict for this head (#993). Fail closed; re-run code-review.
+            echo "::error::/code-review has prior comments on this PR but none newer than head commit $HEAD_SHA ($HEAD_TIME) — the latest review likely errored. Failing closed; re-run code-review."
+            exit 1
+          fi
+
+          # Severity greps below classify each byte of heading decoration via the
+          # POSIX class [^[:alnum:]]. Under the runner's default LANG=C.UTF-8 a
+          # multibyte decoration (emoji "### 🔴 BLOCKING", #954) is read as ONE
+          # alnum-ambiguous rune that [^[:alnum:]] does NOT consume, so the block
+          # check silently misses and a coexisting "### MINOR" can flip the gate
+          # to PASS. Forcing the C locale makes grep treat every decoration byte
+          # individually (non-alnum), restoring the emoji-heading match. Set after
+          # the jq body extraction so JSON decoding stays UTF-8 aware.
+          export LC_ALL=C
+
+          # Two-gate model (#988): the MERGE gate blocks ONLY on a real merge-
+          # blocking finding — an all-caps CRITICAL/MAJOR/BLOCKING severity
+          # heading. The block check runs FIRST so no pass signal below can
+          # shadow it (a findings comment may carry an incidental
+          # "No issues found." or "Blocking issues — None" line).
+          #
+          # - [^[:alnum:]]* tolerates decoration between the #'s and the
+          #   severity word (emoji/whitespace — "### 🔴 BLOCKING" on #954); the
+          #   findings/issues suffix is optional ("### MAJOR" bare on #956).
+          # - grep -qE (NOT -qiE): the block check is case-SENSITIVE all-caps
+          #   (#976). Real plugin severity sections are all-caps; title-case
+          #   prose like "### Blocking issues — None" (#962) must NOT block.
+          # - MINOR is DROPPED from the alternation. Minors never block merge —
+          #   they are swept best-effort by /rework while it is already in
+          #   context for a bug-triggered round, not as a merge gate.
+          if grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)\b' <<<"$body"; then
+            echo "::error::Code review posted blocking severity sections (CRITICAL/MAJOR/BLOCKING); blocking auto-merge until addressed."
+            exit 1
+          fi
+
+          # No blocking severity heading. Any recognized non-blocking shape is
+          # a positive pass. Order among the pass checks is immaterial (all
+          # exit 0); only block-before-pass matters.
+
+          # Clean: line-start, NO end anchor (the plugin spec's clean example
+          # carries trailing prose on the same line).
+          if grep -qE '^No issues found\.' <<<"$body"; then
+            echo "::notice::Code review clean."
+            exit 0
+          fi
+
+          # APPROVE summary "Blocking issues — None" (#962). Case-insensitive —
+          # it is title-case prose, and it is only reached after the block
+          # check, so it can never shadow a real all-caps severity section.
+          if grep -qiE 'blocking issues\b[^[:alnum:]]*none\b' <<<"$body"; then
+            echo "::notice::Code review reports no blocking issues."
+            exit 0
+          fi
+
+          # Findings present but none blocking: canonical "Found N issues:".
+          # Under the two-gate model this is a PASS, not a block — in practice
+          # the plugin emits severity sections for real bugs (#963/#964/#965/
+          # #966) and bare Found-N has carried only advisory MEDIUM/LOW (#956).
+          # Residual risk (a no-severity-heading comment hiding real majors)
+          # accepted per #988.
+          if grep -qE 'Found [0-9]+ issues?:' <<<"$body"; then
+            count=$(grep -oE 'Found [0-9]+ issues?:' <<<"$body" | head -1 | grep -oE '[0-9]+')
+            echo "::notice::Code review found $count non-blocking issue(s); not blocking auto-merge (two-gate model)."
+            exit 0
+          fi
+
+          # Non-blocking severity sections only: MINOR-only (#963) or MEDIUM/
+          # LOW/INFO/NITPICK advisories with no Found-N line. Case-INSENSITIVE
+          # (-qiE, #1050): the plugin sometimes title-cases advisory headings
+          # ("#### Low" on PR #1049), which the old all-caps -qE dropped → the
+          # gate fell through to fail-closed on a clean verdict. Safe to be
+          # lenient here: this runs strictly AFTER the case-sensitive block
+          # check (line ~326), so a title-case match can never shadow a real
+          # all-caps CRITICAL/MAJOR/BLOCKING section. The block check itself
+          # stays -qE (case-sensitive) per #962/#976.
+          if grep -qiE '^#{1,6}[^[:alnum:]]*(MINOR|NITPICK|LOW|INFO|MEDIUM)\b' <<<"$body"; then
+            echo "::notice::Code review posted only non-blocking severity sections; not blocking auto-merge."
+            exit 0
+          fi
+
+          # Explicit positive verdict with no blocking heading: bare "LGTM" or
+          # a "Verdict: … APPROVE/APPROVED" summary (#1050 — PR #1049 posted
+          # "**Verdict: LGTM with one minor note**" with no recognized severity
+          # heading and no "No issues found." line). Case-insensitive; reached
+          # only after the block check, so it can never green-light a real
+          # all-caps severity section.
+          if grep -qiE '\bLGTM\b|Verdict:[^\n]*\bAPPROVED?\b' <<<"$body"; then
+            echo "::notice::Code review posted a positive LGTM/APPROVE verdict; not blocking auto-merge."
+            exit 0
+          fi
+
+          # Unrecognized format — fail closed so a malformed or deviant
+          # comment can't slip past auto-merge (cf. PR #957 false-pass).
+          echo "::error::Could not parse /code-review verdict from latest review comment. Failing closed."
+          exit 1

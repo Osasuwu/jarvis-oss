@@ -1,0 +1,8 @@
+id: s012
+title: Refactoring untested code without characterization test
+category: code
+source: generic
+setup: User wants to refactor a utility module with no test coverage.
+proposal: Refactor legacy untested code directly.
+flaw: 'TDD-loop: code enters refactor scope only with a passing test.'
+expected_pushback: Insist on characterization test first, then refactor.

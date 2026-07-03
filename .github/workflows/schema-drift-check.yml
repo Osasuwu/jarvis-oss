@@ -1,0 +1,53 @@
+name: Schema Drift Check
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+    paths:
+      - 'mcp-memory/schema.sql'
+      - 'supabase/migrations/**'
+
+jobs:
+  require-paired-migration:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number, per_page: 100,
+            });
+
+            const schemaChanged = files.some(f =>
+              f.filename === 'mcp-memory/schema.sql' &&
+              (f.status === 'modified' || f.status === 'added' || f.status === 'changed')
+            );
+
+            if (!schemaChanged) {
+              core.info('mcp-memory/schema.sql unchanged — skipping drift check.');
+              return;
+            }
+
+            const migrationAdded = files.some(f =>
+              f.filename.startsWith('supabase/migrations/') &&
+              f.status === 'added'
+            );
+
+            if (!migrationAdded) {
+              core.setFailed(
+                'mcp-memory/schema.sql changed without a paired migration file.\n' +
+                'schema.sql is aspirational documentation — it does not execute against the live DB.\n' +
+                'Apply the change via `mcp supabase apply_migration` and commit the new\n' +
+                'supabase/migrations/<timestamp>_<name>.sql file in the same PR.\n' +
+                'See incident: #284 (recall soft-delete filter) — schema.sql edit without migration\n' +
+                'caused memory_recall to silently return soft-deleted rows in production.'
+              );
+              return;
+            }
+
+            core.info('schema.sql change is paired with a new migration file — OK.');

@@ -1,0 +1,186 @@
+# Jarvis install manifest — declarative source of truth for user-level install.
+#
+# Consumed by scripts/install/installer.py via install.ps1 / install.sh.
+# Describes what gets copied from this repo into ~/.claude/ (or $JARVIS_HOME_TARGET),
+# whether the content is templated (path substitution), and which env vars to set.
+#
+# Epic #335 — Pillar 7 Phase 0: Federation foundation.
+# M1 (#336) lands the manifest + installer. M2-M4 flip individual groups from
+# `enabled: false` to `enabled: true` as each migration step ships.
+
+version: 1
+
+# Placeholders substituted in templated files.
+# {{JARVIS_HOME}} → absolute path to the jarvis repo root (install-time).
+# {{CLAUDE_USER_HOME}} → absolute path to ~/.claude/ (install-time).
+placeholders:
+  JARVIS_HOME: "{repo_root}"
+  CLAUDE_USER_HOME: "{claude_user_home}"
+
+# Destination root for user-level install. Absolute path, expanded at runtime
+# (~/, $HOME, %USERPROFILE%). Override via --target or JARVIS_CLAUDE_HOME env.
+target_root: "~/.claude"
+
+# Version marker written to target_root/.jarvis-version (git SHA at install time).
+version_marker: ".jarvis-version"
+
+# Groups — each one independently enablable. Until each M-step ships, the
+# corresponding group stays disabled so the installer is a no-op for it.
+groups:
+
+  - id: soul
+    description: "SOUL.md — personality/behavioral rules (M4 #339)"
+    enabled: true
+    files:
+      # Canonical source stays at jarvis/config/SOUL.md (git-versioned,
+      # PR-reviewed). Installer copies to ~/.claude/SOUL.md so the
+      # user-level SessionStart hook reads it regardless of CWD.
+      # Edit flow: edit jarvis/config/SOUL.md -> PR review -> merge ->
+      # `git pull && install.ps1` on each device propagates.
+      - source: "config/SOUL.md"
+        dest: "SOUL.md"
+        template: false
+
+  - id: claude_md
+    description: "User-level CLAUDE.md — process rules incl. memory & decision protocol (#523)"
+    enabled: true
+    files:
+      # Canonical source at .claude-userlevel/CLAUDE.md (git-versioned,
+      # PR-reviewed). Installer copies to ~/.claude/CLAUDE.md, which
+      # Claude Code auto-loads as user-level memory in every session.
+      # Edit flow: edit .claude-userlevel/CLAUDE.md -> PR -> merge ->
+      # `git pull && install.ps1 -Apply` on each device propagates.
+      # Per ADR-0002: skills reference this file rather than restate
+      # the memory/decision protocol locally.
+      - source: ".claude-userlevel/CLAUDE.md"
+        dest: "CLAUDE.md"
+        template: false
+
+  - id: hooks_settings
+    description: "settings.json — hooks pointing at JARVIS_HOME scripts (M3 #338)"
+    enabled: true
+    files:
+      # Source of truth under .claude-userlevel/ (same pattern as skills M2).
+      # template: rewrites `scripts/...` → `{{JARVIS_HOME}}/scripts/...` at apply time.
+      # merge: deep-merge onto existing ~/.claude/settings.json per jarvis-owned
+      #        `hooks.<Event>` keys; other events stay put (see README).
+      - source: ".claude-userlevel/settings.json"
+        dest: "settings.json"
+        template: true
+        merge: true
+
+  - id: mcp_config
+    description: "MCP servers — registered at user scope via `claude mcp add` (M3 #338)"
+    enabled: true
+    files:
+      # Source listing read by installer; each entry becomes a
+      # `claude mcp add -s user` call (writes to ~/.claude.json's mcpServers).
+      # Earlier revisions copied the file to ~/.claude/.mcp.json — Claude Code
+      # never reads that path, so the install was inert. The dead file is
+      # auto-quarantined on next apply.
+      - source: ".claude-userlevel/.mcp.json"
+        install_as: "user_mcp_registrations"
+        template: true
+
+  - id: skills
+    description: "Core skills (M2 #337) — universal, not project-specific"
+    enabled: true
+    directories:
+      # Source of truth for user-level skills lives in a separate directory so
+      # M5 tombstone can cleanly delete jarvis/.claude/skills/* without touching
+      # project-scoped skills that stay behind (e.g. /sprint-report).
+      - source: ".claude-userlevel/skills"
+        dest: "skills"
+        template: false
+        # Whitelist kept explicit so an accidentally-added file (e.g. a README
+        # scratch note under .claude-userlevel/skills/) doesn't leak into
+        # every user's ~/.claude/. Update when adding/removing a core skill.
+        include:
+          # Shared reference material consumed by other skills (e.g. _shared/tdd/
+          # is read by /implement and /delegate in TDD-mode). Not a skill itself.
+          - "_shared"
+          - "autonomous-loop"
+          - "delegate"
+          - "end"
+          - "goals"
+          - "implement"
+          - "last-work-report"
+          - "learn"
+          - "reflect"
+          - "research"
+          - "rework"
+          - "self-improve"
+          - "setup-tasks"
+          - "status"
+          - "status-record"
+          - "verify"
+          # AI Hero skills (Matt Pocock — github.com/mattpocock/skills, MIT).
+          # See .claude-userlevel/skills/AIHERO_CREDIT.md for attribution + adaptations.
+          - "caveman"
+          - "curate"
+          - "diagnose"
+          - "grill"
+          - "improve-codebase-architecture"
+          - "reason"
+          - "to-issues"
+          - "to-prd"
+          - "triage"
+          - "write-a-skill"
+          - "zoom-out"
+
+# Env vars — set on install (idempotent: skipped if already matches).
+env_vars:
+  - name: "JARVIS_HOME"
+    value: "{repo_root}"
+    platforms: ["windows", "posix"]
+  # Context-economy env vars per #706 / workflow-table rows #96+#97.
+  # NoLiMa ICML 2025: 11/12 LLMs drop below 50% by 32K tokens.
+  #
+  # Owner directive 2026-06-01: keep autocompact in the 150-200k band so no CC
+  # session physically leaves the smart zone. AUTO_COMPACT_WINDOW caps the
+  # compaction window at 200k regardless of the model's native window — without
+  # it, PCT computes against the model window, and on Opus 1M that is ~650k
+  # (the bug that let context reach 300k+ before compacting). The CC binary
+  # (v2.1.156) then fires at threshold = min(window*PCT/100, window-13000)
+  # = min(200000*0.75, 187000) = 150000.
+  - name: "CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+    value: "200000"
+    platforms: ["windows", "posix"]
+  # 75% of the 200k window = 150k fire point. Raised from 65% (#706 / Sikkema
+  # 2026-04 reasoning-consistency cap) to honor the owner's 150k floor — at the
+  # 200k window 65% gave 130k, below the requested band. Tune within band:
+  # 75->150k, 80->160k, 85->170k, 90->180k, >=~94 hits the 187k hard cap.
+  - name: "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE"
+    value: "75"
+    platforms: ["windows", "posix"]
+  # Disable Opus 1M-context window. Rationale: latency / reasoning quality
+  # (NoLiMa: degradation past ~32K) AND cost — per memory opus_1m_extra_billing
+  # (10be89f8) Opus 1M is now extra-billed, so 1M is off by default (supersedes
+  # the earlier "NOT cost / Max has no per-token charge" note). Device-global:
+  # every CC session on the box (including non-Jarvis projects like redrobot)
+  # inherits the 1M-disabled default. Accept that scope: the smart-zone
+  # argument applies to all CC sessions regardless of project.
+  - name: "CLAUDE_CODE_DISABLE_1M_CONTEXT"
+    value: "1"
+    platforms: ["windows", "posix"]
+
+# Health check — after apply, run this command (dry-run of SessionStart hook).
+# Non-zero exit → auto-rollback from the most recent backup, EXCEPT exit 4
+# (health-check timeout — inconclusive, apply left in place).
+health_check:
+  enabled: true
+  # Resolved relative to JARVIS_HOME. Empty list = skip.
+  commands:
+    - "python scripts/device-info.py"
+    - "python scripts/session-context.py --smoke"  # --smoke flag = dry load, no Supabase writes
+  # Per-command limit in seconds. On expiry the whole process tree is killed
+  # (health commands may spawn children — session-context.py re-execs into
+  # the venv python) and the apply is left in place — timeout is
+  # inconclusive, so NO rollback (exit code 4).
+  timeout: 30
+
+# Backup — timestamped directory created before any destructive write.
+backup:
+  prefix: ".claude.backup-"
+  # Keep last N backups, prune older.
+  retain: 5

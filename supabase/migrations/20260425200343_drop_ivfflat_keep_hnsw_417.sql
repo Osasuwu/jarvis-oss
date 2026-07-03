@@ -1,0 +1,23 @@
+-- #417 (Phase 3 recall ranking): drop broken IVFFLAT index on memories.embedding.
+--
+-- Symptoms (Osasuwu/jarvis#417, eval-recall.py with_rewriter+links):
+--   match_memories(query, match_limit=20, threshold=0.25) returned only ~32
+--   of ~390 live indexed rows even at threshold=-1.0 / limit=500. Several
+--   eval queries (q11 always_recall_before_action, q15 competitive_landscape_*)
+--   missed the expected memory entirely despite cosine >= 0.6 vs the query
+--   embedding.
+--
+-- Root cause: planner picks `memories_embedding_idx` (IVFFLAT, lists=10,
+-- vector_cosine_ops). With ~390 rows split across 10 lists, each list holds
+-- ~39 vectors. Default `ivfflat.probes = 1` scans ONE list, so the operator
+-- silently caps real recall at ~39 candidates regardless of the SQL LIMIT.
+-- A dedicated HNSW index (idx_memories_embedding_hnsw, default params)
+-- already exists and returns 399/399 of live rows when the IVFFLAT index is
+-- bypassed (verified via `SET LOCAL enable_indexscan = off`).
+--
+-- IVFFLAT is meant for very large corpora where you can afford to skip
+-- lists; at our scale (<1k rows) HNSW is unambiguously better. Drop the
+-- IVFFLAT index so the planner falls through to seq-scan + top-N heapsort
+-- (~80ms on 400 rows, exact recall) for cosine-distance ordered queries.
+-- Revisit when the corpus crosses ~5-10k rows.
+DROP INDEX IF EXISTS public.memories_embedding_idx;

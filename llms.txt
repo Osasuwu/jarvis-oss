@@ -1,0 +1,14 @@
+# Jarvis — single-principal AI agent for software work
+
+> Auto-discovered by external LLM tools via llms.txt convention.
+> Pointers only — see the target files for authoritative content.
+
+- [CLAUDE.md](CLAUDE.md): Project rules, process conventions, skill routing, engineering posture
+- [config/SOUL.md](config/SOUL.md): Agent identity, personality, judgment calibration
+- [CONTEXT.md](CONTEXT.md): Domain glossary, invariants, architectural model
+- [README.md](README.md): Project overview and setup instructions
+- [Design doc](docs/design/jarvis-v2-redesign.md): Architecture, component model, data flow
+- [Research](docs/research/): Exploration notes and design studies (unfinished drafts)
+- [ADRs](docs/adr/): Architecture Decision Records
+
+Authoritative decision log: Supabase `record_decision` memory table (not in this repo).

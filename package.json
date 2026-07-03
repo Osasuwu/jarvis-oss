@@ -1,0 +1,19 @@
+{
+  "name": "jarvis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal AI agent built on Claude Code + MCP. Node toolchain is dev-only — sandcastle orchestration for AFK coding agents.",
+  "scripts": {
+    "sandcastle": "tsx --env-file-if-exists=.sandcastle/.env .sandcastle/main.mts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/your-repo.git"
+  },
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@ai-hero/sandcastle": "^0.5.7",
+    "tsx": "^4.21.0"
+  }
+}

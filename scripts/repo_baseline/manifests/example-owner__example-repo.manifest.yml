@@ -1,0 +1,15 @@
+auto_merge: true
+branch_protection: true
+dependabot_ecosystems:
+- pip
+- github-actions
+profile: full
+repo: example-owner/example-repo
+required_check_contexts:
+- review
+- owner-queue-guard
+- require-linked-issue
+- pytest
+- meta-tests
+- Detect secrets with gitleaks
+visibility: public

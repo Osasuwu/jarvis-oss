@@ -1,0 +1,36 @@
+name: Owner Queue Guard
+
+# Fails when a PR carries the `status:owner-queue` label — that label is the
+# explicit "wait for the owner to look at this" signal. Without this guard,
+# auto-merge would happily ship a PR the owner had specifically parked.
+#
+# Triggers cover the four ways the label state changes:
+#   labeled / unlabeled — label add/remove
+#   opened              — PR opens with the label already attached
+#   synchronize         — re-check on every push so a stale guard state
+#                         doesn't outlive a label removal followed by
+#                         an unrelated push
+#
+# The check name (`owner-queue-guard`) is what branch protection requires.
+# If you rename it, update the required-checks list in repo settings.
+
+on:
+  pull_request:
+    types: [opened, synchronize, labeled, unlabeled]
+
+jobs:
+  guard:
+    name: owner-queue-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for status:owner-queue label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          if echo "$LABELS" | grep -q '"status:owner-queue"'; then
+            echo "::error::PR is labelled status:owner-queue — owner review required before merge."
+            echo "Remove the label to clear the guard once the PR is ready to ship."
+            exit 1
+          fi
+          echo "::notice::No status:owner-queue label present."

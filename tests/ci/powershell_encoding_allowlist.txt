@@ -1,0 +1,12 @@
+# PowerShell -Encoding allowlist
+#
+# Each line lists a Set-Content / Out-File call in a tracked .ps1/.psm1/.psd1
+# file that currently lacks an explicit -Encoding parameter.
+#
+# Format:
+#   path/to/file.ps1:line_num  # reason why it's exempted (recommended)
+#
+# To remove an entry: add -Encoding utf8 to the call and delete this line.
+#
+# Initial sweep (2026-05-18): 0 offenders found. All existing calls already
+# specify -Encoding. New violations will fail CI.

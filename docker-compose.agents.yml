@@ -1,0 +1,22 @@
+services:
+  agents-postgres:
+    image: postgres:16-alpine
+    container_name: jarvis-agents-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jarvis
+      POSTGRES_PASSWORD: jarvis
+      POSTGRES_DB: agents
+    # Port 5433 on host to avoid clashing with any system-wide Postgres on 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - agents_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jarvis -d agents"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  agents_postgres_data:

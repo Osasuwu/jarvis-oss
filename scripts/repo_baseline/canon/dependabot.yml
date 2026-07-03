@@ -1,0 +1,22 @@
+# repo-baseline canon — dependabot.yml
+# Ecosystems are intentionally hardcoded (pip + github-actions), not axis-rendered:
+# the Renderer emits only inline YAML arrays, not the per-ecosystem block sequences
+# this file needs. Repos whose ecosystems diverge (e.g. an npm package) opt the file
+# into the REPO_CUSTOM escape hatch (manifest.custom_files) and ship their own copy.
+version: 2
+updates:
+  # Python dependencies (root)
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: main
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: main

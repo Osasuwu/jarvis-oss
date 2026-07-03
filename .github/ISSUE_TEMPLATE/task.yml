@@ -1,0 +1,80 @@
+name: "Task"
+description: "Atomic work item that results in one PR."
+labels: ["task", "status:ready"]
+body:
+  - type: input
+    id: parent
+    attributes:
+      label: "Parent Epic"
+      description: "Optional reference only. Primary linkage must be set via GitHub Parent issue/Sub-issues UI."
+      placeholder: "#42 (optional note)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "Description"
+      description: "What needs to be done?"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: "Area"
+      options:
+        - "area:skills"
+        - "area:config"
+        - "area:infrastructure"
+        - "area:quality"
+        - "area:docs"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: "Priority"
+      options:
+        - "priority:critical"
+        - "priority:high"
+        - "priority:medium"
+        - "priority:low"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: phase
+    attributes:
+      label: "Phase"
+      options:
+        - "P1 OpenClaw Migration + PM Skills"
+        - "P2 Research Skills"
+        - "P3 Expansion"
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance Criteria"
+      description: "Checklist of requirements for this task to be done."
+      value: |
+        - [ ] Implementation complete
+        - [ ] Tests pass
+        - [ ] Documentation updated (if behavior changed)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: size
+    attributes:
+      label: "Size Estimate"
+      options:
+        - "S (< 1h)"
+        - "M (1-4h)"
+        - "L (4-8h)"
+        - "XL (> 8h — consider splitting)"
+    validations:
+      required: false

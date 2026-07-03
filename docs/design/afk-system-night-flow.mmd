@@ -1,0 +1,100 @@
+sequenceDiagram
+    autonumber
+    participant Cron as Cron / Task Scheduler
+    participant Probe as Quota probe<br/>(claude -p /usage, 30min)
+    participant SC as Sandcastle<br/>(parallel containers, DeepSeek)
+    participant GH as GitHub<br/>(repo + API + repo vars)
+    participant GA as GH Actions<br/>(code-review, event-dispatch)
+    participant Mem as Memory<br/>(Supabase events_canonical)
+    participant Orch as Orchestrator session<br/>(event-woken cold boot)
+    participant TG as Telegram
+    participant P as Principal
+
+    Note over Mem: PRE-NIGHT — issues status:ready, goals active, outcome history loaded, CLAUDE_QUOTA_PRESSURE=false
+
+    rect rgba(220,220,255,0.25)
+    Note over Probe,Mem: ACT 0 — quota housekeeping (scheduled task)
+    Probe->>Probe: every 30 min: claude -p /usage
+    Probe->>Probe: parse weekly%, cache ~/.jarvis/orchestrator/usage.json
+    alt weekly >= 80%
+        Probe->>GH: gh variable set CLAUDE_QUOTA_PRESSURE=true
+        Probe->>Mem: events_canonical row (quota_pressure, severity=high)
+        Mem->>TG: telegram-notify-hook drains high
+        TG->>P: phone ping — AFK paused
+    else weekly < 70%
+        Probe->>GH: gh variable set CLAUDE_QUOTA_PRESSURE=false
+    end
+    end
+
+    rect rgba(200,220,255,0.25)
+    Note over Cron,Mem: ACT 1 — initial implementation (cron tick, gated by quota)
+    Cron->>SC: trigger inside safe-hours window
+    SC->>GH: read CLAUDE_QUOTA_PRESSURE — abort if true
+    SC->>GH: gh issue list status:ready — pick e.g. 553
+    SC->>GH: remove status:ready, add status:in-progress
+    Note over SC: container up, checkout new feat branch,<br/>DeepSeek edits + pytest + commit
+    SC->>GH: push branch + open PR with rich body (Closes 553)
+    SC->>Mem: outcome_record (initial-impl) + events_canonical (pr_opened)
+    end
+
+    rect rgba(255,230,200,0.25)
+    Note over GH,Mem: ACT 2 — automatic review (synchronous on PR open / push)
+    GH-->>GA: pull_request opened OR synchronize event
+    GA->>GA: code-review.yml — if vars.CLAUDE_QUOTA_PRESSURE != true
+    GA->>GH: 8 parallel reviewers via code-review plugin
+    GA->>GH: post verdict as issue-comment — Request Changes 5 CRITICAL plus 6 MAJOR
+    GA->>Mem: events_canonical (review_negative, payload.reviewer_kind=claude_bot, severity=medium)
+    end
+
+    rect rgba(230,255,220,0.25)
+    Note over Orch,Mem: ACT 3 — event-woken rework orchestrator (no persistent watcher)
+    Note over Mem: review_negative event lands in events_canonical
+    Mem->>Orch: event-woken cold boot via scheduled-task check (5min slack) or pg LISTEN/NOTIFY
+    Orch->>Mem: SELECT FROM events_canonical WHERE processed=false AND event_type='review_negative'
+    Orch->>Orch: gate check — quota_cache.weekly < 80%, else skip
+    Orch->>Mem: per-PR lock check — outcome_records pattern_tags pr-N in_flight 2h
+    alt no in-flight rework for this PR
+        Orch->>GH: gh pr view 631 — fetch latest body + reviews + statusCheck
+        Orch->>SC: dispatch with SANDCASTLE_TARGET_PR=631
+        Note over SC: separate container, parallel with other sandcastles
+        SC->>SC: /rework — parse verdict, classify findings,<br/>reactive TDD per CRITICAL,<br/>apply MAJOR fixes
+        SC->>GH: git checkout existing branch — push fix commits
+        SC->>Mem: outcome_record (pr-rework-631, attempt=2)
+        SC->>GH: add PR label status:rework-in-progress
+        Orch->>Mem: events_mark_processed
+        Orch->>Mem: record_decision (rework dispatched, rationale)
+        Orch->>Orch: session dies — no persistent process
+    else in-flight exists
+        Orch->>Mem: events_mark_processed (subsumed by in-flight container)
+        Orch->>Orch: session dies — no persistent process
+    end
+    end
+
+    rect rgba(255,220,220,0.2)
+    Note over GH,Mem: LOOP-STOP triggers (any one fires escalate)
+    alt attempts >= 3
+        SC->>Mem: events_canonical (rework_stuck, severity=medium)
+    else scope-creep — LOC delta > 50% OR files outside initial diff
+        SC->>Mem: events_canonical (rework_stuck, severity=medium)
+    else no convergence — n_critical/n_major not decreasing
+        SC->>Mem: events_canonical (rework_stuck, severity=medium)
+    else conflicting findings — same file colon line touched in 2 attempts
+        SC->>Mem: events_canonical (rework_stuck, severity=medium)
+    else CI red on rework push
+        GA->>Mem: events_canonical (ci_failure, severity=high)
+        Mem->>TG: telegram-notify drain high
+        TG->>P: phone ping
+    end
+    SC->>GH: PR label status:needs-human + summary comment + body update (## Rework history)
+    SC->>Mem: outcome_record outcome_status=partial + lessons
+    end
+
+    rect rgba(255,255,220,0.25)
+    Note over P,Mem: ACT 5 — morning (principal back)
+    P->>P: SessionStart hook — overnight events digest, status:needs-human queue, quota state
+    P->>GH: review and merge converged PRs
+    P->>GH: handle status:needs-human PRs (manual fix or close)
+    GH-->>GA: pull_request closed merged
+    GA->>Mem: events_canonical (pr_merged)
+    P->>Orch: optional /verify — enrich outcomes with merge result
+    end

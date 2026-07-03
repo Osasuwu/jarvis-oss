@@ -1,0 +1,395 @@
+name: Event Dispatch
+
+# Captures critical GitHub events and writes them to Supabase events table.
+# The reactive-core orchestrator (wake_driver → agents/orchestrator router)
+# consumes pending events and routes each to inline / task_queue / escalation.
+#
+# Required secrets:
+#   SUPABASE_URL      — project URL (https://xxx.supabase.co)
+#   SUPABASE_ANON_KEY — publishable anon key
+#
+# To add this to another repo:
+#   1. Copy this file to .github/workflows/event-dispatch.yml
+#   2. Add the same SUPABASE_URL and SUPABASE_ANON_KEY secrets
+#   3. Events from all repos land in the same events table
+
+on:
+  workflow_run:
+    workflows:
+      - "Gitleaks Secret Scanning"
+      - "PR Body Check"
+      - "PR Merged"
+      - "Project Sync"
+      - "Review Response"
+    types: [completed]
+    branches: [main]
+
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+  pull_request_review:
+    types: [submitted]
+
+  # ── For Claude code-review bot's issue-comment verdicts (#633) ────
+  # The bot posts review findings as a PR-issue comment (not via the
+  # pull_request_review surface). This trigger lets us parse the verdict
+  # and emit a canonical review_negative event from one place.
+  issue_comment:
+    types: [created]
+
+jobs:
+  # ── CI Failure on default branch ──────────────────────────────────
+  ci-failure:
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch CI failure event
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          REPO="${{ github.repository }}"
+          WORKFLOW="${{ github.event.workflow_run.name }}"
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          SHA="${{ github.event.workflow_run.head_sha }}"
+          URL="${{ github.event.workflow_run.html_url }}"
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"ci_failure\",
+              \"severity\": \"high\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"CI failed: ${WORKFLOW} on ${BRANCH}\",
+              \"payload\": {
+                \"workflow\": \"${WORKFLOW}\",
+                \"run_id\": ${RUN_ID},
+                \"branch\": \"${BRANCH}\",
+                \"sha\": \"${SHA}\",
+                \"url\": \"${URL}\"
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"
+
+  # ── PR Approved ───────────────────────────────────────────────────
+  pr-approved:
+    if: >
+      github.event_name == 'pull_request_review' &&
+      github.event.review.state == 'approved' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch PR approved event
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          REPO="${{ github.repository }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          REVIEWER="${{ github.event.review.user.login }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+
+          # Escape double quotes in PR title
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | sed 's/"/\\"/g')
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"pr_approved\",
+              \"severity\": \"info\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"PR #${PR_NUM} approved by ${REVIEWER}\",
+              \"payload\": {
+                \"pr_number\": ${PR_NUM},
+                \"pr_title\": \"${PR_TITLE_ESCAPED}\",
+                \"reviewer\": \"${REVIEWER}\",
+                \"url\": \"${PR_URL}\"
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"
+
+  # ── PR Merged ─────────────────────────────────────────────────────
+  pr-merged:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch PR merged event
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          REPO="${{ github.repository }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          AUTHOR="${{ github.event.pull_request.user.login }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          MERGE_SHA="${{ github.event.pull_request.merge_commit_sha }}"
+
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | sed 's/"/\\"/g')
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"pr_merged\",
+              \"severity\": \"info\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"PR #${PR_NUM} merged: ${PR_TITLE_ESCAPED}\",
+              \"payload\": {
+                \"pr_number\": ${PR_NUM},
+                \"pr_title\": \"${PR_TITLE_ESCAPED}\",
+                \"author\": \"${AUTHOR}\",
+                \"merge_sha\": \"${MERGE_SHA}\",
+                \"url\": \"${PR_URL}\"
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"
+
+  # ── CI Success on default branch (all checks passed) ─────────────
+  ci-success:
+    if: >
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch CI success event
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          REPO="${{ github.repository }}"
+          WORKFLOW="${{ github.event.workflow_run.name }}"
+          BRANCH="${{ github.event.workflow_run.head_branch }}"
+          URL="${{ github.event.workflow_run.html_url }}"
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"ci_success\",
+              \"severity\": \"low\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"CI passed: ${WORKFLOW} on ${BRANCH}\",
+              \"payload\": {
+                \"workflow\": \"${WORKFLOW}\",
+                \"branch\": \"${BRANCH}\",
+                \"url\": \"${URL}\"
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"
+
+  # ── Review Negative: Human ────────────────────────────────────────
+  # Emits a canonical review_negative row when a human reviewer requests
+  # changes on an internal PR. Consumed by the orchestrator watcher
+  # (scripts/orchestrator/watcher.py) — see PR #755 / issue #639 / PRD #41.
+  #
+  # Filter: state == 'changes_requested' only (the "request changes" signal).
+  # 'commented' state carries no verdict and intentionally does NOT fire here.
+  review-negative-human:
+    if: >
+      github.event_name == 'pull_request_review' &&
+      github.event.review.state == 'changes_requested' &&
+      github.event.review.user.type == 'User' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch review_negative event (human)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          REPO="${{ github.repository }}"
+          PR_NUM="${{ github.event.pull_request.number }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          REVIEWER="${{ github.event.review.user.login }}"
+          REVIEW_ID="${{ github.event.review.id }}"
+          REVIEW_URL="${{ github.event.review.html_url }}"
+
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | sed 's/"/\\"/g')
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"review_negative\",
+              \"severity\": \"medium\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"PR #${PR_NUM} changes requested by ${REVIEWER}\",
+              \"payload\": {
+                \"pr_number\": ${PR_NUM},
+                \"pr_title\": \"${PR_TITLE_ESCAPED}\",
+                \"reviewer_kind\": \"human\",
+                \"reviewer\": \"${REVIEWER}\",
+                \"review_id\": ${REVIEW_ID},
+                \"review_url\": \"${REVIEW_URL}\"
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"
+
+  # ── Review Negative: Claude code-review bot ───────────────────────
+  # The Claude code-review plugin (your-username/claude-plugins-official fork)
+  # posts findings as an issue-comment, not via pull_request_review.
+  # This job parses the verdict here in CI — the only fragile string-match
+  # in the system per PRD #41 — so the orchestrator's filter stays
+  # `event_type = 'review_negative'`, one stable predicate.
+  #
+  # Two-gate alignment (#992): the BLOCKING predicate here is identical to the
+  # MERGE gate's verdict step in code-review.yml — emit review_negative iff the
+  # comment carries an all-caps CRITICAL/MAJOR/BLOCKING severity heading (case-
+  # sensitive). The old `Found N issues:` trigger was BOTH too loose (fired
+  # rework on minor-only advisories — a PASS under the two-gate model) and too
+  # tight (missed severity-sectioned blockers with no Found-N line — ### MAJOR,
+  # ### 🔴 BLOCKING, #954/#956). Keeping the event-side trigger and the merge
+  # gate on the same predicate is the whole point: a PR the merge gate blocks is
+  # exactly a PR that raises review_negative, and vice-versa.
+  #
+  # Plugin output shapes (observed): severity sections are all-caps headings —
+  # `### MAJOR`, `### MAJOR findings`, `### 🔴 BLOCKING` (decoration/suffix vary,
+  # #954/#956/#957). `No issues found.` / `### Blocking issues — None` (#962) /
+  # MINOR-only sections (#963) are non-blocking → no emit. Title may deviate
+  # from the literal `### Code review` (e.g. `## Claude Code Review — PR #957`),
+  # so the selector matches `(Claude )?Code Review` on any line, case-insensitive.
+  #
+  # The plugin also emits a SEPARATE `### Simplification opportunities`
+  # comment when agent #10 finds informational opportunities — it carries no
+  # severity heading, so the blocking predicate naturally ignores it (the rework
+  # loop never fires on simplification-only findings).
+  #
+  # Back-compat fields n_critical / n_major / n_minor are preserved for
+  # downstream consumers (orchestrator watcher, /rework convergence). They are
+  # derived from blocking-heading counts — see the dispatch step for the mapping.
+  review-negative-claude-bot:
+    if: >
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request != null &&
+      github.event.comment.user.login == 'claude[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse Claude verdict and dispatch event
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Read comment body from the event payload (safe — no shell expansion of comment content)
+          COMMENT_BODY="$(jq -r '.comment.body // ""' "$GITHUB_EVENT_PATH")"
+
+          # Force the C locale for every grep below. The severity-heading greps
+          # classify decoration bytes with POSIX [^[:alnum:]]; under the runner's
+          # default LANG=C.UTF-8 a multibyte emoji ("### 🔴 BLOCKING", #954) is one
+          # rune that [^[:alnum:]] won't consume, so a genuinely blocking review
+          # fails to raise review_negative — diverging from the merge gate this
+          # parser is meant to mirror (#992). C locale makes grep byte-oriented so
+          # the emoji decoration matches. Set after jq so JSON stays UTF-8 aware.
+          export LC_ALL=C
+
+          # Only act on the Claude code-review verdict comment. claude[bot]
+          # posts other comment kinds (simplification opportunities, /rework
+          # progress, orchestrator-watcher dispatches). Mirror the SAME title
+          # selector the merge-gate verdict step uses (code-review.yml): a
+          # heading "(Claude )?Code Review" on any line, case-insensitive —
+          # NOT an exact "### Code review" first line. Deviant titles like
+          # "## Claude Code Review — PR #957" (#957) must still reach severity
+          # detection, else a blocking review with a deviant title silently
+          # fails to raise review_negative (#992 consequence 2). grep is line-
+          # anchored, so a bare `^` is the line-start equivalent of the merge
+          # gate's `(^|\n)`.
+          if ! grep -qiE '^#{1,6}[ \t]*(Claude[ \t]+)?Code[ \t]+Review' <<<"$COMMENT_BODY"; then
+            echo "Not a Code review verdict comment; skipping"
+            exit 0
+          fi
+
+          # Two-gate model (#988/#992): emit review_negative ONLY on a real
+          # merge-blocking finding — an all-caps CRITICAL/MAJOR/BLOCKING
+          # severity heading (case-SENSITIVE), the SAME predicate the MERGE
+          # gate blocks on in code-review.yml. This replaces the old
+          # "^Found N issues:" trigger, which (a) false-fired rework on
+          # minor-only advisory comments — a PASS under the two-gate model,
+          # re-introducing the churn #988 removed — and (b) missed severity-
+          # sectioned blockers carrying no "Found N" line (### MAJOR /
+          # ### 🔴 BLOCKING — #954/#956). Heading shape mirrors code-review.yml
+          # byte-for-byte: 1-6 #'s, decoration tolerated between the #'s and the
+          # word (emoji/space), suffix optional. grep -qE (not -qiE) → all-caps
+          # only, so title-case prose "### Blocking issues — None" (#962) is NOT
+          # a block. MINOR excluded — minors never block (swept in-context by
+          # /rework, not a gate).
+          if ! grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)\b' <<<"$COMMENT_BODY"; then
+            echo "No blocking severity heading (CRITICAL/MAJOR/BLOCKING); not emitting review_negative (two-gate model)"
+            exit 0
+          fi
+
+          # Blocking review confirmed. Derive back-compat severity counts for
+          # downstream consumers (orchestrator watcher; /rework convergence in
+          # scripts/rework_policy.py, which converges on n_critical==0 AND
+          # n_major==0 and lex-decreases (n_critical, n_major) per round).
+          # Counts are blocking-heading counts: CRITICAL/BLOCKING → n_critical,
+          # MAJOR → n_major. As the agent resolves blocking sections across
+          # rework rounds the counts strictly decrease, preserving the lex-
+          # decrease stuck-detection contract. n_minor is informational only.
+          # `|| true`: grep -c exits 1 on zero matches (still prints "0") and
+          # this step has no `set -e`, but guard it anyway for robustness.
+          N_CRITICAL=$(grep -cE '^#{1,6}[^[:alnum:]]*(CRITICAL|BLOCKING)\b' <<<"$COMMENT_BODY" || true)
+          N_MAJOR=$(grep -cE '^#{1,6}[^[:alnum:]]*MAJOR\b' <<<"$COMMENT_BODY" || true)
+          N_MINOR=$(grep -cE '^#{1,6}[^[:alnum:]]*(MINOR|NITPICK|LOW|INFO|MEDIUM)\b' <<<"$COMMENT_BODY" || true)
+          N_ISSUES=$((N_CRITICAL + N_MAJOR))
+
+          REPO="${{ github.repository }}"
+          PR_NUM="${{ github.event.issue.number }}"
+          PR_TITLE="${{ github.event.issue.title }}"
+          COMMENT_ID="${{ github.event.comment.id }}"
+          COMMENT_URL="${{ github.event.comment.html_url }}"
+
+          PR_TITLE_ESCAPED=$(echo "$PR_TITLE" | sed 's/"/\\"/g')
+
+          ISSUE_WORD="issues"
+          if [ "$N_ISSUES" -eq 1 ]; then ISSUE_WORD="issue"; fi
+
+          curl -s -X POST "${SUPABASE_URL}/rest/v1/events" \
+            -H "apikey: ${SUPABASE_ANON_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=minimal" \
+            -d "{
+              \"event_type\": \"review_negative\",
+              \"severity\": \"medium\",
+              \"repo\": \"${REPO}\",
+              \"source\": \"github_action\",
+              \"title\": \"PR #${PR_NUM} — Claude code-review: ${N_ISSUES} ${ISSUE_WORD}\",
+              \"payload\": {
+                \"pr_number\": ${PR_NUM},
+                \"pr_title\": \"${PR_TITLE_ESCAPED}\",
+                \"reviewer_kind\": \"claude_bot\",
+                \"comment_id\": ${COMMENT_ID},
+                \"comment_url\": \"${COMMENT_URL}\",
+                \"n_issues\": ${N_ISSUES},
+                \"n_critical\": ${N_CRITICAL},
+                \"n_major\": ${N_MAJOR},
+                \"n_minor\": ${N_MINOR}
+              },
+              \"event_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }"

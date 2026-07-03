@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Python dependencies (root pyproject.toml)
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: main
+
+  # Python dependencies (MCP memory server)
+  - package-ecosystem: pip
+    directory: "/mcp-memory"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: main
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: main

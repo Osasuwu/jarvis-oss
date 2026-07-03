@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-agent"
+version = "0.4.1"
+description = "Jarvis — universal personal AI agent built on Claude Code + MCP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "your-name" }
+]
+keywords = ["ai", "agent", "claude", "mcp", "personal-assistant"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+# Core: MCP memory server (cross-device persistent memory via Supabase)
+memory = [
+  "mcp>=1.0.0",
+  "supabase>=2.0.0",
+  "voyageai>=0.2.3",
+  "httpx>=0.27",
+  "pyyaml>=6.0",
+]
+# Pillar 7: reactive-core agents (Ollama + Postgres + Supabase bridge).
+# LangGraph (langgraph / langgraph-checkpoint-postgres / langchain-ollama) was
+# retired with agents/event_monitor.py in #744 — the deterministic router has
+# no graph runtime. APScheduler + SQLAlchemy were retired with agents/scheduler.py
+# in #743 — wake_driver is event-driven (LISTEN/NOTIFY), not a resident poller.
+# psycopg stays: wake_driver uses it for the LISTEN socket the PostgREST client
+# can't open. psutil is conditional (lazy import in pid_sidecar #952) — used to
+# re-adopt live processes across driver restarts.
+agents = [
+  "psycopg[binary,pool]>=3.1",
+  "ollama>=0.4.0",
+  # Supabase bridge — agents read/write memories/events/goals/audit_log directly
+  # (MCP is Claude-Code-only, so graph nodes need a native client).
+  "supabase>=2.0.0",
+  # GitHub Events API client. supabase-py pulls httpx transitively today,
+  # but agents/github_client.py depends on it unconditionally — declare it
+  # explicitly so the contract doesn't depend on a transitive.
+  "httpx>=0.27",
+  # Process liveness tracking — survives driver restarts via PID sidecar (#952).
+  "psutil>=5.9.0",
+]
+# All runtime components
+full = [
+  "jarvis-agent[memory]",
+  "jarvis-agent[agents]",
+]
+# Development
+dev = [
+  "pytest>=7.4",
+  "pytest-asyncio>=0.23",
+  "ruff>=0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-username/your-repo"
+Issues = "https://github.com/your-username/your-repo/issues"
+
+[tool.setuptools]
+# Mixed layout:
+#   - `agents/` package lives at repo root (Pillar 7 agents)
+#   - `risk_radar.py` remains a flat module under `src/` (legacy)
+# Explicit declarations so `pip install -e ".[agents]"` installs the root-layout
+# `agents` package correctly, rather than silently skipping it.
+package-dir = {"" = "src", "agents" = "agents"}
+packages = ["agents", "strategic_ideation"]
+py-modules = ["risk_radar"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+asyncio_mode = "auto"
+# Pin prepend import mode (today's pytest default) explicitly: tests/ is not a
+# package, and test modules import shared helpers as top-level names — both from
+# conftest (`from conftest import FakeRunner`, #980) and from sibling test
+# modules (`from test_utils import FakeClient`). That only works while the test
+# directory is on sys.path[0], which prepend mode guarantees. If pytest ever
+# changes its default to importlib, this keeps those imports working.
+# (#978 round-3 MINOR 6; #980.)
+addopts = "--import-mode=prepend"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

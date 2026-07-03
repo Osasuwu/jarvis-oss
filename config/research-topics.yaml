@@ -1,0 +1,14 @@
+# Nightly research — fallback hints only
+# Used ONLY when the agent cannot identify gaps from context.
+# Intentionally minimal — no descriptions, no search strategies.
+# The agent decides what to research based on current project state.
+
+fallback_hints:
+  - id: jarvis
+    label: "Jarvis / personal AI agents"
+
+  - id: your-second-project
+    label: "Your second project's domain"
+
+  - id: automation
+    label: "Process automation & agentic tools"

@@ -1,0 +1,66 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.sandcastle/.env
+.sandcastle/runtime/
+.sandcastle/worktrees/
+.sandcastle/hfcache/
+docs/research/
+
+# Logs
+*.log
+logs/
+
+# OS specific
+Thumbs.DB
+
+# Jarvis specific
+.jarvis/
+.cache/
+
+# Claude Code device-local settings (not shared)
+.claude/settings.local.json
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+.claude/session-snapshots/
+.claude/launch.json
+
+# Device-specific config (auto-generated per machine)
+config/device.json
+
+# Generated self-review reports (runtime artifacts - keep skill definitions)
+reports/self-review-*.md
+
+# Ad-hoc smoke-test / one-shot script artifacts
+.tmp/
+.scratch/
+scripts/.smoke-markers/
+scripts/.dispatcher_smoke_state.json
+.smoke-recall-baseline.json
+
+# Legacy Python (may remain locally)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+*.egg-info/
+
+docs/proxy-network-plan.md

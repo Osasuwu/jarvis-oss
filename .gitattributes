@@ -1,0 +1,38 @@
+# Encoding hygiene - prevent CRLF/BOM bugs across 3 devices
+# See docs/design/jarvis-v2-redesign.md section cross-device-sync
+# See also tests/ci/test_powershell_encoding_guard.py (write-side)
+
+# Default: normalise all text files to LF in the index
+* text=auto
+
+# .env files: LF only, never CRLF
+*.env         eol=lf -text
+.env.example  eol=lf -text
+
+# Shell scripts: LF only
+*.sh    eol=lf
+*.bash  eol=lf
+*.zsh   eol=lf
+
+# Python: LF only
+*.py    eol=lf
+
+# PowerShell: Windows-native (CRLF)
+*.ps1   eol=crlf
+*.psm1  eol=crlf
+*.psd1  eol=crlf
+
+# Binaries: never normalised
+*.png    -text diff
+*.jpg    -text diff
+*.jpeg   -text diff
+*.gif    -text diff
+*.ico    -text diff
+*.pdf    -text diff
+*.zip    -text diff
+*.exe    -text diff
+*.dll    -text diff
+*.woff   -text diff
+*.woff2  -text diff
+*.eot    -text diff
+*.ttf    -text diff

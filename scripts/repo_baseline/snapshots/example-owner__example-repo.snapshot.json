@@ -1,0 +1,365 @@
+{
+  "branch_protection": {
+    "contexts": [
+      "review",
+      "owner-queue-guard",
+      "require-linked-issue",
+      "pytest",
+      "meta-tests",
+      "Detect secrets with gitleaks"
+    ],
+    "strict": true
+  },
+  "dependabot_ecosystems": [
+    "pip",
+    "pip",
+    "github-actions"
+  ],
+  "labels": [
+    {
+      "color": "bfdadc",
+      "description": "Finding converged from 2 workers",
+      "name": "2-worker"
+    },
+    {
+      "color": "bfdadc",
+      "description": "Finding converged from 3 workers",
+      "name": "3-worker"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "area:ci-quality"
+    },
+    {
+      "color": "1d76db",
+      "description": "Config files (SOUL.md, device.json, .mcp.json) and setup",
+      "name": "area:config"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "area:core-agent"
+    },
+    {
+      "color": "0075ca",
+      "description": "Documentation and planning",
+      "name": "area:docs"
+    },
+    {
+      "color": "f9d0c4",
+      "description": "Platform, LLM, hosting, integrations",
+      "name": "area:infrastructure"
+    },
+    {
+      "color": "bfe5bf",
+      "description": "Testing and quality gates",
+      "name": "area:quality"
+    },
+    {
+      "color": "0052cc",
+      "description": "Skill and subagent development",
+      "name": "area:skills"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "autonomous-loop"
+    },
+    {
+      "color": "d73a4a",
+      "description": "Something isn't working",
+      "name": "bug"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "ci"
+    },
+    {
+      "color": "0e8a16",
+      "description": "Research done, decision documented in issue",
+      "name": "decision-made"
+    },
+    {
+      "color": "0366d6",
+      "description": "Pull requests that update a dependency file",
+      "name": "dependencies"
+    },
+    {
+      "color": "0075ca",
+      "description": "Improvements or additions to documentation",
+      "name": "documentation"
+    },
+    {
+      "color": "C5DEF5",
+      "description": "Rough idea, not ready for triage \u0432\u0402\u201d author still shaping it",
+      "name": "draft"
+    },
+    {
+      "color": "cfd3d7",
+      "description": "This issue or pull request already exists",
+      "name": "duplicate"
+    },
+    {
+      "color": "a2eeef",
+      "description": "New feature or request",
+      "name": "enhancement"
+    },
+    {
+      "color": "6f42c1",
+      "description": "Epic: groups related tasks",
+      "name": "epic"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "eval"
+    },
+    {
+      "color": "000000",
+      "description": "Pull requests that update GitHub Actions code",
+      "name": "github_actions"
+    },
+    {
+      "color": "7057ff",
+      "description": "Good for newcomers",
+      "name": "good first issue"
+    },
+    {
+      "color": "008672",
+      "description": "Extra attention is needed",
+      "name": "help wanted"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "installer"
+    },
+    {
+      "color": "e4e669",
+      "description": "This doesn't seem right",
+      "name": "invalid"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "memory"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "meta"
+    },
+    {
+      "color": "FBCA04",
+      "description": "Plan/AC not yet stress-tested \u0432\u0402\u201d run /grill before /implement or /delegate",
+      "name": "needs-grill"
+    },
+    {
+      "color": "FBCA04",
+      "description": "Scope defined but no PRD yet \u0432\u0402\u201d run /to-prd before slicing",
+      "name": "needs-prd"
+    },
+    {
+      "color": "D93F0B",
+      "description": "Branch conflicts with base; needs a manual rebase",
+      "name": "needs-rebase"
+    },
+    {
+      "color": "ededed",
+      "description": "Needs investigation before implementation",
+      "name": "needs-research"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "performance"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "pillar-3"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "pillar-4"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "pillar-9"
+    },
+    {
+      "color": "5319E7",
+      "description": "Pillar 7: Multi-agent architecture",
+      "name": "pillar:7-agent-system"
+    },
+    {
+      "color": "D93F0B",
+      "description": "Pillar 9: Security & Digital Hygiene",
+      "name": "pillar:security"
+    },
+    {
+      "color": "7B0000",
+      "description": "Blocking, must fix now",
+      "name": "priority:critical"
+    },
+    {
+      "color": "d93f0b",
+      "description": "High priority",
+      "name": "priority:high"
+    },
+    {
+      "color": "0e8a16",
+      "description": "Nice to have",
+      "name": "priority:low"
+    },
+    {
+      "color": "fbca04",
+      "description": "Normal priority",
+      "name": "priority:medium"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "process"
+    },
+    {
+      "color": "2b67c6",
+      "description": "Pull requests that update python code",
+      "name": "python"
+    },
+    {
+      "color": "d876e3",
+      "description": "Further information is requested",
+      "name": "question"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "recall"
+    },
+    {
+      "color": "1d76db",
+      "description": "AFK queue: issue is safe for sandcastle agent to pick up unattended",
+      "name": "sandcastle"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "security"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "skill:rework"
+    },
+    {
+      "color": "b60205",
+      "description": "Blocked",
+      "name": "status:blocked"
+    },
+    {
+      "color": "fbca04",
+      "description": "Work in progress",
+      "name": "status:in-progress"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "status:needs-human"
+    },
+    {
+      "color": "F9A03C",
+      "description": "Pre-dispatch gate refused AFK dispatch \u0432\u0402\u201d needs owner manual touch (add sandcastle, fill AC, etc.)",
+      "name": "status:owner-queue"
+    },
+    {
+      "color": "c2e0c6",
+      "description": "Ready to start",
+      "name": "status:ready"
+    },
+    {
+      "color": "d4c5f9",
+      "description": "In review",
+      "name": "status:review"
+    },
+    {
+      "color": "ededed",
+      "description": "",
+      "name": "status:rework-in-progress"
+    },
+    {
+      "color": "0e8a16",
+      "description": "Task: one PR execution item",
+      "name": "task"
+    },
+    {
+      "color": "0E8A16",
+      "description": "Test quality audit slice (Phase 1)",
+      "name": "test-audit"
+    },
+    {
+      "color": "1D76DB",
+      "description": "Test fix issue from audit findings (Phase 3)",
+      "name": "test-audit-fix"
+    },
+    {
+      "color": "0E8A16",
+      "description": "Tier 1: auto-dispatch (label IS the human nod, dispatcher picks up automatically)",
+      "name": "tier:1-auto"
+    },
+    {
+      "color": "FBCA04",
+      "description": "Tier 2: owner reviews row before flipping auto_dispatch=true",
+      "name": "tier:2-review"
+    },
+    {
+      "color": "D93F0B",
+      "description": "Tier 3: owner-driven from start (dispatcher never picks up)",
+      "name": "tier:3-human"
+    },
+    {
+      "color": "B60205",
+      "description": "Sandcastle guard: issue requires action on a protected file \u0432\u0402\u201d orchestrator must handle",
+      "name": "unsafe-for-AFK"
+    },
+    {
+      "color": "ffffff",
+      "description": "This will not be worked on",
+      "name": "wontfix"
+    }
+  ],
+  "repo": "example-owner/example-repo",
+  "settings": {
+    "allow_auto_merge": true,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "allow_squash_merge": true,
+    "default_branch": "main",
+    "delete_branch_on_merge": true,
+    "visibility": "public"
+  },
+  "workflows": [
+    ".github/workflows/pr-body-check.yml",
+    ".github/workflows/pr-merged.yml",
+    ".github/workflows/project-sync.yml",
+    "dynamic/copilot-pull-request-reviewer/copilot-pull-request-reviewer",
+    ".github/workflows/issue-checks.yml",
+    ".github/workflows/review-response.yml",
+    ".github/workflows/event-dispatch.yml",
+    ".github/workflows/gitleaks.yml",
+    "dynamic/dependabot/dependabot-updates",
+    ".github/workflows/schema-drift-check.yml",
+    ".github/workflows/ci-meta.yml",
+    ".github/workflows/code-review.yml",
+    ".github/workflows/pytest.yml",
+    "dynamic/agents/copilot-pull-request-reviewer",
+    ".github/workflows/code-review-retry.yml",
+    ".github/workflows/owner-queue-guard.yml",
+    ".github/workflows/auto-merge-enable.yml",
+    ".github/workflows/merge-train.yml"
+  ]
+}

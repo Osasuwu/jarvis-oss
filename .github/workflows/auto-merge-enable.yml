@@ -1,0 +1,191 @@
+# Closes the AFK Path A merge-enable gap (#891): the repo allows auto-merge,
+# but nothing was turning it on per-PR, so green PRs never merged on their own.
+# This enables squash auto-merge the moment a PR is open-and-ready (non-draft);
+# GitHub then merges it once every required gate (review / pytest / meta-tests /
+# gitleaks / require-linked-issue / owner-queue-guard) is green. Owner holds a PR
+# by keeping it a draft or applying status:owner-queue (owner-queue-guard stays red).
+#
+# Why a GitHub App token, not GITHUB_TOKEN (#1005, #1012, Bug A of #948):
+#   Auto-merge enabled with the default GITHUB_TOKEN makes GitHub attribute the
+#   eventual squash merge to github-actions[bot]. That triggers GitHub's
+#   recursion-prevention, which (a) SUPPRESSES native linked-issue auto-close and
+#   (b) suppresses downstream `pull_request: closed` workflows — so neither the
+#   native close NOR a compensating closed-event workflow fires; the `Closes #N`
+#   issue stays open. Same token rule documented in merge-train.yml for
+#   update-branch (decision 2ccfa29a).
+#
+#   CORRECTION (#1012, decision 1b0cbbcc): minting the 'jarvis-ci' App token does
+#   NOT make native auto-close fire. Falsified live on 2026-06-21 — PR #1006
+#   merged with enabledBy/mergedBy = app/jarvis-ci, valid `Closes #1005`, setting
+#   ON, closingIssuesReferences=[1005], yet #1005 stayed OPEN (no ClosedEvent 3h
+#   later). A GitHub App is a Bot-type actor, so native auto-close stays
+#   suppressed exactly as for github-actions[bot]. (The earlier "9/9 auto-close"
+#   proof was HUMAN merges only.)
+#
+#   What the App token DOES buy: the App-attributed merge is no longer a
+#   GITHUB_TOKEN merge, so the `pull_request: closed` event is NOT suppressed —
+#   pr-merged.yml fires and closes the linked issues EXPLICITLY (proven: it ran 9s
+#   after #1006 merged). So the close path is App-token merge (here) +
+#   explicit close (pr-merged.yml), not native auto-close. The App still needs
+#   Contents + Pull requests write to enable auto-merge; pr-merged.yml does the
+#   close with its own job-scoped issues:write GITHUB_TOKEN.
+name: auto-merge-enable
+
+on:
+  pull_request:
+    # reopened: a closed-then-reopened PR (e.g. a temporarily-closed sandcastle)
+    # must get auto-merge re-enabled, else it silently never merges on its own.
+    types: [opened, ready_for_review, reopened]
+
+# The merge is performed with the App token below, not GITHUB_TOKEN, so this
+# job's *default* token needs no write scope. NOTE: this block scopes ONLY the
+# default GITHUB_TOKEN — the minted App token's effective permissions
+# (Contents / Pull requests / Issues: write) are defined in the 'jarvis-ci'
+# GitHub App configuration, not here. `contents: read` is not the job's true
+# write ceiling.
+permissions:
+  contents: read
+
+# Rapid draft->ready transitions or event re-deliveries can spawn two parallel
+# runs racing on `gh pr merge --auto` for the same PR. Queue them per-PR rather
+# than supersede: cancel-in-progress:true could kill a run after the App token
+# was minted but before `gh pr merge`, leaving the PR un-enrolled if no further
+# event arrives. The idempotency check below absorbs duplicate queued runs.
+concurrency:
+  group: auto-merge-enable-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enable:
+    # Skip drafts — a draft is the manual "owner attention owed" hold.
+    # Skip fork PRs — repo secrets (APP_ID/APP_PRIVATE_KEY) are withheld from
+    # forked-PR events, so the App token can't be minted; auto-merge on a fork
+    # PR isn't meaningful anyway. Without this guard the Assert step below would
+    # hard-fail every fork PR.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assert App credentials present
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID}" ] || [ -z "${APP_PRIVATE_KEY}" ]; then
+            echo "::error::auto-merge-enable requires the 'jarvis-ci' GitHub App, but APP_ID and/or APP_PRIVATE_KEY repo secrets are unset."
+            echo "Why: auto-merge enabled with the default GITHUB_TOKEN suppresses native linked-issue auto-close (GitHub recursion prevention), so merged PRs leave their Closes #N issues open. A GitHub App installation token is required (#1005)."
+            echo "Setup (one-time per repo):"
+            echo "  1. Create/extend the 'jarvis-ci' GitHub App with these permissions (as labelled in the GitHub App UI): Contents: Read and write, Pull requests: Read and write, Issues: Read and write."
+            echo "  2. Install the App on this repository."
+            echo "  3. Add repo secrets: APP_ID (the App's numeric id) and APP_PRIVATE_KEY (the .pem private key)."
+            echo "Until then auto-merge cannot be enabled on this repo."
+            exit 1
+          fi
+          echo "App credentials present."
+
+      - name: Derive repo name for least-privilege token scoping
+        # Derived from GITHUB_REPOSITORY ("owner/repo", set on every event) for
+        # consistency with merge-train.yml. The empty guard is load-bearing: an
+        # empty REPO_NAME would make create-github-app-token fall back to ALL
+        # installed repos, leaking the App's Issues:write scope to other repos.
+        run: |
+          set -euo pipefail
+          : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is unset or empty}"
+          echo "REPO_NAME=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+
+      - name: Mint App installation token
+        id: app-token
+        # Defense-in-depth: if the Derive step above is ever deleted/reordered so
+        # REPO_NAME is unset, skip minting rather than fall back to an unscoped
+        # token over ALL installed repos (the cross-repo Issues:write leak). The
+        # downstream Enable step then has no token and fails loud. Belt to the
+        # Derive step's `:?` braces.
+        if: env.REPO_NAME != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          # Least-privilege: scope to THIS repo only (REPO_NAME is set on all
+          # triggers, see step above) so the added Issues:write scope never leaks
+          # to other repos the App is installed on (CLAUDE.md: App is shared).
+          repositories: ${{ env.REPO_NAME }}
+
+      - name: Enable squash auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Token-presence guard (#1006 review, MAJOR): the Mint step is skipped
+          # when REPO_NAME is empty (its defense-in-depth `if:`), which leaves
+          # GH_TOKEN as the empty string here. `gh` with an empty GH_TOKEN may fall
+          # back to the ambient GITHUB_TOKEN rather than erroring — re-attributing
+          # the eventual merge to github-actions[bot] and suppressing native
+          # auto-close, the exact #948 Bug A this workflow exists to prevent. Fail
+          # loud before any gh call instead of risking a bot-attributed merge.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::App token is empty — the Mint step was skipped (REPO_NAME unset?). Refusing to call gh, which could fall back to GITHUB_TOKEN and re-attribute the merge to github-actions[bot] (#948 Bug A)."
+            exit 1
+          fi
+          # Idempotent: the 'ready_for_review' trigger can fire after 'opened'
+          # already enabled auto-merge; re-calling `gh pr merge --auto` then exits
+          # non-zero ("already enabled"), which the loud Assert step above would
+          # make easy to mistake for a credential failure. Check first.
+          #
+          # State is fetched alongside auto-merge status because cancel-in-progress:
+          # false lets a run queued near merge time execute AFTER the PR is already
+          # merged. On a merged PR auto-merge reads as completed (am=null), so
+          # without the state guard we'd call `gh pr merge --auto` on a closed PR
+          # and surface a spurious red ("#N is not open").
+          #
+          # am is reduced to a bare "null"/"set" token (not the raw
+          # autoMergeRequest object, whose commitHeadline can contain spaces) and
+          # emitted with @tsv, so `read` splits cleanly on the tab regardless of
+          # field contents.
+          read -r am state < <(
+            gh pr view "$PR" --repo "$REPO" --json autoMergeRequest,state \
+              -q '[(if .autoMergeRequest == null then "null" else "set" end), .state] | @tsv'
+          )
+          # gh can exit 0 with whitespace-only stdout on transient API/auth
+          # degradation, leaving am/state empty without tripping set -e. Treat
+          # either empty as a hard failure rather than misreading auto-merge state.
+          if [ -z "$am" ] || [ -z "$state" ]; then
+            echo "::error::gh pr view returned empty output for #$PR — possible auth or API failure; not assuming auto-merge state."
+            exit 1
+          fi
+          if [ "$state" != "OPEN" ]; then
+            echo "::notice::PR #$PR is $state (not OPEN) — nothing to enable."
+            exit 0
+          fi
+          if [ "$am" = "null" ]; then
+            # TOCTOU: the PR can merge externally between the state check above and
+            # this call. A "not open" failure here is benign (auto-merge's job is
+            # already done), so swallow it after confirming the PR really closed.
+            if ! gh pr merge "$PR" --repo "$REPO" --auto --squash; then
+              # Re-check state to tell a benign TOCTOU race from a real failure.
+              # Keep the empty-state case DISTINCT from "still OPEN" (#1006 review,
+              # MAJOR): an empty re-check is an unknown, not a confirmed-open PR, so
+              # the old `[ "$st" = "OPEN" ] || [ -z "$st" ]` conflation surfaced a
+              # misleading "on open PR" error.
+              st=$(gh pr view "$PR" --repo "$REPO" --json state -q '.state' 2>/dev/null || echo "")
+              if [ "$st" = "OPEN" ]; then
+                echo "::error::Failed to enable auto-merge on still-open PR #$PR."
+                exit 1
+              elif [ -z "$st" ]; then
+                # Couldn't confirm state — fail closed (not exit 0). Auto-merge
+                # ENABLEMENT has no downstream self-heal: merge-train only updates
+                # branches of PRs that already have auto-merge enabled, it never
+                # enables it. A silently-missed enablement would stall the PR
+                # forever, so an unconfirmed failure must stay visible.
+                echo "::error::auto-merge enable failed on #$PR and re-checking its state also failed — cannot confirm; failing closed so this stays visible."
+                exit 1
+              else
+                echo "::notice::PR #$PR closed ($st) before auto-merge could be enabled — nothing to do."
+              fi
+            fi
+          else
+            echo "::notice::Auto-merge already enabled on #$PR — nothing to do."
+          fi

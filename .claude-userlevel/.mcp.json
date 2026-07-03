@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "memory": {
+      "command": "python",
+      "args": ["scripts/run-memory-server.py"]
+    },
+    "status": {
+      "command": "python",
+      "args": ["scripts/run-status-server.py"],
+      "env": {
+        "JARVIS_HOME": "{{JARVIS_HOME}}"
+      }
+    },
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${GITHUB_TOKEN}"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@latest"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "obsidian": {
+      "command": "npx",
+      "args": ["-y", "@bitbonsai/mcpvault@latest", "${OBSIDIAN_VAULT_PATH}"]
+    },
+    "uml": {
+      "command": "python",
+      "args": ["${UML_MCP_HOME}/server.py"],
+      "env": {
+        "KROKI_SERVER": "http://localhost:8000",
+        "USE_LOCAL_KROKI": "true"
+      },
+      "x-jarvis-requires-env": "UML_MCP_HOME"
+    }
+  }
+}

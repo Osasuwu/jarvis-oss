@@ -1,0 +1,35 @@
+# Gitleaks configuration for Jarvis project
+# https://github.com/gitleaks/gitleaks
+
+title = "Gitleaks config for Jarvis"
+
+# Paths to exclude from scanning
+[extend]
+paths = [
+  '''.build/''',
+  '''dist/''',
+  '''node_modules/''',
+  '''.venv/''',
+  '''__pycache__/''',
+  '''.vscode/''',
+  '''.idea/''',
+  '''.mypy_cache/''',
+  '''.pytest_cache/''',
+  '''.ruff_cache/''',
+  '''tests/fixtures/''',
+  '''test-data/''',
+]
+
+# Allowlist for common false positives specific to this project
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''\.gitleaks\.toml$''',
+]
+regexTarget = "match"
+regexes = [
+  # AWS region patterns in docs — not secrets
+  '''(us-east-1|us-west-2|eu-west-1|ap-southeast-1|ap-south-1)''',
+  # Supabase public project URLs
+  '''https://[a-z0-9]+\.supabase\.co''',
+]

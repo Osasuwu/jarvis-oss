@@ -1,0 +1,102 @@
+name: Tests
+
+# Runs the full pytest suite on every PR + push to main.
+# Closes the reviewer blind spot from #471: the code-review plugin's rubric
+# silences "broken tests" findings under the assumption CI catches them, but
+# until this workflow shipped, only `tests/ci/` ran in CI (`ci-meta.yml`).
+# Now the assumption holds — broken tests in `tests/` fail PRs visibly.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+  push:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[full,dev]"
+
+      - name: Run pytest
+        run: pytest tests/ -v
+
+  # DB-gated integration tests (issue #975). Without a real Postgres the
+  # advancer's FOR UPDATE SKIP LOCKED / ON CONFLICT dedup / interval arithmetic
+  # were never exercised in CI — the DB-gated tests in
+  # tests/test_global_task_advancer.py silently skipped. This job stands up a
+  # Postgres service, bootstraps the schema, and runs ONLY that file with
+  # DATABASE_URL set so those tests actually run.
+  #
+  # Why only that one file (not `tests/`): setting DATABASE_URL globally would
+  # un-skip OTHER DB-gated tests across the suite whose tables this job does not
+  # bootstrap — turning their clean skips into failures. Keep the DB job scoped.
+  #
+  # REQUIRE_DB=1 makes the db_connection fixture FAIL (not skip) if DATABASE_URL
+  # is ever missing here, so a future change that drops the service can't quietly
+  # revert to the silent-skip blind spot this issue closes.
+  pytest-db:
+    runs-on: ubuntu-latest
+    # Bound the job: a hung Postgres health-check or a deadlocked SKIP LOCKED
+    # test should fail fast, not idle until the org-wide 6h ceiling (m2, #975).
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[full,dev]"
+
+      - name: Bootstrap global-task schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f tests/ci/global_task_schema_bootstrap.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260615120000_create_global_task_sources.sql
+
+      - name: Run DB-gated advancer tests
+        env:
+          REQUIRE_DB: "1"
+        run: pytest tests/test_global_task_advancer.py -v -rs

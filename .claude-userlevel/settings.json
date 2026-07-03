@@ -1,0 +1,232 @@
+{
+  "autoMode": {
+    "environment": ["$defaults"]
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.production)",
+      "Read(**/.env.development)",
+      "Read(**/.env.staging)",
+      "Read(**/.env.test)",
+      "Read(**/.env.*.local)",
+      "Edit(**/.env)",
+      "Edit(**/.env.local)",
+      "Edit(**/.env.production)",
+      "Edit(**/.env.development)",
+      "Edit(**/.env.staging)",
+      "Edit(**/.env.test)",
+      "Edit(**/.env.*.local)",
+      "Write(**/.env)",
+      "Write(**/.env.local)",
+      "Write(**/.env.production)",
+      "Write(**/.env.development)",
+      "Write(**/.env.staging)",
+      "Write(**/.env.test)",
+      "Write(**/.env.*.local)"
+    ],
+    "allow": [
+      "Bash(git status)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git fetch:*)",
+      "Bash(git branch:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(.venv/Scripts/python.exe -m pytest:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(gh api:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh label:*)",
+      "Bash(gh milestone:*)",
+      "Bash(gh repo view:*)",
+      "Bash(gh release view:*)",
+      "Bash(gh run view:*)",
+      "WebFetch",
+      "WebSearch"
+    ]
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          { "type": "command", "command": "python scripts/pre-compact-backup.py" }
+        ]
+      },
+      {
+        "matcher": "manual",
+        "hooks": [
+          { "type": "command", "command": "python scripts/pre-compact-backup.py" }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          { "type": "command", "command": "python scripts/pre-compact-backup.py" }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/device-info.py && echo '' && cat {{CLAUDE_USER_HOME}}/SOUL.md && echo ''"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/session-context.py"
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/device-info.py && echo '' && cat {{CLAUDE_USER_HOME}}/SOUL.md && echo ''"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/session-context.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/comm-patterns-extract.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/deriver-accumulator.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/deriver-sessionend.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "mcp__github__(issue_write|create_pull_request|update_pull_request|add_issue_comment|add_reply_to_pull_request_comment|add_comment_to_pending_review|create_or_update_file|push_files|pull_request_review_write|sub_issue_write)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/secret-scanner.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/secret-scanner.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/pretooluse-recall-hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__memory__memory_store",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/secret-scanner.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/memory-dedup-check.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/pretooluse-recall-hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/protected-files.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/pretooluse-recall-hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/pretooluse-recall-hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__memory__record_decision",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/record-decision-gate.py"
+          },
+          {
+            "type": "command",
+            "command": "python scripts/pretooluse-recall-hook.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python scripts/memory-recall-hook.py"
+          }
+        ]
+      }
+    ]
+  },
+  "fallbackModel": ["claude-sonnet-5"],
+  "env": {
+    "SECURITY_REVIEW_MODEL": "claude-sonnet-5"
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "python scripts/statusline.py"
+  },
+  "skillOverrides": {
+    "setup-tasks": "name-only",
+    "last-work-report": "name-only",
+    "caveman": "name-only",
+    "status-record": "name-only",
+    "autonomous-loop": "name-only"
+  }
+}

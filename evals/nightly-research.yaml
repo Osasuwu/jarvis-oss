@@ -1,0 +1,44 @@
+# Eval: nightly-research skill
+# Tests whether a nightly research run produces valid, useful output.
+
+skill: nightly-research
+version: 1.0.0
+
+cases:
+  - id: produces_three_topics
+    description: "Nightly run should select exactly 3 research topics"
+    check_type: memory_content
+    memory_pattern: "nightly_last_run"
+    expect:
+      contains: "3"
+      # The last_run memory should reference 3 topics researched
+
+  - id: saves_findings_to_supabase
+    description: "Each topic produces a memory with type=reference"
+    check_type: memory_exists
+    memory_pattern: "nightly_*"
+    expect:
+      min_count: 3
+      type: reference
+
+  - id: findings_are_actionable
+    description: "At least 1 finding should have 'Actionable: Yes'"
+    check_type: memory_content
+    memory_pattern: "nightly_*"
+    expect:
+      any_contains: "Actionable"
+
+  - id: no_stale_duplicates
+    description: "No two nightly memories should have the same name"
+    check_type: uniqueness
+    memory_pattern: "nightly_*"
+
+  - id: creates_github_issues
+    description: "Actionable findings create GitHub issues"
+    check_type: manual
+    note: "Check if issues were created after nightly run (requires gh CLI)"
+
+  - id: respects_research_topics_config
+    description: "Topics come from config/research-topics.yaml, not random"
+    check_type: manual
+    note: "Verify nightly-research selects topics from config/research-topics.yaml file"
