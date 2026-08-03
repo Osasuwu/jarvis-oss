@@ -43,7 +43,7 @@ memory = [
 # re-adopt live processes across driver restarts.
 agents = [
   "psycopg[binary,pool]>=3.1",
-  "ollama>=0.4.0",
+  "ollama>=0.6.2",
   # Supabase bridge — agents read/write memories/events/goals/audit_log directly
   # (MCP is Claude-Code-only, so graph nodes need a native client).
   "supabase>=2.0.0",
