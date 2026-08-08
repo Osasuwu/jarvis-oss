@@ -20,13 +20,16 @@ from __future__ import annotations
 import enum
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Callable, Mapping
 
 from agents import safety, task_queue
 from agents.github_client import parse_goal_shape
 from agents.task_dispatch import format_lineage_key
+
+logger = logging.getLogger(__name__)
 
 # Re-drive ceiling (#953 AC7). A task that produced no PR evidence is re-driven
 # at most once; ``attempt >= MAX_ATTEMPTS`` escalates to the owner instead of
@@ -48,6 +51,27 @@ _ESCALATE_PRIORITY_BOOST = 10
 
 # Pure-pipeline events that need no triage — acknowledge and move on (AC1).
 _NOOP_EVENT_TYPES: frozenset[str] = frozenset({"pr_approved", "pr_merged", "ci_success"})
+
+# Telemetry/observability events (#1385 AC-B) — high-volume, no actionable
+# follow-up. Matched on event_type alone, severity-independent:
+# consolidation_run fires at both "info" and "high", so gating on severity
+# would still leak escalations for the same noise. dispatcher_escalation is
+# deliberately excluded — retired scaffolding (3 historical rows, all April
+# 2026, no live producer); falling through to fail-safe ESCALATE is correct
+# for it. github.* events (a namespace, not a fixed set) match by prefix in
+# handle_event rather than being enumerated here.
+_TELEMETRY_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "memory_recall",
+        "review_debt_collected",
+        "consolidation_run",
+        "consolidation_applied",
+        "consolidation_rejected",
+        "evolve_run",
+        "fok_run",
+        "memory_migration",
+    }
+)
 
 _ASSIGNEE_WORKER = "sandcastle"
 _ASSIGNEE_OWNER = "owner"
@@ -186,9 +210,33 @@ def _attempt_of(payload: Mapping[str, Any]) -> int:
     emitter) and must be preserved. The round-1 code used
     ``int(payload.get("attempt", 1) or 1)``, where ``0 or 1`` silently
     coerced an explicit 0 to 1, mis-numbering the re-drive lineage key as
-    ``:r2`` instead of ``:r1`` (MAJOR, PR #1011)."""
+    ``:r2`` instead of ``:r1`` (MAJOR, PR #1011).
+
+    A non-numeric attempt (malformed payload) falls back to the root
+    attempt ``0`` rather than raising ``ValueError`` inside the emit path
+    (M1, #1029). No emitter produces a non-int attempt today."""
     raw = payload.get("attempt", 1)
-    return int(raw) if raw is not None else 1
+    if raw is None:
+        return 1
+    try:
+        return int(raw)
+    except (ValueError, TypeError):
+        return 0
+
+
+def _as_bool(value: Any) -> bool:
+    """Coerce an emitted-payload flag into a strict bool (L4, #1029).
+
+    ``exit_confirmed`` gates the escalate-vs-re-drive branch in
+    :func:`handle_event`; a future emitter passing the string ``"false"``
+    would otherwise coerce truthy and flip an *unconfirmed* death into a
+    spurious re-drive. Recognized false-strings (``"false"``/``"0"``/``"no"``/
+    empty, case-insensitive) map to ``False``; every other value falls back to
+    Python truthiness. Today's emitters emit real bools, which pass through
+    unchanged."""
+    if isinstance(value, str):
+        return value.strip().lower() not in ("", "false", "0", "no")
+    return bool(value)
 
 
 def _redrive(
@@ -231,7 +279,9 @@ def handle_event(event: Mapping[str, Any]) -> Decision:
     2. Enumerated ``(event_type, severity)`` pairs → their specific route.
     3. Pure-pipeline events (``pr_approved`` / ``pr_merged`` / ``ci_success``)
        → inline no-op (the wake_driver marks the event processed).
-    4. Anything else → fail-safe ``ESCALATE``.
+    4. Telemetry/observability events (``_TELEMETRY_EVENT_TYPES`` + any
+       ``github.``-prefixed type) → inline no-op, severity-independent (AC-B).
+    5. Anything else → fail-safe ``ESCALATE``.
     """
     event_type = str(event.get("event_type", ""))
     severity = str(event.get("severity") or "info")
@@ -331,7 +381,7 @@ def handle_event(event: Mapping[str, Any]) -> Decision:
 
     if event_type == "task_failed":
         pr_evidence = payload.get("pr_evidence")
-        exit_confirmed = payload.get("exit_confirmed", False)
+        exit_confirmed = _as_bool(payload.get("exit_confirmed", False))
         attempt = _attempt_of(payload)
         failure_reason = payload.get("failure_reason", "unknown")
 
@@ -387,7 +437,11 @@ def handle_event(event: Mapping[str, Any]) -> Decision:
     if event_type in _NOOP_EVENT_TYPES:
         return _inline_noop(event_type, severity, target, key)
 
-    # 4. Fail-safe (AC1) — unknown (event_type, severity) goes to a human.
+    # 4. Telemetry/observability events → acknowledge, no work (#1385 AC-B).
+    if event_type in _TELEMETRY_EVENT_TYPES or event_type.startswith("github."):
+        return _inline_noop(event_type, severity, target, key)
+
+    # 5. Fail-safe (AC1) — unknown (event_type, severity) goes to a human.
     return _escalate(
         event_type,
         severity,
@@ -421,14 +475,19 @@ def escalation_notice(severity: str, now: datetime) -> EscalationNotice:
 
     Pure function of ``(severity, now)`` so it is assertable on fixed inputs:
 
-    - ``critical`` → :attr:`EscalationNotice.TELEGRAM_NOW` regardless of weekday
-      (a real incident overrides the no-weekend-HITL rule).
-    - non-critical on a weekend (Sat/Sun) → :attr:`EscalationNotice.PARK_MONDAY`
+    - ``severity`` rank >= ``high`` → :attr:`EscalationNotice.TELEGRAM_NOW`
+      regardless of weekday (a real incident overrides the no-weekend-HITL
+      rule). Threshold is ``>= high``, not ``== critical`` (#1392 AC1/AC2,
+      decision db4495da-4746-43fd-a3c6-755fc24ea0a9): no live producer emits
+      ``critical``, so a critical-only floor made TELEGRAM_NOW unreachable in
+      practice — the ``escalate_to_human`` fail-safe route lands at
+      high/medium severities.
+    - below-threshold on a weekend (Sat/Sun) → :attr:`EscalationNotice.PARK_MONDAY`
       (weekends are autoregulation-only — no owner HITL).
-    - non-critical on a weekday → :attr:`EscalationNotice.SESSIONSTART`
+    - below-threshold on a weekday → :attr:`EscalationNotice.SESSIONSTART`
       (no interrupting ping; surfaced at the next session and on demand).
     """
-    if severity == "critical":
+    if _SEVERITY_RANK.get(severity, -1) >= _SEVERITY_RANK["high"]:
         return EscalationNotice.TELEGRAM_NOW
     # datetime.weekday(): Monday=0 … Saturday=5, Sunday=6.
     if now.weekday() >= 5:
@@ -467,8 +526,10 @@ def dispatch(
       event dedups; a genuinely-new event has a different key and re-runs).
     - :attr:`Route.ESCALATE` → write an ``owner`` row carrying
       ``escalated_reason`` (AC3), then apply the weekend-aware notification
-      policy: ``critical`` pings Telegram via ``notifier``; everything else is
-      parked (weekend) or left for SessionStart (weekday).
+      policy: ``critical`` pings Telegram via ``notifier``, routed through
+      ``safety.gate()`` under the ``notify_owner_escalation`` Tier-0
+      carve-out; everything else is parked (weekend) or left for
+      SessionStart (weekday).
     - :attr:`Route.HANDLE_INLINE` → a pure-pipeline no-op is acknowledged
       here; a real inline tool call goes through :func:`run_inline_tool`.
     """
@@ -501,8 +562,32 @@ def dispatch(
         notice = escalation_notice(decision.severity, now)
         notified = False
         if notice is EscalationNotice.TELEGRAM_NOW and notifier is not None:
-            notifier(decision)
-            notified = True
+            # #1385 AC-D: the owner row above already landed — a notifier
+            # failure (network, bad token) must not undo that or abort the
+            # tick that's draining this event. `notified` stays False so
+            # callers can see the ping didn't go out.
+            #
+            # Routed through safety.gate() (not called directly) so the
+            # escalation ping is classified + audited like every other
+            # action-agent side effect. `notify_owner_escalation` is the
+            # narrow Tier-0 carve-out inside the blanket "messaging" block —
+            # see agents/safety.py's `_TIER0_MESSAGING_ACTIONS` comment.
+            try:
+                outcome = safety.gate(
+                    agent_id=_INLINE_AGENT_ID,
+                    tool_name="telegram_notifier",
+                    action="notify_owner_escalation",
+                    target=decision.event_type,
+                    area="messaging",
+                    fn=lambda: notifier(decision),
+                )
+                notified = outcome.fired
+            except Exception:
+                logger.exception(
+                    "dispatch: notifier raised for %s/%s — continuing",
+                    decision.event_type,
+                    decision.severity,
+                )
         return DispatchResult(
             route=decision.route,
             enqueued=row is not None,
@@ -521,6 +606,26 @@ def dispatch(
         notified=False,
         noop=decision.noop,
     )
+
+
+def build_production_orchestrator(
+    *,
+    client: Any,
+    notifier: Callable[[Decision], Any] | None = None,
+    clock: Callable[[], datetime] | None = None,
+) -> Callable[[Mapping[str, Any]], DispatchResult]:
+    """Close ``handle_event`` over ``dispatch`` for wake_driver's live routing.
+
+    ``clock`` defaults to real UTC now (mirrors ``escalation._now_utc``);
+    inject a fixed clock in tests instead of monkeypatching ``datetime``.
+    """
+    resolved_clock = clock or (lambda: datetime.now(UTC))
+
+    def _orchestrator(event: Mapping[str, Any]) -> DispatchResult:
+        decision = handle_event(event)
+        return dispatch(decision, now=resolved_clock(), client=client, notifier=notifier)
+
+    return _orchestrator
 
 
 # ---------------------------------------------------------------------------

@@ -1,11 +1,21 @@
 name: Schema Drift Check
 
+# NO `paths:` filter — deliberate, and load-bearing.
+#
+# `require-paired-migration` is a REQUIRED status check on `main`. GitHub
+# treats a required context that never reports as pending forever, so a
+# path-filtered required check silently freezes every PR that doesn't touch
+# the filtered paths (observed 2026-08-07: PR #1441 sat `mergeable_state:
+# blocked` with all nine other checks green).
+#
+# The path check therefore lives INSIDE the job, which already lists the
+# PR's files and returns early — reporting success — when schema.sql is
+# untouched. Same gate, but it always reports. Do not re-add `paths:` here
+# while this job is in `required_check_contexts[]`
+# (this repo's manifest under scripts/repo_baseline/manifests/).
 on:
   pull_request:
     types: [opened, edited, reopened, synchronize]
-    paths:
-      - 'mcp-memory/schema.sql'
-      - 'supabase/migrations/**'
 
 jobs:
   require-paired-migration:

@@ -2,7 +2,7 @@
 # Gracefully stops and removes the service
 # Usage: .\uninstall-scheduler-service.ps1
 #
-# RETIRED (#743): the APScheduler resident scheduler (agents/scheduler.py) and
+# RETIRED (#743): the resident scheduler service (agents/scheduler.py) and
 # its installer were removed when wake_driver replaced it (milestone #44 —
 # reactive-core is event-driven via LISTEN/NOTIFY, no resident poller). This
 # teardown script is intentionally KEPT so any device that still has the

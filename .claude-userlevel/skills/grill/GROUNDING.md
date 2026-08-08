@@ -16,7 +16,7 @@ Decision basis:
 
 Same gating logic as the coverage critic, on top of the existing CRITIC.md triggers (AC-lock gate OR hard/irreversible `record_decision`):
 
-1. **>=2 grill-checkbox yes** — SOUL.md `/grill` trigger checkbox (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked.
+1. **>=2 grill-checkbox yes** — the grill trigger checkbox (`~/.claude/reference/engineering-principles.md`) (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked.
 2. **Milestone-level** — multi-slice grouping under a capability, not an individual slice.
 
 Single-axis touch or lone slices => Phase 4 does NOT fire by default. Empirical hypothesis: code-grounded drift is most damaging at milestone scale where prereqs span multiple files and multiple slices reference them. May lower threshold later if evidence shows code-grounded drift hurts lone slices too — escalate based on outcomes, not speculation.

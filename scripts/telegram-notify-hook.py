@@ -59,10 +59,10 @@ DEFAULT_LIMIT = 20
 def fetch_pending_events(client, min_severity: str, limit: int) -> list[dict]:
     """Pending (unprocessed) events at or above `min_severity`, newest first.
 
-    Filters on the FSM ``state='pending'`` column (#739), not the legacy
-    ``processed`` flag. ``claim_next`` flips state to ``'claimed'`` while
-    leaving ``processed=false`` until ``mark_processed`` runs; filtering on
-    the flag would re-notify events the orchestrator already picked up.
+    Filters on the FSM ``state='pending'`` column (#739). ``claim_next``
+    flips state to ``'claimed'`` before ``mark_processed`` runs; filtering
+    on ``state`` (not a boolean flag) means events the orchestrator already
+    picked up are not re-notified.
     """
     idx = SEVERITIES.index(min_severity)
     allowed = list(SEVERITIES[: idx + 1])
@@ -124,7 +124,11 @@ def send_telegram(token: str, chat_id: str, text: str) -> tuple[bool, str]:
                     "disable_web_page_preview": True,
                 },
             )
-            body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            body = (
+                resp.json()
+                if resp.headers.get("content-type", "").startswith("application/json")
+                else {}
+            )
             if resp.status_code == 200 and body.get("ok"):
                 return True, "sent"
             return False, f"HTTP {resp.status_code}: {body.get('description', resp.text[:200])}"
@@ -132,20 +136,72 @@ def send_telegram(token: str, chat_id: str, text: str) -> tuple[bool, str]:
         return False, f"{type(e).__name__}: {e}"
 
 
-def mark_processed(client, event_id: str, action: str) -> None:
-    """Mark event processed so it won't notify again."""
+def mark_processed(client, event_id: str, action: str) -> bool:
+    """Mark event processed so it won't notify again.
+
+    Sets the FSM ``state='processed'`` column. ``fetch_pending_events`` keys on
+    ``state='pending'`` (#739), so before #649 this drain — which set only the
+    legacy ``processed=True`` flag — left ``state='pending'`` and re-notified
+    every sent event on the next run. Writing ``state='processed'`` closes that
+    re-send loop. The legacy ``processed`` boolean itself was dropped in #1391.
+
+    The update guards on ``.eq("state","pending")``: this batch drain is a
+    side-channel that only claims events *still awaiting triage* and defers
+    anything the orchestrator has already advanced to ``claimed`` (the
+    single-event ``claim_next`` RPC path). Guarding on ``pending`` — not
+    ``claimed`` — means a concurrent orchestrator claim is never clobbered.
+    It deliberately does NOT delegate to the ``claim_next`` / ``mark_processed``
+    RPCs: those transition ``pending -> claimed -> processed`` and would force
+    this drain to first *claim* the row, stealing it from the orchestrator.
+
+    Returns ``True`` when the write settled without error — either the pending
+    row was flipped to ``processed`` (the normal path) or no pending row matched
+    because the orchestrator/a concurrent drain already advanced it (a benign
+    no-op; the row is no longer ``pending`` so it will not be re-fetched). The
+    benign no-match is signalled by the rowcount INFO, NOT by an exception, so
+    the ``except`` below is reached ONLY on a real DB/network failure. That case
+    is systematic — the event stays ``state='pending'`` and re-notifies on the
+    next run, exactly the #649 re-send loop — so it is surfaced as ERROR and
+    returns ``False`` for the caller to fold into the run's exit status. Do not
+    downgrade it back to a WARN-and-continue: a swallowed failure looks like a
+    clean run while silently reintroducing the loop.
+    """
     now = datetime.now(timezone.utc).isoformat()
     try:
-        client.table("events").update(
-            {
-                "processed": True,
-                "processed_at": now,
-                "processed_by": "telegram-notify-hook",
-                "action_taken": action,
-            }
-        ).eq("id", event_id).execute()
+        result = (
+            client.table("events")
+            .update(
+                {
+                    "processed_at": now,
+                    "processed_by": "telegram-notify-hook",
+                    "action_taken": action,
+                    "state": "processed",
+                }
+            )
+            .eq("id", event_id)
+            .eq("state", "pending")
+            .execute()
+        )
+        if not (getattr(result, "data", None) or []):
+            # No row matched the pending guard — the event was already claimed
+            # or processed (orchestrator or a concurrent drain got there first).
+            # Not an error: the notification side-effect already fired above.
+            print(
+                f"INFO: {event_id} not marked processed "
+                "(no pending row — already claimed/processed elsewhere)",
+                file=sys.stderr,
+            )
+        return True
     except Exception as e:
-        print(f"WARN: failed to mark {event_id} processed: {e}", file=sys.stderr)
+        # Real DB/network failure — NOT the benign no-match (that returns above
+        # with empty data). The event stays 'pending' and re-notifies next run
+        # (#649 loop). Surface loudly and let the caller flag the run failed.
+        print(
+            f"ERROR: failed to mark {event_id} processed — event stays pending "
+            f"and WILL re-notify next run: {e}",
+            file=sys.stderr,
+        )
+        return False
 
 
 def main() -> int:
@@ -195,6 +251,7 @@ def main() -> int:
     print(f"Draining {len(events)} pending events (min severity: {args.min_severity})")
     sent = 0
     failed = 0
+    mark_failed = 0
 
     for ev in events:
         msg = format_message(ev)
@@ -206,9 +263,15 @@ def main() -> int:
 
         ok, detail = send_telegram(token, chat_id, msg)
         if ok:
-            mark_processed(client, ev["id"], f"telegram sent: {detail}")
             sent += 1
-            print(f"[OK] {ev['id']} — sent")
+            if mark_processed(client, ev["id"], f"telegram sent: {detail}"):
+                print(f"[OK] {ev['id']} — sent")
+            else:
+                # Message went out but the processed-write failed: the event
+                # will re-notify next run. Counted separately so a systematic
+                # DB failure at the mark step doesn't read as a clean drain.
+                mark_failed += 1
+                print(f"[WARN] {ev['id']} — sent but NOT marked (will re-notify)", file=sys.stderr)
         else:
             failed += 1
             print(f"[FAIL] {ev['id']} — {detail}", file=sys.stderr)
@@ -216,9 +279,9 @@ def main() -> int:
     if args.dry_run:
         print(f"DRY RUN complete. Would have sent {len(events)} messages.")
     else:
-        print(f"Done. sent={sent} failed={failed}")
+        print(f"Done. sent={sent} failed={failed} mark_failed={mark_failed}")
 
-    return 0 if failed == 0 else 2
+    return 0 if (failed == 0 and mark_failed == 0) else 2
 
 
 if __name__ == "__main__":

@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Multi-Agent Orchestration Pattern Comparison — Jarvis, 2026-05-20</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: 1400px; margin: 2em auto; padding: 0 1.5em; line-height: 1.55; color: #1c1c1c; background: #fff; }
+  h1, h2, h3 { line-height: 1.25; }
+  h1 { border-bottom: 2px solid #333; padding-bottom: 0.3em; font-size: 1.7em; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 0.25em; margin-top: 2.2em; font-size: 1.35em; }
+  h3 { margin-top: 1.4em; font-size: 1.1em; color: #333; }
+  .meta { color: #666; font-size: 0.95em; }
+  .table-wrap { overflow-x: auto; margin: 1em 0; }
+  table.matrix { border-collapse: collapse; width: 100%; min-width: 1100px; font-size: 0.88em; }
+  table.matrix th, table.matrix td { border: 1px solid #ccc; padding: 0.55em 0.7em; vertical-align: top; text-align: left; }
+  table.matrix th { background: #ececec; font-weight: 600; position: sticky; top: 0; z-index: 1; }
+  table.matrix th.crit-col, table.matrix td.crit-col { background: #f5f5f5; font-weight: 600; width: 12%; min-width: 140px; }
+  table.matrix tr:nth-child(even) td:not(.crit-col) { background: #fbfbfb; }
+  table.brief { border-collapse: collapse; width: 100%; font-size: 0.93em; margin: 1em 0; }
+  table.brief th, table.brief td { border: 1px solid #ddd; padding: 0.45em 0.7em; vertical-align: top; text-align: left; }
+  table.brief th { background: #f0f0f0; }
+  .strong { color: #155724; font-weight: 700; font-size: 0.85em; padding: 0 0.25em; }
+  .weak { color: #856404; font-weight: 700; font-size: 0.85em; padding: 0 0.25em; }
+  .dq { color: #721c24; font-weight: 700; font-size: 0.85em; padding: 0 0.25em; }
+  .ne { color: #6c757d; font-style: italic; font-size: 0.9em; }
+  code, .mono { font-family: "SF Mono", Consolas, "Courier New", monospace; background: #f3f3f3; padding: 0.08em 0.32em; border-radius: 3px; font-size: 0.92em; }
+  .legend, .toc, .pending, .dispatcher-note { border-radius: 5px; padding: 0.85em 1.1em; margin: 1em 0; }
+  .legend { background: #f7f9fb; border: 1px solid #c8d6e5; }
+  .toc { background: #fafafa; border: 1px solid #ddd; }
+  .toc ol { margin: 0.2em 0 0 0; padding-left: 1.6em; }
+  .pending { background: #fff8dc; border: 1px solid #e6d680; }
+  .dispatcher-note { background: #fdf6ec; border: 1px solid #e0c483; }
+  .axis-must { color: #721c24; font-weight: 700; }
+  .axis-nice { color: #003e7a; font-weight: 600; }
+  ul.compact { margin: 0.35em 0; padding-left: 1.4em; }
+  ul.compact li { margin: 0.2em 0; }
+  blockquote { border-left: 3px solid #bbb; padding: 0.35em 0.9em; margin: 0.5em 0; background: #fafafa; color: #444; font-size: 0.95em; }
+  a { color: #1657ad; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .footnote { font-size: 0.85em; color: #666; }
+  .candidate-id { font-weight: 700; color: #1657ad; }
+  hr { border: none; border-top: 1px solid #e0e0e0; margin: 2em 0; }
+</style>
+</head>
+<body>
+
+<h1>Multi-Agent Orchestration Pattern Comparison</h1>
+<p class="meta"><strong>Project:</strong> Jarvis (solo-developer AI agent system) &middot; <strong>Date:</strong> 2026-05-20 &middot; <strong>Status:</strong> <strong>RESOLVED</strong> &mdash; pass 2 + 2.5 evidence complete; direction decided in a /reason session (see &sect;0). Pass 3 (C4+C5 deep dive) <em>cancelled</em> &mdash; the resolution removed its premise. Document retained as a reusable research base for future agentic-system decisions.</p>
+
+<div style="border:2px solid #155724; background:#f0f9f2; border-radius:8px; padding:16px 20px; margin:18px 0;">
+<h2 id="resolution" style="margin-top:0; border:none; color:#155724;">0. Final Resolution (2026-05-20)</h2>
+<p><strong>The half-day substrate debate (federation &rarr; C4-supervisor-as-core &rarr; &hellip;) collapsed back to where the project's own <code>jarvis-build-vs-buy</code> memo already stood.</strong> The deciding move was reframing the question, not filling more matrix cells.</p>
+
+<p><strong>The deciding cut &mdash; <em>true</em> vs <em>mimic</em> always-on.</strong> A persistent resident process is only required by genuine always-on work: (1) reaction within seconds, (2) continuous stream-watching to catch anomalies in the moment, (3) real-time co-authoring where the reply lands before the user finishes typing. <em>None of Jarvis's real tasks fall there.</em> Everything that <em>looked</em> like it needed an always-on agent (news/info gathering, vulnerability scanning, goal &amp; resource &amp; user-state tracking, pattern finding, time-window analysis) needs neither instant reaction nor continuous observation &mdash; it dissolves into a <strong>durable task queue + goal-aware prioritization</strong> running on a reactive substrate.</p>
+
+<p><strong>Key distinction:</strong> persistent <em>behaviour</em> &ne; persistent <em>process</em>. A cron/event-woken agent that reads accumulated state and drains a priority queue <em>looks</em> always-on to the user, with none of the cost or failure modes (no host-restart problem, no unproven 24/7 substrate, no cross-device checkpoint contamination, ~free).</p>
+
+<p><strong>Four decisions recorded:</strong></p>
+<ol class="compact">
+  <li><strong>Substrate = reactive event-driven (native Claude Code) + durable task queue + goal-aware prioritization. No resident always-on process.</strong> <span style="color:#666;">(decision episode <code>38816c8d</code>)</span></li>
+  <li><strong>LangGraph is NOT the orchestrator engine.</strong> Routing &rarr; the woken session does it natively via the Agent tool; HITL &rarr; Telegram + queue; multi-wake plan checkpoint &rarr; a Supabase table. LangGraph as an optional plan-checkpoint MCP is <em>still contested, not a locked carve-out</em> &mdash; possibly not needed at all. <span style="color:#666;">(episode <code>aec88add</code>; reverses the Sprint-1 &ldquo;LangGraph persistent agents are the path&rdquo; line)</span></li>
+  <li><strong>Federation (C5) deferred.</strong> Owner-originated, unproven, no solo precedent; revisit only after the reactive core ships and proves insufficient. The orchestrator-worker-<em>inside</em>-a-task half survives (a woken orchestrator dispatching isolated subagents IS supervisor+subagents &mdash; the isolation reviewers valued holds, just without LangGraph as the engine). <span style="color:#666;">(episode <code>55a5c1a8</code>)</span></li>
+  <li><strong>The &ldquo;no custom scripts/services&rdquo; prohibition is relaxed</strong> to native-first <em>priority</em> (not a ban); custom code permitted on merit. Conscious reversal of a 4-day-old rule, on principle &mdash; not because this design forces custom code (it barely does). <span style="color:#666;">(episode <code>d9be0390</code>)</span></li>
+</ol>
+
+<p><strong>Anti-confirmation note (this is the point of the exercise).</strong> The evidence walked the decision away from <em>both</em> priors: the owner expected long-lived federation to win; the reviewer majority (Никита/Илья) favoured a LangGraph supervisor + subagents. The end-state &mdash; reactive-native core, LangGraph optional/minimal, federation deferred &mdash; matched neither. The owner's authorship of the federation idea was deliberately hidden from the neutral-researcher dispatches so the evidence would not be graded sympathetically.</p>
+
+<p><strong>Why this document is kept.</strong> When a separate agentic system gets built (e.g. for the company/campaign), this is a ready research base &mdash; 7 patterns, 11 weighted criteria, the failure-mode evidence, and the matrix &mdash; making it faster to pick the right shape for <em>that</em> problem, which may legitimately differ from Jarvis's.</p>
+</div>
+
+<div class="toc">
+<strong>Contents</strong>
+<ol start="0">
+  <li><a href="#resolution"><strong>Final Resolution (read this first)</strong></a></li>
+  <li><a href="#reading-guide">Reading Guide</a></li>
+  <li><a href="#decision">What's Being Decided</a></li>
+  <li><a href="#process">Research Process</a></li>
+  <li><a href="#candidates">The 7 Candidate Patterns</a></li>
+  <li><a href="#criteria">Criteria and Weights</a></li>
+  <li><a href="#matrix">Comparison Matrix</a></li>
+  <li><a href="#pass25">Pass 2.5 — HITL Gate + Host-Restart (pending)</a></li>
+  <li><a href="#contested">Contested Cells</a></li>
+  <li><a href="#gaps">Gaps in Evidence</a></li>
+  <li><a href="#concerns">Structural Concerns with the Question</a></li>
+  <li><a href="#dispatcher-read">Dispatcher's Honest Read</a></li>
+  <li><a href="#sources">Sources</a></li>
+</ol>
+</div>
+
+<h2 id="reading-guide">1. Reading Guide</h2>
+<div class="legend">
+<p><strong>Cell tags</strong></p>
+<ul class="compact">
+  <li><span class="strong">[strong]</span> &mdash; primary sources: production post-mortems, official architecture docs, peer-reviewed papers, direct source-code reading.</li>
+  <li><span class="weak">[weak]</span> &mdash; secondary sources: blogs, tutorials, vendor marketing.</li>
+  <li><span class="dq">DISQUALIFIED</span> &mdash; documented insurmountable failure on a MUST criterion. The row stays visible so reasoning is auditable.</li>
+  <li><span class="ne">no evidence</span> &mdash; no citable source was findable. Different from &ldquo;the pattern fails&rdquo; &mdash; the question is open. See <a href="#concerns">structural concerns</a> for why some cells lack evidence.</li>
+</ul>
+<p><strong>How to use this matrix</strong></p>
+<ol class="compact">
+  <li>The matrix does <em>not</em> pick a winner. The neutral researcher fills cells from primary sources; the operator and reviewer decide.</li>
+  <li>MUST criteria are veto-strength &mdash; <span class="dq">DISQUALIFIED</span> on any MUST removes the candidate from consideration regardless of NICE performance.</li>
+  <li>NICE criteria break ties between candidates that survive MUST.</li>
+  <li>A column with many <span class="weak">[weak]</span> cells does <em>not</em> automatically mean the pattern is weaker &mdash; it may mean the pattern is under-studied. Pass-2 researcher flagged this asymmetry explicitly in <a href="#concerns">Structural Concerns &sect;5</a>.</li>
+  <li>Cells that quote different units (e.g. per-event latency vs end-to-end latency) are not directly comparable. See <a href="#concerns">Structural Concerns &sect;4</a>.</li>
+</ol>
+<p><strong>What the &ldquo;Dispatcher's Honest Read&rdquo; section is for</strong></p>
+<p>The operator's synthesis is shown <em>separately</em> from the matrix, at the bottom, so a reviewer can ignore it and work directly off the evidence if preferred. The synthesis is explicitly marked as opinion, not neutral findings.</p>
+</div>
+
+<h2 id="decision">2. What's Being Decided</h2>
+<p>Jarvis needs a long-lived agent architecture that:</p>
+<ul class="compact">
+  <li>Coordinates between multiple input sources (GitHub issues, Telegram, calendar, cron, world-events).</li>
+  <li>Dispatches coding work to Claude Code worker subagents.</li>
+  <li>Maintains state and goals across sessions and across 3 physical devices (Workshop PC, Main PC, Laptop) connected by Tailscale and a shared Supabase database.</li>
+  <li>Presents a single conversational surface to the solo operator regardless of which internal agent handles the request.</li>
+</ul>
+<p>The 2026-04-22 design memo (<code>federated_architecture_direction</code>) committed to a HYBRID pattern: <em>federation across jurisdictions + orchestrator-worker inside a delegated task</em>. A May 2026 design re-discussion temporarily proposed collapsing that into a single always-on local-LLM orchestrator. This research process pressure-tests both &mdash; and several alternatives &mdash; against weighted criteria. Pass 1 surfaced the alternatives; pass 2 (the matrix below) compares them.</p>
+
+<h2 id="process">3. Research Process</h2>
+<p>3-pass neutral research, each pass dispatched to a general-purpose subagent without the operator's framing or preferences:</p>
+<ul class="compact">
+  <li><strong>Pass 1 &mdash; Enumeration.</strong> &ldquo;Enumerate persistent multi-agent / orchestration patterns in 2024-2026 production and academic literature; document trade-offs and failure modes per pattern. Do not rank.&rdquo; Surfaced 12 pattern families.</li>
+  <li><strong>Pass 2 &mdash; Weighted comparison (this matrix).</strong> Narrow to 7 candidates; evaluate against 11 weighted criteria; cite per cell; flag contested/gaps/structural concerns.</li>
+  <li><strong>Pass 2.5 &mdash; Two missing axes</strong> (HITL gate placement + host-restart recovery) flagged by the pass-2 researcher; narrow re-dispatch in progress.</li>
+  <li><strong>Pass 3 &mdash; Deep dive</strong> on the chosen direction(s) (to be locked after the operator + reviewer read this document). Will produce mechanism-level recommendations for the grill phase.</li>
+</ul>
+
+<h2 id="candidates">4. The 7 Candidate Patterns</h2>
+<table class="brief">
+<thead><tr><th>ID</th><th>Pattern</th><th>One-line</th><th>Reference</th></tr></thead>
+<tbody>
+<tr><td><span class="candidate-id">C1</span></td><td>Monolithic ReAct</td><td>One agent, one Thought-Action-Observation loop, no fan-out. Task-scoped, single role.</td><td>mini-swe-agent (arxiv 2511.02230v1); pre-March-2026 Devin.</td></tr>
+<tr><td><span class="candidate-id">C2</span></td><td>Letta / MemGPT (persistent memory-as-OS)</td><td>One long-lived agent; core memory in prompt + paged archival memory; self-editing memory tools.</td><td>MemGPT (arxiv 2310.08560); docs.letta.com.</td></tr>
+<tr><td><span class="candidate-id">C3</span></td><td>Anthropic Lead+Subagents (hierarchical orchestrator)</td><td>Long-lived lead + parallel task-scoped subagents with own context windows; lead synchronizes results; external memory.</td><td>anthropic.com/engineering/built-multi-agent-research-system.</td></tr>
+<tr><td><span class="candidate-id">C4</span></td><td>LangGraph Supervisor</td><td>Central supervisor as graph node; specialized worker nodes; workers communicate only with supervisor; pluggable PostgresSaver checkpointer.</td><td>reference.langchain.com/python/langgraph-supervisor; github.com/langchain-ai/langgraph-supervisor-py.</td></tr>
+<tr><td><span class="candidate-id">C5</span></td><td>Long-lived federation with dedicated speaker</td><td>Multiple persistent specialized jurisdictions (speaker / perception / reflector / dispatcher) as independent long-lived processes. No inter-agent RPC; coordination via shared DB only; human is tiebreaker. Single user-facing entry = speaker. Ephemeral CC workers spawned for delegated work.</td><td>Project-internal label (<code>federated_architecture_direction</code> 2026-04-22). External referents: actor-model agents (BEAM); MAST hybrid topology; shared-DB MAS.</td></tr>
+<tr><td><span class="candidate-id">C6</span></td><td>Blackboard / shared-state opportunistic</td><td>Global blackboard data structure; independent specialist agents monitor + contribute; control unit selects next contributing agent.</td><td>arxiv 2510.01285; arxiv 2507.01701.</td></tr>
+<tr><td><span class="candidate-id">C7</span></td><td>Event-sourced reactive (ESAA)</td><td>Agents emit structured-intention JSON events; deterministic orchestrator validates, appends to immutable log; state projected from log; agents are stateless.</td><td>arxiv 2602.23193.</td></tr>
+</tbody>
+</table>
+
+<h2 id="criteria">5. Criteria and Weights</h2>
+<p>7 MUST (veto strength) and 4 NICE (tie-breakers). Owner-assigned weights on 2026-05-20.</p>
+<table class="brief">
+<thead><tr><th>ID</th><th>Criterion</th><th>Weight</th><th>Definition</th></tr></thead>
+<tbody>
+<tr><td>M1</td><td>Automation feasibility</td><td><span class="axis-must">MUST</span></td><td>Supports unattended multi-step task execution; no human-in-the-loop required on every step.</td></tr>
+<tr><td>M2</td><td>Model flexibility</td><td><span class="axis-must">MUST</span></td><td>Supports any mix of local model + paid API + subscription-bundled LLM (Claude Max). Hard-coded vendor dependence is a minus.</td></tr>
+<tr><td>M3</td><td>Real-work suitability</td><td><span class="axis-must">MUST</span></td><td>Empirical evidence of shipping non-toy production work (coding, automation), not just chat or paper demos.</td></tr>
+<tr><td>M4</td><td>Failure modes</td><td><span class="axis-must">MUST</span></td><td>Documented catastrophic/degraded modes; named failure categories (e.g. MAST FC1/FC2/FC3); recovery cost; mitigation effort.</td></tr>
+<tr><td>M5</td><td>Latency floor</td><td><span class="axis-must">MUST</span></td><td>Minimum end-to-end time from external event to useful action for typical operations; documented benchmarks where possible.</td></tr>
+<tr><td>M6</td><td>Auditability</td><td><span class="axis-must">MUST</span></td><td>Can a third party (or a postmortem skill) reconstruct from logs alone <em>which</em> agent/role/decision-point caused a given outcome?</td></tr>
+<tr><td>M7</td><td>Smart-zone hygiene</td><td><span class="axis-must">MUST</span></td><td>Does each component fit within ~100K-token context budget (empirically-observed quality cliff for current frontier models); what is the decompose path when one component exceeds it?</td></tr>
+<tr><td>N1</td><td>Cost predictability</td><td><span class="axis-nice">NICE</span></td><td>Typical monthly token cost; spike behaviour; feasibility within ~$20/mo external + Claude Max subscription envelope. Token-multiplier vs single-agent baseline.</td></tr>
+<tr><td>N2</td><td>Migration cost from baseline</td><td><span class="axis-nice">NICE</span></td><td>Baseline: LangGraph + Ollama persistent agents foundation (one event-monitor agent shipped); GitHub-events &rarr; Supabase events table &rarr; orchestrator-reads-via-MCP-tool perception loop; Claude Code skills for coding-task dispatch. How invasive is migration?</td></tr>
+<tr><td>N3</td><td>Cross-device viability</td><td><span class="axis-nice">NICE</span></td><td>Pattern works when host process is on one machine and human interacts from 2 other machines; behaviour when host machine is offline (graceful pause possible?).</td></tr>
+<tr><td>N4</td><td>User interaction continuity</td><td><span class="axis-nice">NICE</span></td><td>User can interact in one language/style regardless of which internal agent handles the request. <em>Not</em> &ldquo;agents are hidden&rdquo; &mdash; rather, &ldquo;user does not learn N protocols / N personalities&rdquo;.</td></tr>
+</tbody>
+</table>
+
+<h2 id="matrix">6. Comparison Matrix</h2>
+<p class="footnote">Raw output from pass-2 neutral researcher, preserved verbatim. Citations abbreviated for table density; see <a href="#sources">Sources</a> for full URLs.</p>
+<div class="table-wrap">
+<table class="matrix">
+<thead>
+<tr>
+  <th class="crit-col">Criterion</th>
+  <th>C1 Monolithic ReAct</th>
+  <th>C2 Letta / MemGPT</th>
+  <th>C3 Anthropic Lead+Subagents</th>
+  <th>C4 LangGraph Supervisor</th>
+  <th>C5 Federation+Speaker</th>
+  <th>C6 Blackboard</th>
+  <th>C7 Event-sourced (ESAA)</th>
+</tr>
+</thead>
+<tbody>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M1</span> Automation feasibility</td>
+  <td><span class="strong">[strong]</span> Loop runs unattended; 100-line agent reaches 76.8% on SWE-bench Verified (arxiv 2511.02230v1, &sect;1). ReAct Thought-Action loop runs without HITL.</td>
+  <td><span class="strong">[strong]</span> Long-running unattended agents supported; documented 500+ interactions on a 30-day continuous run (tokenmix.ai).</td>
+  <td><span class="strong">[strong]</span> Lead+subagents run unattended; Anthropic reports Research delivers complex queries &ldquo;in minutes instead of hours&rdquo; (anthropic engineering blog).</td>
+  <td><span class="strong">[strong]</span> Compiled graph runs unattended via checkpointer; production stack: LangGraph API + PostgreSQL checkpoints + Redis (rapidclaw.dev).</td>
+  <td><span class="weak">[weak]</span> Conceptual alignment with stateful pub/sub patterns (cloud.google.com); project memory describes design target (<code>federated_architecture_direction</code>) but no external production case study under this exact shape.</td>
+  <td><span class="strong">[strong]</span> Control unit auto-selects next contributor based on query, blackboard state, agent abilities (arxiv 2510.01285; 2507.01701). Runs unattended on benchmark queries.</td>
+  <td><span class="strong">[strong]</span> Deterministic orchestrator runs unattended; case study with 4 concurrent agents and 86 events to <code>run.status=success</code> (arxiv 2602.23193).</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M2</span> Model flexibility</td>
+  <td><span class="strong">[strong]</span> Loop is model-agnostic by construction; &ldquo;six-line while loop has survived every framework&rdquo; (arxiv 2511.02230v1). No vendor tie.</td>
+  <td><span class="strong">[strong]</span> Model-agnostic; Ollama explicitly supported (docs.letta.com/guides/server/providers/ollama).</td>
+  <td><span class="weak">[weak]</span> Reference impl ties to Claude (Opus orchestrator + Sonnet subagents); architecture itself does not mandate vendor but Anthropic's published numbers depend on Claude family.</td>
+  <td><span class="strong">[strong]</span> <code>init_chat_model()</code> supports OpenAI, Anthropic, Azure, Gemini, Bedrock, HuggingFace, OpenRouter; Ollama via <code>langchain_ollama</code>.</td>
+  <td><span class="weak">[weak]</span> Pattern vendor-neutral by construction (each jurisdiction picks model independently); no external citation of this exact mix-and-match.</td>
+  <td><span class="strong">[strong]</span> Blackboard model-agnostic by construction; bMAS used multiple LLM backbones (arxiv 2507.01701).</td>
+  <td><span class="strong">[strong]</span> &ldquo;Four heterogeneous LLM agents: Claude Sonnet 4.6, Codex GPT-5, Antigravity (Gemini 3 Pro), Claude Opus 4.6&rdquo; &mdash; explicit cross-vendor demo (arxiv 2602.23193).</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M3</span> Real-work suitability</td>
+  <td><span class="strong">[strong]</span> mini-swe-agent 76.8% SWE-bench Verified; Devin variants ship &ldquo;hundreds of thousands of PRs&rdquo; with 67% merge rate (cognition.ai 2025 review) &mdash; though Devin is single-instance-parallel, not strictly monolithic.</td>
+  <td><span class="weak">[weak]</span> Marketing claims of long-horizon coherence but no SWE-bench / coding production numbers in primary docs. Mostly chat / research use cases.</td>
+  <td><span class="strong">[strong]</span> Anthropic Research is shipping product; Claude Code Review family: &ldquo;84% of large PRs (&gt;1,000 lines) ... ~100% engineer agreement&rdquo; (resources.anthropic.com Advanced Patterns).</td>
+  <td><span class="weak">[weak]</span> Many tutorials, several enterprise references; no peer-reviewed coding benchmark with the supervisor pattern specifically.</td>
+  <td><span class="weak">[weak]</span> No external production case study under this exact label. Closest production analogue: BEAM/Elixir agent orchestration &mdash; but that's runtime evidence, not LLM-coordination.</td>
+  <td><span class="weak">[weak]</span> arxiv 2510.01285 evaluated only on KramaBench / DSBench / DA-Code research benchmarks: 13&ndash;57% relative improvements on data-discovery, not coding/automation production.</td>
+  <td><span class="strong">[strong]</span> Two production-shape case studies (landing page: 9 tasks/49 events; clinical dashboard: 50 tasks/86 events with 4 heterogeneous agents) (arxiv 2602.23193). Sample n=2; author acknowledges threats to validity.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M4</span> Failure modes</td>
+  <td><span class="strong">[strong]</span> Context-window congestion, &ldquo;trajectory instability&rdquo;, &ldquo;loops trying to format data perfectly&rdquo; (htek.dev); MAST FC1 single-agent failures apply (arxiv 2503.13657). Recovery = restart loop.</td>
+  <td><span class="weak">[weak]</span> No published failure taxonomy specific to Letta. Architectural risk: stale/wrong content in core memory drifts; tier3 GGUF instability noted.</td>
+  <td><span class="strong">[strong]</span> Named failures in primary postmortem: &ldquo;spawning excessive subagents (50 for simple queries), endless web searching, duplicated work, subagents misinterpreted task&rdquo; (anthropic engineering blog). Maps to MAST FC2 inter-agent misalignment.</td>
+  <td><span class="strong">[strong]</span> Inherits MAST taxonomy as Star/Hierarchical: MAST examined Magentic-One (Star) and HyperAgent (Hierarchical) with full FC1-FC3 distribution. Recovery via checkpointer rewind.</td>
+  <td><span class="ne">no evidence</span> &mdash; no failure taxonomy published for this exact pattern. Inference: coordination via shared DB can hit FC2 &ldquo;Information withholding&rdquo; / &ldquo;Ignored other agent's input&rdquo; without protocol enforcement (MAST).</td>
+  <td><span class="strong">[strong]</span> arxiv 2507.01701 surfaces token-cost data but no failure taxonomy. Inferred FC1/FC2 risks; &ldquo;shared memory access can slow down with many agents&rdquo; (data-flair.training).</td>
+  <td><span class="strong">[strong]</span> Replay verification is the named recovery mechanism: &ldquo;deterministic replay verification with hashing (<code>esaa verify</code>), ensuring immutability of completed tasks&rdquo; (arxiv 2602.23193). Failure surface = schema-validation rejections; recovery path explicit via <code>issue.report</code> events.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M5</span> Latency floor</td>
+  <td><span class="strong">[strong]</span> Lowest of any candidate: single round-trip per Thought-Action iteration. Tool-call turns &lt;2s each in mini-swe-agent traces.</td>
+  <td><span class="weak">[weak]</span> Letta adds memory-paging tool-call round-trips; specific numbers not published.</td>
+  <td><span class="strong">[strong]</span> &ldquo;synchronous execution creates bottlenecks where the lead agent waits for all subagents to complete&rdquo; (anthropic blog). Floor = slowest subagent. Parallel fan-out cuts wall-time vs sequential.</td>
+  <td><span class="weak">[weak]</span> No published latency benchmarks in primary docs. Handoff adds round-trips per docs.langchain.com.</td>
+  <td><span class="ne">no evidence</span> &mdash; no published latency data. Inference: speaker latency = 1 model call if speaker handles inline, else N round-trips through shared store. Bound depends on coordination granularity.</td>
+  <td><span class="strong">[strong]</span> Control unit makes one extra LLM call per agent selection; each blackboard iteration = 2 LLM calls (selection + agent contribution). Latency floor strictly higher than monolithic.</td>
+  <td><span class="strong">[strong]</span> &ldquo;latency overhead from schema validation and event persistence (sub-second per event in both case studies)&rdquo; (arxiv 2602.23193) &mdash; bounded per-event, every action gated through orchestrator validation.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M6</span> Auditability</td>
+  <td><span class="weak">[weak]</span> Single linear trace; reconstruction trivial because there's only one decision path. No structured event log unless added.</td>
+  <td><span class="weak">[weak]</span> Letta exposes memory edits as tool calls in the trace; full reconstructability not explicitly documented as audit-grade.</td>
+  <td><span class="strong">[strong]</span> Lead+subagents traces reconstructable from lead's tool-call log; subagent internal reasoning lives in detached context windows that must be saved separately (per Anthropic postmortem).</td>
+  <td><span class="strong">[strong]</span> Checkpointer persists every node state transition (<code>PostgresSaver</code>); OpenTelemetry traces per node recommended for prod (rapidclaw.dev).</td>
+  <td><span class="weak">[weak]</span> Shared-DB design implies coordination is queryable, but &ldquo;which agent decided X&rdquo; requires explicit decision-log discipline. No external reference architecture spec.</td>
+  <td><span class="strong">[strong]</span> Blackboard messages persist by design; &ldquo;All knowledge is stored centrally, making it easier to audit&rdquo; (data-flair.training); arxiv 2507.01701 does not explicitly evaluate audit-trail completeness.</td>
+  <td><span class="strong">[strong]</span> Highest auditability by design: append-only <code>activity.jsonl</code>; &ldquo;trace-first&rdquo; model; replay with hashing recreates state from log alone (arxiv 2602.23193).</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-must">M7</span> Smart-zone hygiene</td>
+  <td><span class="weak">[weak]</span> Single component holds full task; degrades on long-horizon: &ldquo;context window is shared for everything, leading to congestion&rdquo;. Decompose = extract sub-loops (which is what other candidates already do).</td>
+  <td><span class="strong">[strong]</span> Explicit design goal &mdash; paging keeps core memory small, archives the rest; &ldquo;intelligently manages different memory tiers&rdquo; (arxiv 2310.08560). Native decompose path.</td>
+  <td><span class="strong">[strong]</span> Subagents have separate context windows so lead context stays bounded; lead persists plan to external memory before truncation (anthropic blog). Decompose = spawn more subagents.</td>
+  <td><span class="strong">[strong]</span> Each worker node has its own context; supervisor decides what to forward. Forward-message tool can bypass aggregation when worker output is sufficient (reference.langchain.com).</td>
+  <td><span class="weak">[weak]</span> By construction each jurisdiction has its own bounded context; speaker context grows only with conversation length. Decompose = add jurisdiction. No external benchmark.</td>
+  <td><span class="strong">[strong]</span> Each knowledge-source / specialist agent has independent context; blackboard is the only shared surface (arxiv 2510.01285). Decompose = add specialist.</td>
+  <td><span class="strong">[strong]</span> Agents are stateless functions over (history &rarr; events); receive only relevant projection, not full history (arxiv 2602.23193). Strong context locality.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-nice">N1</span> Cost predictability</td>
+  <td><span class="strong">[strong]</span> Cheapest baseline; &ldquo;agents typically use about 4&times; more tokens than chat interactions&rdquo; &mdash; baseline against which others measured (anthropic blog).</td>
+  <td><span class="weak">[weak]</span> Cost depends on paging frequency; no quoted multiplier. Local Ollama path enables zero-marginal-cost.</td>
+  <td><span class="strong">[strong]</span> &ldquo;multi-agent systems use about 15&times; more tokens than chats&rdquo; (anthropic blog) &mdash; spike confirmed (50 subagents on simple query).</td>
+  <td><span class="ne">no evidence</span> &mdash; LangChain docs do not publish supervisor-pattern token multipliers. Inheritance from MAS class suggests similar multipliers to C3.</td>
+  <td><span class="ne">no evidence</span> &mdash; no published cost data for this exact pattern.</td>
+  <td><span class="strong">[strong]</span> arxiv 2507.01701: &ldquo;LbMAS not only stood out in performance but also managed to cost the second lowest number of tokens&rdquo; &mdash; 4.7M vs 5.4-16.7M competitors on MATH benchmark. Better cost than master-slave MAS.</td>
+  <td><span class="strong">[strong]</span> &ldquo;token overhead (200&ndash;500 tokens per invocation)&rdquo; &mdash; bounded per-event; &ldquo;storage (15 KB for 86-event log)&rdquo; (arxiv 2602.23193). No agent-count multiplier on tokens, but extra orchestrator turns.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-nice">N2</span> Migration cost</td>
+  <td><span class="strong">[strong]</span> Migration = strip away orchestrator/event-table layer. Effectively a regression from baseline.</td>
+  <td><span class="weak">[weak]</span> Migration = adopt Letta runtime as agent host; replace LangGraph perception loop with Letta tool calls. New runtime, new persistence (MemFS), Postgres if self-hosted.</td>
+  <td><span class="weak">[weak]</span> Migration = build a lead orchestrator atop existing perception; subagents map onto current Claude Code skill dispatch. Already partial-fit per <code>architecture_growth_two_dimensions</code>.</td>
+  <td><span class="strong">[strong]</span> Lowest-friction migration: project already on LangGraph; supervisor is a <code>create_supervisor()</code> call atop existing nodes. Existing Postgres checkpointer story applies.</td>
+  <td><span class="weak">[weak]</span> Partial-fit: <code>federated_architecture_direction</code> describes current target as this exact pattern. Migration = formalize current pieces (event-monitor agent, orchestrator-reads-MCP, speaker jurisdiction) into separate long-lived processes. Effort = process-supervision layer + jurisdictional decomposition.</td>
+  <td><span class="strong">[strong]</span> High migration cost: replaces event-table semantics with blackboard semantics; control unit must learn each agent's capability descriptor. LangGraph nodes &ne; blackboard knowledge sources.</td>
+  <td><span class="strong">[strong]</span> High migration cost: replaces direct tool calls with intention-envelope JSON layer; requires schema-validation orchestrator and <code>activity.jsonl</code> log discipline. Some overlap with existing event-table &rarr; orchestrator pattern.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-nice">N3</span> Cross-device viability</td>
+  <td><span class="weak">[weak]</span> Single process &mdash; runs wherever LLM client runs. If host offline, no resume unless transcript stored externally.</td>
+  <td><span class="strong">[strong]</span> Self-hosted Letta + Postgres or hosted API mode; &ldquo;Desktop app, Web, Terminal/CLI, Telegram/Slack&rdquo; entry points (docs.letta.com). Cross-device by design.</td>
+  <td><span class="weak">[weak]</span> Lead lives somewhere; subagents fan out. Anthropic Research is hosted SaaS, not self-deploy multi-device. Cross-device viability via external memory store.</td>
+  <td><span class="strong">[strong]</span> PostgresSaver state survives host restart; &ldquo;horizontal scaling against shared checkpoint storage&rdquo; (rapidclaw.dev).</td>
+  <td><span class="weak">[weak]</span> Pattern's shared-DB coordination implies cross-device naturally if DB reachable. Tailscale path already in project memory. No external benchmark.</td>
+  <td><span class="weak">[weak]</span> Blackboard = shared store, cross-device by construction if DB reachable. arxiv 2510.01285 does not test distributed deployment.</td>
+  <td><span class="strong">[strong]</span> Append-only log is the state; any node reading log reconstructs state. Cross-device viability = where log lives.</td>
+</tr>
+
+<tr>
+  <td class="crit-col"><span class="axis-nice">N4</span> User interaction continuity</td>
+  <td><span class="strong">[strong]</span> One agent = one voice trivially. No protocol learning.</td>
+  <td><span class="strong">[strong]</span> Single persistent agent; &ldquo;stateful LLM API&rdquo; (docs.letta.com). One entry.</td>
+  <td><span class="strong">[strong]</span> User talks only to lead; subagents hidden. Anthropic Research presents single chat surface.</td>
+  <td><span class="weak">[weak]</span> Supervisor is single user-facing node by convention; worker handoffs can leak into output unless <code>create_forward_message_tool</code> configured.</td>
+  <td><span class="strong">[strong]</span> Speaker is the dedicated user-facing jurisdiction by design. Other jurisdictions not user-visible. Architectural alignment is the explicit motivation.</td>
+  <td><span class="weak">[weak]</span> Central agent posts requests; user interacts with central. But &ldquo;private spaces for targeted discussions&rdquo; (arxiv 2507.01701) can complicate single-voice if user sees specialist outputs.</td>
+  <td><span class="weak">[weak]</span> Orchestrator is user-facing surface; agents emit <code>agent.result</code> events that orchestrator surfaces. Continuity depends on UX layer above the log.</td>
+</tr>
+
+</tbody>
+</table>
+</div>
+
+<h2 id="pass25">7. Pass 2.5 &mdash; HITL Gate + Host-Restart</h2>
+<p>Two axes the pass-2 researcher flagged as missing from the main matrix. Scope: 4 candidates still in play (C3, C4, C5, C7).</p>
+<div class="table-wrap">
+<table class="matrix">
+<thead>
+<tr>
+  <th class="crit-col">Axis</th>
+  <th>C3 Anthropic Lead+Subagents</th>
+  <th>C4 LangGraph Supervisor</th>
+  <th>C5 Federation+Speaker</th>
+  <th>C7 Event-sourced (ESAA)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td class="crit-col"><span class="axis-must">X1</span> HITL gate placement</td>
+  <td><span class="strong">[strong]</span> HITL <strong>not first-class</strong> in published description. Anthropic's engineering post frames human evaluation as testing/eval, not runtime gating. <span class="ne">No documented production HITL placement</span>. Bolt-on candidates: at (a) lead's subagent-spawn decision, (b) subagent-result synthesis, (c) tool-call layer — none described by source. Async approval structurally plausible via external memory but not published.</td>
+  <td><span class="strong">[strong]</span> HITL is <strong>first-class, out-of-box</strong>: &ldquo;comes with out-of-box support for human-in-the-loop&rdquo; (github.com/langchain-ai/langgraph-supervisor-py). Enumerated insertion points: (a) per-node via <code>interrupt()</code>, (b) per tool call (interrupts inside tool functions), (c) per state transition via <code>Command(goto=...)</code>, (d) supervisor <code>post_model_hook</code>. <strong>Async approval supported</strong>: &ldquo;LangGraph saves graph state and waits indefinitely until you resume&rdquo; (docs.langchain.com/oss/python/langgraph/interrupts). Requires checkpointer + <code>thread_id</code>. <span class="weak">[weak]</span> Known limitation: resume across <code>RemoteGraph</code> subagent boundary has reported breakage (langgraph issue #4879).</td>
+  <td><span class="weak">[weak — derived]</span> Project-internal label; no canonical primary source. By construction of pattern (&ldquo;human is tiebreaker on cross-jurisdiction conflicts&rdquo;), HITL is first-class <em>only at the cross-jurisdiction conflict boundary</em>; other insertion points (per-task, per-tool, per-ephemeral-worker-spawn) would be jurisdiction-implementation-specific. Because coordination is via shared DB rather than RPC, async approval is structurally native (human writes to shared store; jurisdictions poll). <span class="ne">No production postmortems for this specific composition.</span></td>
+  <td><span class="strong">[strong]</span> HITL <strong>not described in ESAA paper</strong>. Deterministic orchestrator — not a human — is the decision authority: &ldquo;the agent does not have direct write permission to the project or the event store&rdquo; (arxiv 2602.23193). Structural insertion candidates: (a) additional validator in intention&rarr;event pipeline, (b) special event type requiring human-signed continuation, (c) projection-time gate — none in published architecture. <span class="weak">[weak — derived]</span> Async approval structurally trivial because state lives in immutable log; human-signed event appended later resumes projection.</td>
+</tr>
+<tr>
+  <td class="crit-col"><span class="axis-must">X2</span> Host-restart recovery</td>
+  <td><span class="strong">[strong]</span> &ldquo;We built systems that can resume from where the agent was when the errors occurred&rdquo; (anthropic blog); lead persists plan to external Memory. <strong>However</strong>, article does not specify where checkpoints are placed (per subagent / per tool call / per phase) and <strong>does not mention multi-machine deployment</strong>. Subagents described as ephemeral with &ldquo;fresh subagents with clean contexts&rdquo; — implies subagent state reconstructible from lead's plan, not separately checkpointed. <span class="ne">Cross-device handoff: no direct evidence.</span> Time-to-resume undocumented. Duplicate-work risk: in-flight subagent calls at crash time likely re-run (only lead's plan, not per-tool-call state, persisted).</td>
+  <td><span class="strong">[strong]</span> <strong>Multi-host-ready by explicit design.</strong> PostgresSaver &ldquo;stores checkpoints in PostgreSQL, allowing state to persist across restarts&rdquo; and &ldquo;supports multiple workers reading and writing to the same checkpoint store — critical for horizontal scaling. Multiple API server instances can handle different turns of the same conversation without conflict&rdquo; (fast.io/resources/langgraph-persistence). Granularity: snapshot saved at every step. Re-run behaviour: nodes before checkpoint skipped; nodes after re-execute. Cross-device: as long as both devices share Postgres connection and same <code>thread_id</code>, resume is supported by docs. Caveat: pre-<code>interrupt()</code> side effects re-run.</td>
+  <td><span class="ne">No primary source.</span> Pattern depends entirely on persistence chosen by each jurisdiction. If jurisdictions store state only in shared DB (Supabase per dispatcher's setup) and workers are ephemeral, jurisdiction process on machine B can in principle resume by re-reading shared state — but this is implementation property, not pattern property. <span class="weak">[weak — analogue]</span> Letta as closest referent: &ldquo;persists agent state in databases&rdquo;, &ldquo;remote environments&rdquo; so &ldquo;you can message an agent working on your laptop from your phone&rdquo; (letta.com/blog/agent-memory) — but different framework. Time-to-resume undocumented. <strong>Gap: cross-device handoff plausible-by-construction but unverified.</strong></td>
+  <td><span class="strong">[strong]</span> <strong>Replay from log</strong> is explicit recovery model: &ldquo;reprocessing the event store from event zero to reconstruct the read-model exactly&rdquo; + &ldquo;replay verification with hashing (<code>esaa verify</code>)&rdquo; (arxiv 2602.23193). Agents stateless functions over (history&rarr;events). <strong>However</strong>, paper does not discuss failure recovery, crash handling, fault tolerance, orchestrator lifetime, or multi-machine deployment. File-based persistence (<code>activity.jsonl</code>) implied but <strong>no operational guarantees on durability or disaster recovery</strong>. Cross-device handoff structurally clean (if log on shared storage, any host can project + append) but not addressed by paper. Duplicate-work risk: low for committed events; <strong>unbounded for in-flight intentions that crashed before orchestrator committed</strong> — paper does not discuss intention&rarr;event commit atomicity.</td>
+</tr>
+</tbody>
+</table>
+</div>
+
+<h3>Pass-2.5 Contested Cells</h3>
+<ul class="compact">
+  <li><strong>C3 / X1 (HITL)</strong>: Third-party summary (centific.com) says &ldquo;Checkpointing enables human-in-the-loop workflows: the agent pauses for approval, persists state, resumes when authorized&rdquo; <span class="weak">[weak — third-party]</span>. This <em>contradicts</em> the primary Anthropic source, which makes no such claim. The safer reading: secondary source generalises HITL-via-checkpointing patterns; it does not describe Anthropic's specific system.</li>
+  <li><strong>C4 / X1 (granularity inside supervisor)</strong>: <code>post_model_hook</code> description (&ldquo;Useful for implementing human-in-the-loop&rdquo;) implies HITL at supervisor's routing decision, not only inside workers. Whether this is &ldquo;first-class&rdquo; or &ldquo;convention-via-hook&rdquo; is interpretively contested.</li>
+  <li><strong>C7 / X2 (replay completeness)</strong>: paper's &ldquo;reconstruct read-model exactly&rdquo; addresses deterministic projection from a complete log. It does <em>not</em> address what happens if orchestrator crashes between accepting an intention and appending the event — a classic two-phase-commit gap.</li>
+</ul>
+
+<h3>Pass-2.5 Gaps</h3>
+<ul class="compact">
+  <li><strong>C3 cross-device</strong>: Anthropic article gives no info on whether the multi-agent research system can migrate a live lead process between machines. Memory persistence necessary but not sufficient.</li>
+  <li><strong>C3 HITL</strong>: no primary-source production HITL placement. Any insertion is bolt-on.</li>
+  <li><strong>C4 <code>RemoteGraph</code> + <code>interrupt</code></strong>: known open issue (langgraph#4879). Relevant if C4 deployed with workers in separate processes (which a 3-device setup may require). In-process supervisor+workers case is unaffected.</li>
+  <li><strong>C5 entire row</strong>: no primary source. All claims derive from prompt definition + analogue frameworks. Cannot be cited <span class="strong">[strong]</span>.</li>
+  <li><strong>C7 entire row on operational properties</strong>: paper is academic, covers semantics not operations.</li>
+  <li><strong>Time-to-resume</strong>: undocumented for all 4 patterns.</li>
+  <li><strong>Duplicate-work risk</strong>: explicitly addressed only for C4; inferred for the others.</li>
+</ul>
+
+<h3>Pass-2.5 Structural Concerns</h3>
+<ol>
+  <li><strong>X1 conflates &ldquo;pattern supports HITL&rdquo; with &ldquo;pattern names a canonical HITL gate.&rdquo;</strong> C4 and C7 both <em>can</em> support HITL at multiple insertion points, but in C4 the gate is named (<code>interrupt()</code>, <code>post_model_hook</code>) while in C7 it would be ad-hoc validator. Treating these as equivalent obscures design-cost difference. Conversely, C3 and C5 lack canonical gates for opposite reasons (C3: nothing in docs; C5: pattern definition names one specific gate &mdash; cross-jurisdiction conflict).</li>
+  <li><strong>X1 mixes &ldquo;where can a human approve&rdquo; with &ldquo;how is the human notified.&rdquo;</strong> Sync vs async approval depends on whether host blocks or persists-and-resumes &mdash; that property is a <em>consequence</em> of X2's persistence story, not independent. The axes are correlated, not orthogonal.</li>
+  <li><strong>X2 conflates three distinct properties</strong>: (a) state survives a crash on the same machine (trivial with any DB), (b) a fresh process can resume from persisted state (requires no machine-local caches or in-memory queues at decision points), (c) a different physical machine can take over (requires shared storage URI, no host-specific paths in state, idempotent effects). C4's PostgresSaver is documented for (a)+(b)+(c); C3 has evidence for (a)+(b) but not (c); C7 has (a)+(b) by construction but paper is silent on (c); C5 depends entirely on jurisdiction implementation. Reporting them as a single &ldquo;host-restart recovery&rdquo; score flattens a real distinction.</li>
+  <li><strong>C5 is unfalsifiable as posed.</strong> Project-internal label means claims are either restatements of definition or extrapolations from different frameworks. Fair comparison requires either (a) reframing C5 as &ldquo;Letta + actor-pattern composition&rdquo; with cited primary sources, or (b) acknowledging C5 rows are design-intent, not evidence. Current matrix treats C5 as comparable to three patterns with primary sources &mdash; methodologically uneven.</li>
+</ol>
+
+<h2 id="contested">8. Contested Cells</h2>
+<p>Cells where primary sources disagree:</p>
+<ul class="compact">
+  <li><strong>M3 / C1 (Monolithic real-work)</strong>: Devin demonstrates monolithic-style success (cognition.ai 2025) <em>and</em> &ldquo;fleet of Devins can execute on every repo in parallel&rdquo; &mdash; Devin is no longer strictly single-agent. Camp A: monolithic ReAct sufficient at scale (mini-swe-agent 76.8% SWE-bench). Camp B: production systems abandoned monolithic for hierarchical. Same primary data, opposite conclusions.</li>
+  <li><strong>N1 / C3 (Anthropic cost)</strong>: Anthropic acknowledges 15&times; token multiplier but argues &ldquo;best suited for tasks where the value of the outcome outweighs the expense&rdquo;. Camp A: not viable on $20/mo external budget. Camp B: with Claude Max subscription absorbing the bulk, ~15&times; of subscription-bundled is still bounded. Cost predictability depends on envelope being measured.</li>
+  <li><strong>M5 / C3 vs C6 vs C7 (latency)</strong>: All three add round-trips vs C1, but only C7 has a published per-event number (&ldquo;sub-second per event&rdquo;). C3 acknowledges synchronous-wait bottleneck without quoting bound. C6 implies 2&times; round-trips. Direct comparison would require like-for-like benchmark which no source provides.</li>
+  <li><strong>M2 / C3 (Anthropic vendor lock)</strong>: Architecture described as &ldquo;orchestrator-worker pattern&rdquo; (vendor-neutral) but every published number uses Claude Opus + Claude Sonnet. Camp A: pattern is portable. Camp B: numbers depend on specific model pairing that may not transfer.</li>
+</ul>
+
+<h2 id="gaps">9. Gaps in Evidence</h2>
+<ul class="compact">
+  <li><strong>C2 (Letta) &mdash; M4 failure taxonomy</strong>: no published Letta-specific catalogue; MAST studied AppWorld/Magentic-One but not Letta.</li>
+  <li><strong>C2 (Letta) &mdash; M5 latency</strong>: no quoted numbers in primary docs.</li>
+  <li><strong>C4 (LangGraph) &mdash; N1 cost</strong>: LangChain docs do not publish a token-multiplier vs monolithic.</li>
+  <li><strong>C4 (LangGraph) &mdash; M5 latency</strong>: no quoted floor.</li>
+  <li><strong>C5 (Federation+Speaker) &mdash; most cells <span class="weak">[weak]</span></strong>: pattern as labelled exists primarily in project memory; external corpus uses related-but-not-identical labels. M3, M4, M5, N1, N3 lack external production case studies under this exact name.</li>
+  <li><strong>C6 (Blackboard) &mdash; M4 named failure taxonomy</strong>: arxiv papers surface performance metrics but no MAST-equivalent failure catalog specific to blackboard.</li>
+  <li><strong>C7 (ESAA) &mdash; production maturity</strong>: arxiv 2602.23193 explicitly notes n=2 case studies and threats to validity. No third-party replication found.</li>
+</ul>
+
+<h2 id="concerns">10. Structural Concerns with the Question</h2>
+<p>Raised by the pass-2 researcher; not recommendations, just methodological warnings the reviewer should weigh.</p>
+<ol>
+  <li><strong>C5 is under-specified for external comparison.</strong> The label exists in project memory but does not match a single arxiv paper or named industry framework. To compare it head-to-head with peer-reviewed candidates, one either (a) cites the project's <code>federated_architecture_direction</code> as the spec (asymmetric &mdash; others have papers), or (b) decomposes it into mechanistic claims (long-lived processes + shared DB + dedicated user-facing jurisdiction + ephemeral coding workers) and compares each. The current matrix takes path (a), which mechanically inflates <span class="ne">no evidence</span> cells for C5 &mdash; honest but not a defect of the pattern itself.</li>
+  <li><strong>M2 and N1 overlap when &ldquo;Claude Max subscription&rdquo; is the cost envelope.</strong> Model flexibility (M2) ranks against cost only if paid API is substituted for subscription-bundled Claude. If the envelope is &ldquo;Claude Max + &le;$20 external&rdquo;, then a pattern that only runs on hosted Claude (no Ollama path) is <em>cheaper</em> on N1 than one requiring local-only. The two criteria pull in opposite directions for this user.</li>
+  <li><strong>M3 (Real-work suitability) conflates two questions</strong>: (a) has <em>this exact pattern</em> shipped coding-work product? (b) is the pattern <em>capable of</em> shipping coding work? The matrix answers (a) &mdash; unfair to C5 (project-internal) and C7 (n=2). If the question is (b), every candidate could plausibly ship coding work given engineering effort; the criterion no longer discriminates.</li>
+  <li><strong>M5 (Latency floor) needs a definition of &ldquo;useful action&rdquo;</strong>. Sub-second per-event (C7) vs minutes-to-result (C3) are not comparable units; C3 is end-to-end, C7 is per-event overhead. Without a common task definition the cell values are not commensurable.</li>
+  <li><strong>MAST taxonomy is not applied symmetrically.</strong> MAST (arxiv 2503.13657) explicitly studied C3/C4-shaped architectures and a blackboard-adjacent topology. It did <em>not</em> study C2, C5, or C7. The &ldquo;M4 &mdash; Failure modes&rdquo; comparison therefore advantages patterns <em>not</em> in MAST (fewer documented failures = appears safer). A pattern with fewer documented failures may simply be under-studied, not more robust.</li>
+  <li><strong>Missing axis: HITL gate placement.</strong> Several candidates differ in <em>where</em> a human can interject (per-event for C7, per-subagent-result for C3, per-blackboard-iteration for C6, per-loop-iteration for C1). The current criterion set treats HITL only as &ldquo;M1 &mdash; does not require it&rdquo;. An axis &ldquo;where can HITL be cleanly inserted without architectural surgery?&rdquo; would discriminate the candidates more cleanly and matches the dispatcher's solo-developer-with-tiebreaker model. <em>(Pass 2.5 addresses this.)</em></li>
+  <li><strong>Missing axis: state-recovery cost after host-machine restart.</strong> N3 touches this but blurs it with multi-device interactive access. Solo-dev on 3 devices specifically needs &ldquo;host process dies on machine A, can I resume from machine B?&rdquo; &mdash; this is C7's strongest evidence and C1's weakest, but doesn't surface cleanly in current rows. <em>(Pass 2.5 addresses this.)</em></li>
+</ol>
+
+<h2 id="dispatcher-read">11. Dispatcher's Honest Read</h2>
+<div class="dispatcher-note">
+<p style="background:#fff3cd; border-left:4px solid #856404; padding:8px 12px; margin-bottom:14px;"><strong>SUPERSEDED by &sect;0.</strong> This section records the operator's synthesis <em>as it stood at pass 2.5</em> &mdash; the C4-substrate / C5-layout hypothesis. The subsequent /reason session reframed the question (true vs mimic always-on) and the &ldquo;C4-as-core&rdquo; conclusion below lost its premise. Retained verbatim as the reasoning trail, <em>not</em> as the current direction. The pass-3 deep-dive proposed here was cancelled.</p>
+<p><em>This section is the operator's synthesis. It is opinion, not neutral findings. A reviewer is welcome to ignore it and work directly off the matrix and structural concerns above.</em></p>
+
+<h3>Eliminated on MUST</h3>
+<ul class="compact">
+  <li><strong>C1 monolith</strong>: Cognition's own retraction (March 2026 &ldquo;Devin can now Manage Devins&rdquo;) directly cites &ldquo;context accumulates, focus degrades&rdquo; on long-horizon work. M7 catastrophic, regression from baseline on N2.</li>
+  <li><strong>C2 Letta/MemGPT</strong>: no published coding production evidence (M3 <span class="weak">[weak]</span> only); single-role does not cover the use case (multiple input sources, multiple internal responsibilities).</li>
+  <li><strong>C6 Blackboard</strong>: no production case at the project's complexity; double LLM call per iteration penalises M5; no MAST-equivalent failure catalog. Kept as a coordination-mechanism reference, not as primary pattern.</li>
+</ul>
+
+<h3>Still in play</h3>
+<p><strong>C3, C4, C5, C7.</strong> After pass 2.5 the operational picture is significantly sharper:</p>
+<ul class="compact">
+  <li><strong>C4 (LangGraph Supervisor)</strong> wins both pass-2.5 axes clearly. HITL is first-class with named insertion points (<code>interrupt()</code>, <code>post_model_hook</code>, per-tool, per-state-transition) and supports async approval out of the box. Multi-host recovery is explicit by design (PostgresSaver allows multiple workers reading/writing same checkpoint store; cross-device handoff documented). Combined with the lowest migration cost (N2) &mdash; this is the operationally strongest standalone candidate.</li>
+  <li><strong>C5 (Federation+Speaker)</strong> is project-named so pass-2.5 axes have no primary source for it. The pattern-level claim (long-lived jurisdictions + shared DB + speaker + ephemeral workers) is mechanistically composed of strong pieces but is not itself a published reference pattern. <strong>Reframed view</strong>: C5 is an <em>architectural shape</em>; it does not specify an implementation substrate. C4 + Supabase + Tailscale could be exactly that substrate &mdash; C5 sits as a meta-design ON C4 primitives, not as an alternative to it.</li>
+  <li><strong>C7 (Event-sourced ESAA)</strong> has the cleanest <em>semantic</em> evidence (M6 auditability, M4 replay recovery) but the paper is silent on operational concerns: no failure-recovery discussion, no multi-host deployment story, no orchestrator lifetime management. Strong on theory; under-specified on production durability. The two-phase-commit gap between accepting an intention and appending the event is explicitly unaddressed.</li>
+  <li><strong>C3 (Anthropic Lead+Subagents)</strong> is published-and-shipped but the engineering blog has no cross-device deployment story and no production HITL placement. Pattern is the closest published shape to C5's &ldquo;ephemeral workers inside a delegated task&rdquo; sub-claim &mdash; useful as reference for that sub-pattern, weaker as a standalone direction.</li>
+</ul>
+
+<h3>The synthesis emerging from C4+C5</h3>
+<p>Pass 2.5 sharpened a hypothesis that was implicit in the original C5 framing: <strong>C5 is a layout, C4 is the substrate</strong>. Concretely:</p>
+<ul class="compact">
+  <li>Each jurisdiction (speaker / perception / reflector / dispatcher) implemented as a LangGraph subgraph or separate compiled graph, sharing a Supabase Postgres checkpoint store.</li>
+  <li>Coordination via shared events table (already shipped per <code>event_driven_perception_v1</code>) + PostgresSaver state &mdash; not via inter-agent RPC.</li>
+  <li>Speaker jurisdiction is the user-facing graph; other jurisdictions are background graphs whose outputs surface to the speaker through the shared store.</li>
+  <li>HITL inserted via LangGraph's <code>interrupt()</code> at jurisdiction-internal decision points (per-task / per-tool / cross-jurisdiction conflict).</li>
+  <li>Ephemeral coding workers = existing Claude Code skill dispatch (<code>/implement</code>, <code>/delegate</code>), spawned by dispatcher jurisdiction on issue+label trigger.</li>
+  <li>Cross-device viability inherited from PostgresSaver (any device with Postgres connection + thread_id can resume a jurisdiction).</li>
+</ul>
+<p>This is what the deep-dive (pass 3) should validate or break. If it survives mechanism-level scrutiny, the grill phase produces vertical-slice acceptance criteria. If it breaks, fall back to a pure-C4 LangGraph supervisor-of-supervisors (no jurisdictional decomposition) &mdash; safer but loses the &ldquo;narrow jurisdictions&rdquo; benefit from <code>federated_architecture_direction</code>.</p>
+
+<h3>What the operator expects, with explicit anti-confirmation flag</h3>
+<p>Operator entering the matrix exercise expected <strong>C5 (Federation + Speaker)</strong> to win because it matches the 2026-04-22 design memo. The matrix's <span class="weak">[weak]</span>-heaviness on C5 could be (a) the pattern is objectively weaker, or (b) the pattern is project-named so external corpus does not directly index it. Pass-2 researcher independently flagged (b) as structural concern &sect;1.</p>
+<p>This is a confirmation-bias risk. The synthesis above tries to honour it: <em>if the reviewer disagrees that C5's mechanistic pieces are strongly evidenced through C2/C3/C4/C7, then C5 should be downgraded</em>. The synthesis claim is the operator's; the reviewer can challenge it.</p>
+
+<h3>Next steps <span style="color:#856404;">(superseded &mdash; see &sect;0)</span></h3>
+<p style="background:#fff3cd; border-left:4px solid #856404; padding:8px 12px;">The plan below assumed a C4+C5 deep dive would lock the direction. The /reason session resolved the direction first and cancelled pass 3. Actual next steps now: produce vertical-slice acceptance criteria for the reactive-native core (queue + prioritization + woken orchestrator), then <code>/to-issues</code>. The pass-3 questions below are kept only as a checklist <em>if</em> the deferred LangGraph plan-checkpoint carve-out (decision 2) is ever reopened.</p>
+<ol class="compact">
+  <li><span style="color:#155724;">✓</span> Pass 2.5 complete (HITL + host-restart) &mdash; see section 7.</li>
+  <li><span style="color:#155724;">✓</span> Direction resolved in /reason &mdash; see &sect;0.</li>
+  <li><span style="color:#856404;">✗</span> Pass 3 (C4+C5 deep dive) cancelled &mdash; premise removed.</li>
+</ol>
+
+<h3>Questions retained for a possible LangGraph-carveout revisit (originally pass-3)</h3>
+<ol class="compact">
+  <li>Is jurisdiction = separate compiled LangGraph graph (per-jurisdiction process supervision) or jurisdiction = subgraph node inside one master graph? Trade-offs of each in 3-device deployment.</li>
+  <li>How do jurisdictions exchange information through PostgresSaver checkpoints + shared events table without polling overhead? Are there documented patterns?</li>
+  <li>Speaker jurisdiction: graph topology &mdash; is it a supervisor graph that calls other jurisdictions as tools, or a peer-of-jurisdictions that subscribes to a shared events table?</li>
+  <li>Dispatch-to-CC mechanism: GH issue+label trigger via existing event-monitor agent vs LangGraph node that shells out vs MCP tool that invokes Claude Code SDK. Cost/latency/auditability comparison.</li>
+  <li>Failure isolation: if one jurisdiction's graph crashes, can others continue? Does PostgresSaver checkpoint corruption in one thread affect other threads?</li>
+  <li>HITL gate placement in the federation: should the speaker hold the HITL surface (user is always notified through speaker) or should each jurisdiction surface its own pending approvals (and the speaker summarises)?</li>
+  <li>What does it cost to add a new jurisdiction (e.g. proactive-reflector) once the substrate is in place? &mdash; matters for the &ldquo;federation grows DOWN&rdquo; claim from <code>architecture_growth_two_dimensions</code>.</li>
+  <li>Production deployments of LangGraph supervisor pattern at solo-dev scale (not enterprise). Are there documented installs running 24/7 on a single workstation with cross-device clients?</li>
+</ol>
+</div>
+
+<h2 id="sources">12. Sources</h2>
+<p>Primary sources cited in matrix cells:</p>
+<ul class="compact">
+  <li>Anthropic Engineering Blog &mdash; &ldquo;How we built our multi-agent research system&rdquo; &mdash; <a href="https://www.anthropic.com/engineering/built-multi-agent-research-system">anthropic.com/engineering/built-multi-agent-research-system</a></li>
+  <li>Cognition AI &mdash; &ldquo;Devin Annual Performance Review 2025&rdquo; &mdash; <a href="https://cognition.ai/blog/devin-annual-performance-review-2025">cognition.ai/blog/devin-annual-performance-review-2025</a></li>
+  <li>Cognition AI &mdash; &ldquo;Don't Build Multi-Agents&rdquo; &mdash; <a href="https://cognition.ai/blog/dont-build-multi-agents">cognition.ai/blog/dont-build-multi-agents</a></li>
+  <li>Cognition AI &mdash; &ldquo;Devin can now Manage Devins&rdquo; (March 2026) &mdash; <a href="https://cognition.ai/blog/devin-can-now-manage-devins">cognition.ai/blog/devin-can-now-manage-devins</a></li>
+  <li>MAST &mdash; &ldquo;Why Do Multi-Agent LLM Systems Fail?&rdquo; (NeurIPS 2025) &mdash; <a href="https://arxiv.org/abs/2503.13657">arxiv.org/abs/2503.13657</a></li>
+  <li>MemGPT &mdash; &ldquo;Towards LLMs as Operating Systems&rdquo; &mdash; <a href="https://arxiv.org/abs/2310.08560">arxiv.org/abs/2310.08560</a></li>
+  <li>Letta documentation &mdash; <a href="https://docs.letta.com/concepts/letta/">docs.letta.com/concepts/letta</a>; <a href="https://docs.letta.com/guides/server/providers/ollama">.../guides/server/providers/ollama</a></li>
+  <li>ESAA &mdash; &ldquo;Event Sourcing for Autonomous Agents&rdquo; &mdash; <a href="https://arxiv.org/abs/2602.23193">arxiv.org/abs/2602.23193</a></li>
+  <li>Blackboard LLM-MAS for data discovery &mdash; <a href="https://arxiv.org/abs/2510.01285">arxiv.org/abs/2510.01285</a></li>
+  <li>Blackboard LLM-MAS (bMAS) &mdash; <a href="https://arxiv.org/abs/2507.01701">arxiv.org/abs/2507.01701</a></li>
+  <li>mini-swe-agent &mdash; 100-line ReAct agent at 76.8% SWE-bench &mdash; <a href="https://arxiv.org/html/2511.02230v1">arxiv.org/html/2511.02230v1</a></li>
+  <li>LangGraph Supervisor reference &mdash; <a href="https://reference.langchain.com/python/langgraph-supervisor">reference.langchain.com/python/langgraph-supervisor</a>; <a href="https://github.com/langchain-ai/langgraph-supervisor-py">github.com/langchain-ai/langgraph-supervisor-py</a></li>
+  <li>LangGraph multi-agent docs &mdash; <a href="https://docs.langchain.com/oss/python/langchain/multi-agent/subagents-personal-assistant">docs.langchain.com/oss/python/langchain/multi-agent/subagents-personal-assistant</a></li>
+  <li>Claude Code Advanced Patterns (subagents, MCP, scaling) &mdash; <a href="https://resources.anthropic.com/hubfs/Claude%20Code%20Advanced%20Patterns_%20Subagents,%20MCP,%20and%20Scaling%20to%20Real%20Codebases.pdf">resources.anthropic.com Advanced Patterns PDF</a></li>
+  <li>LangGraph production deployment tutorial &mdash; <a href="https://rapidclaw.dev/blog/deploy-langgraph-production-tutorial-2026">rapidclaw.dev/blog/deploy-langgraph-production-tutorial-2026</a> <span class="weak">[weak]</span></li>
+  <li>Identity bias in multi-agent debate &mdash; <a href="https://arxiv.org/abs/2510.07517">arxiv.org/abs/2510.07517</a></li>
+  <li>Google A2A protocol &mdash; <a href="https://a2a-protocol.org">a2a-protocol.org</a></li>
+</ul>
+
+<p>Project memory (Supabase, project=jarvis):</p>
+<ul class="compact">
+  <li><code>federated_architecture_direction</code> &mdash; UUID <code>9757b985-cf68-4310-9d44-0571697d337f</code></li>
+  <li><code>architecture_growth_two_dimensions</code> &mdash; UUID <code>d6f00dc3</code> (prefix)</li>
+  <li><code>pm_dispatch_v1_superseded_by_persistent_agents</code></li>
+  <li><code>event_driven_perception_v1</code></li>
+  <li><code>pillar7_phase2_six_choices_2026_04_22</code></li>
+</ul>
+
+<hr>
+<p class="footnote">Generated for the Jarvis architecture redesign, May 2026. Pass-2 raw output preserved verbatim. For questions, contact the project operator.</p>
+
+</body>
+</html>

@@ -700,6 +700,12 @@ async def run_all(
 CONTEXT_CHARS_PER_TOKEN = 4
 CONTEXT_USER_LIMIT = 2  # match scripts/session-context.py
 
+# Mirrors scripts/session-context.py:ALWAYS_LOAD_MAX_ENTRIES / _MAX_BYTES.
+# Cap changes require a new record_decision citing the prior UUID as
+# memories_used — keep both copies in sync (decision 3e6594f6-27da-45d9-96d8-516a46716425, #1252 AC3).
+ALWAYS_LOAD_MAX_ENTRIES = 4
+ALWAYS_LOAD_MAX_BYTES = 6000
+
 
 def _load_session_context(client) -> tuple[str, dict]:
     """Load the items the SessionStart hook injects, return a single keyword
@@ -742,6 +748,9 @@ def _load_session_context(client) -> tuple[str, dict]:
         print(f"[context-rot] user query failed: {e}", file=sys.stderr)
 
     # 2. always_load memories (evergreen rules)
+    # Enforced at read time against ALWAYS_LOAD_MAX_ENTRIES / ALWAYS_LOAD_MAX_BYTES
+    # (decision 3e6594f6-27da-45d9-96d8-516a46716425) — over-tagged data degrades
+    # gracefully (truncated, not blocked) with a loud stderr warning.
     try:
         r = (
             client.table("memories")
@@ -751,9 +760,31 @@ def _load_session_context(client) -> tuple[str, dict]:
             .order("updated_at", desc=True)
             .execute()
         )
-        for m in r.data or []:
-            parts.append(_mem_text(m))
+        rows = r.data or []
+        if len(rows) > ALWAYS_LOAD_MAX_ENTRIES:
+            print(
+                f"[context-rot] always_load has {len(rows)} tagged memories, "
+                f"cap is {ALWAYS_LOAD_MAX_ENTRIES} — truncating to the most recently "
+                "updated. Untag the rest or move them to a file (DOCTRINE.md > "
+                "Baseline carrier selection).",
+                file=sys.stderr,
+            )
+            rows = rows[:ALWAYS_LOAD_MAX_ENTRIES]
+
+        total_bytes = 0
+        for i, m in enumerate(rows):
+            rendered = _mem_text(m)
+            size = len(rendered.encode("utf-8"))
+            if i and total_bytes + size > ALWAYS_LOAD_MAX_BYTES:
+                print(
+                    f"[context-rot] always_load byte budget ({ALWAYS_LOAD_MAX_BYTES}B) "
+                    f"exceeded after {i}/{len(rows)} entries — truncating remainder.",
+                    file=sys.stderr,
+                )
+                break
+            parts.append(rendered)
             counts["always_load"] += 1
+            total_bytes += size
     except Exception as e:
         print(f"[context-rot] always_load query failed: {e}", file=sys.stderr)
 
@@ -777,41 +808,8 @@ def _load_session_context(client) -> tuple[str, dict]:
     except Exception as e:
         print(f"[context-rot] goals query failed: {e}", file=sys.stderr)
 
-    # 4. Memory catalog (Phase 7.1) — lazy-index entries for live, in-scope
-    #    memories. Mirrors scripts/session-context.py:_query_catalog output
-    #    format (one bullet per entry, type/scope label, description truncated
-    #    to 120 chars) so the context-rot baseline reflects the shape/budget
-    #    actually injected at session start. Eval runs project-agnostic so we
-    #    scope to global (project IS NULL) — matches non-project cwd sessions.
-    try:
-        now_iso = datetime.now(timezone.utc).isoformat()
-        r = (
-            client.table("memories")
-            .select("name, description, tags, type, project")
-            .is_("expired_at", "null")
-            .is_("superseded_by", "null")
-            .is_("deleted_at", "null")
-            .is_("project", "null")
-            .or_(f"valid_to.is.null,valid_to.gt.{now_iso}")
-            .order("last_accessed_at", desc=True, nullsfirst=False)
-            .limit(200)
-            .execute()
-        )
-        for m in r.data or []:
-            if m.get("type") == "user":
-                continue
-            tags = m.get("tags") or []
-            if "always_load" in tags:
-                continue
-            # Mirror _fmt_catalog_entry in session-context.py — global scope
-            # here since we filter project IS NULL.
-            desc = (m.get("description") or "").strip()
-            if len(desc) > 120:
-                desc = desc[:117] + "..."
-            parts.append(f"- {m['name']} [{m['type']}/global]: {desc}")
-            counts["catalog"] = counts.get("catalog", 0) + 1
-    except Exception as e:
-        print(f"[context-rot] catalog query failed: {e}", file=sys.stderr)
+    # 4. (Memory Catalog removed — #1271 deleted the session-start catalog in
+    #    session-context.py, so the context-rot baseline no longer counts it.)
 
     blob = " ".join(p.strip() for p in parts if p.strip())
     chars = len(blob)
@@ -947,8 +945,7 @@ def print_context_rot_report(report: ContextRotReport, quiet: bool = False) -> N
             f"{report.context_budget['item_count']} items "
             f"(user={report.context_budget['user']}, "
             f"always_load={report.context_budget['always_load']}, "
-            f"goals={report.context_budget['goals']}, "
-            f"catalog={report.context_budget.get('catalog', 0)})\n"
+            f"goals={report.context_budget['goals']})\n"
         )
 
         # Per-query table: plain rank → context rank, mark regressions/wins

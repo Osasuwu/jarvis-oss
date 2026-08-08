@@ -69,9 +69,16 @@ for _env_path in _env_candidates:
         break
 os.environ.update(_preserved_tokens)
 
-from mcp.server import Server  # noqa: E402
+from mcp.server import Server, ServerRequestContext  # noqa: E402
 from mcp.server.stdio import stdio_server  # noqa: E402
-from mcp.types import CallToolResult, TextContent, Tool  # noqa: E402
+from mcp.types import (  # noqa: E402
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 # Import gather and engine modules
 from scripts.status_gather import gather  # noqa: E402
@@ -81,44 +88,45 @@ from scripts.status_engine import (  # noqa: E402
 )
 
 # ============================================================================
-# MCP Server
-# ============================================================================
-
-server = Server("jarvis-status")
-
-
-# ============================================================================
 # Tool registration
+#
+# `Server(...)` is constructed at the bottom of this module — the 2.x
+# constructor-param API (`on_list_tools=`, `on_call_tool=`) needs `list_tools`
+# and `call_tool` already defined, unlike the 1.x decorator API where
+# `server = Server(...)` came first and `@server.list_tools()` attached later.
 # ============================================================================
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
+async def list_tools(
+    ctx: ServerRequestContext, params: PaginatedRequestParams | None
+) -> ListToolsResult:
     """Return the single status_digest tool."""
-    return [
-        Tool(
-            name="status_digest",
-            description=(
-                "Synthesize a status digest by gathering current repo state "
-                "and analyzing it for anomalies. Wraps gather() → engine "
-                "in a single call. Returns {health, detector_hits, ranking, "
-                "provenance}."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "jarvis_home": {
-                        "type": "string",
-                        "description": (
-                            "Root path of the jarvis repo. If empty, auto-detects "
-                            "from CWD via git rev-parse."
-                        ),
+    return ListToolsResult(
+        tools=[
+            Tool(
+                name="status_digest",
+                description=(
+                    "Synthesize a status digest by gathering current repo state "
+                    "and analyzing it for anomalies. Wraps gather() → engine "
+                    "in a single call. Returns {health, detector_hits, ranking, "
+                    "provenance}."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "jarvis_home": {
+                            "type": "string",
+                            "description": (
+                                "Root path of the jarvis repo. If empty, auto-detects "
+                                "from CWD via git rev-parse."
+                            ),
+                        },
                     },
+                    "required": [],
                 },
-                "required": [],
-            },
-        ),
-    ]
+            ),
+        ]
+    )
 
 
 # ============================================================================
@@ -234,9 +242,10 @@ def _contradiction_verdicts_from_gather(gather_result):
     return deserialize_contradiction_cache(cache)
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolResult:
+async def call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -> CallToolResult:
     """Dispatch to the status_digest tool."""
+    name = params.name
+    arguments = params.arguments or {}
     try:
         if name == "status_digest":
             jarvis_home = arguments.get("jarvis_home", "")
@@ -250,10 +259,11 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
                     timeout=_GATHER_TIMEOUT,
                 )
             except asyncio.TimeoutError:
-                return [TextContent(
+                result = [TextContent(
                     type="text",
                     text="status gather timed out after 30s",
                 )]
+                return CallToolResult(content=result)
 
             # Convert gather result to engine format
             baseline, delta, decisions = _convert_gather_to_engine_format(gather_result)
@@ -317,16 +327,22 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolR
             import json
 
             result_text = json.dumps(response_data, indent=2, default=str)
-            return [TextContent(type="text", text=result_text)]
+            return CallToolResult(content=[TextContent(type="text", text=result_text)])
 
         else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            return CallToolResult(content=[TextContent(type="text", text=f"Unknown tool: {name}")])
 
     except Exception as exc:
         import traceback
 
         traceback.print_exc()  # Log full traceback server-side
-        return [TextContent(type="text", text=f"Error in {name}: {exc}")]
+        return CallToolResult(content=[TextContent(type="text", text=f"Error in {name}: {exc}")])
+
+
+# `Server(...)` constructed here (not near the top, per 1.x convention) because
+# the 2.x constructor-param API needs `list_tools`/`call_tool` already defined —
+# see the "Tool registration" comment above.
+server = Server("jarvis-status", on_list_tools=list_tools, on_call_tool=call_tool)
 
 
 # ============================================================================

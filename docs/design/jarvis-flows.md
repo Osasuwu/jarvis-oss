@@ -258,7 +258,7 @@ flowchart TB
 
     synth --> goalcand[Candidate child goal<br/>from principal_message + decision_made]
     goalcand --> c2draft[C2 draft goal<br/>provenance:agent_extracted<br/>confidence:low<br/>status:draft]
-    c2draft --> brief[/status + batched brief<br/>accept / edit / dismiss]
+    c2draft --> brief["/status + batched brief<br/>accept / edit / dismiss"]
     c2draft -.->|7-day quiet auto-dismiss| dismiss[draft_auto_dismissed log]
     brief -->|accept| c2[(C2 Goals)]
 

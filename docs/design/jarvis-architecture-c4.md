@@ -4,6 +4,8 @@ Four views: Context (system in environment), Container (runtime + storage), Comp
 
 **Status (2026-05-17):** the diagrams below mix target architecture and current deployment. Specific known mismatches: (a) Container view shows **Plan MCP (LangGraph carveout)** and **Research MCP (GPT Researcher + others)** as deployed MCPs — both are *planned*, not in `.mcp.json` yet; (b) Level 4 sequence diagram lists `decisions_by_trace_mv` among refreshed projections — only `events_cost_by_day_mv` and `events_last_run_by_actor_mv` exist in the canonical migration (`supabase/migrations/20260429145000_create_events_canonical.sql`); `decisions_by_trace_mv` is a planned projection. Treat the diagrams as the design target; cross-check `mcp-memory/schema.sql` + `.mcp.json` for actual deployment. Reflects L3 concrete adoptions folded in 2026-04-27/28 — see [`jarvis-build-vs-buy.md`](jarvis-build-vs-buy.md).
 
+**Update (2026-07-08, #1137):** the **Plan MCP** in the Container view was a planned **LangGraph carveout**; LangGraph has since been retired project-wide (#743/#744), and the reactive-core (M44 — `wake_driver` + `executor` + `orchestrator` + a Supabase `task_queue`) replaced the retired dispatcher. The mermaid source below now drops the retired "LangGraph" token (Plan MCP shown as *planned*, backing tech TBD). This Container view predates M44 and does **not** yet render the reactive-core containers — a full M44 Container-view revision is design work, tracked separately, not part of this regeneration.
+
 Rendered SVGs alongside each block: [c4-1.svg](c4-1.svg) Context · [c4-2.svg](c4-2.svg) Container · [c4-3.svg](c4-3.svg) Component · [c4-4.svg](c4-4.svg) Event dataflow. Re-render: `npx -p @mermaid-js/mermaid-cli mmdc -i jarvis-architecture-c4.md -o c4.svg` (writes `c4-1.svg`…`c4-4.svg`).
 
 ## C4 Level 1 — Context
@@ -52,7 +54,7 @@ flowchart LR
     subgraph MCPS[MCP servers]
         direction TB
         mcp_memory[mcp-memory<br/>pg_bitemporal + libs]
-        mcp_plan[Plan MCP<br/>LangGraph carveout]
+        mcp_plan[Plan MCP<br/>planned]
         mcp_research[Research<br/>GPT Researcher + others]
     end
 
@@ -226,7 +228,7 @@ sequenceDiagram
 ## Reading guide
 
 - **Identity layer** is principal-authored axioms — the alignment substrate. Never auto-mutated (M3). Drift detection delegated to `claude-md-management` plugin (C12).
-- **Cognition layer** is what Jarvis *thinks with*. C3 is the durable substrate (bi-temporal facts + episodic events); C4 sequences work on a LangGraph-backed plan store; C5 is the active loop that mutates C3 from C17 events with class-conditional calibration; C6 is the act/ask classifier consulted before every tool call.
+- **Cognition layer** is what Jarvis *thinks with*. C3 is the durable substrate (bi-temporal facts + episodic events); C4 sequences work on a plan store; C5 is the active loop that mutates C3 from C17 events with class-conditional calibration; C6 is the act/ask classifier consulted before every tool call.
 - **Action layer** is what Jarvis *does*. C7/C8/C9 are the runtime; C10 is the external info-gathering arm with GPT Researcher as primary engine.
 - **Interface layer** is the boundary with the principal — C11 ingests with a YAML noise filter; C12 communicates out via CLI + Anthropic plugins.
 - **Cross-cutting** layer wraps everything: C17 is the substrate every event passes through; C13/C14/C16/C15 are governance/safety/quality/evolution functions that consume and gate.

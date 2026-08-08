@@ -1,6 +1,12 @@
 # Ollama Setup for Federation & Delegation Agents
 
-Local LLM runtime for LangGraph persistent agents. Ollama handles cheap, always-on decisions (routing, classification) without burning Claude tokens.
+Local LLM runtime for the reactive-core agents (milestone #44). Ollama is the
+intended host for cheap, always-on decisions (event routing, classification)
+without burning Claude tokens. **Status: staged-dormant** — the client
+(`agents/ollama_client.py`) exists but has no live consumer yet; the
+orchestrator MVP (#744) is pure-deterministic. The judgment layer that will
+call Ollama is deferred to #872. This doc is the setup reference for when that
+lands; nothing here is on a live path today.
 
 ## Environment
 
@@ -25,6 +31,24 @@ curl http://localhost:11434/api/tags   # → lists installed models
 | `qwen3:8b-4k` | 5.2 GB | Same | Shorter context variant |
 
 Reasoning: `qwen3:4b` handles event classification reliably at ~1.8–2.4s warm latency. The larger `qwen3:8b` offers little upside for simple routing/classification and pushes VRAM close to the limit on the dev box. When the routine host comes online, switch the agent config to `qwen3:8b` without code changes.
+
+## Three benches, three roles — don't conflate them
+
+`qwen3:4b` above is the **dev-box event-classification** pick. Two later
+workshop benches selected different models for different jobs; all three
+coexist, none supersedes another:
+
+| Role | Model | Bench | Where | Status |
+|------|-------|-------|-------|--------|
+| Event classification / routing (cheap, always-on) | `qwen3:4b` | #171 (this doc) | Dev box — i5 / RTX 3050 6GB | Reference; consumer deferred to #872 |
+| Orchestrator judgment layer | `gemma4:e4b` | #738 | RTX 5080 host | Deferred to #872 — orchestrator MVP (#744) is pure-deterministic, no live model |
+| Sandcastle AFK **coding** loop | `qwen2.5-coder:14b` (Tier 0) / `:7b` (Tier 1 OOM fallback) | #538 | RTX 5080 16GB host | Production-default for the coding loop (bench #538) |
+
+The classification model (`qwen3:4b`) and the coding model
+(`qwen2.5-coder:14b`) answer unrelated questions — routing an event vs. writing
+a diff — so they are benched and configured independently. The orchestrator's
+own judgment model (`gemma4:e4b`, #738) is a third axis, dormant until #872
+wires a model into the currently-deterministic orchestrator.
 
 ## Verified acceptance criteria (#171)
 
@@ -60,7 +84,7 @@ curl -s -X POST http://localhost:11434/api/generate -d '{
 }'
 ```
 
-For `langchain-ollama` Python client, pass `think=False` via model kwargs. Wire this into the shared client config in `agents/` so it is not rediscovered per-agent.
+From the official `ollama` Python client (`agents/ollama_client.py`), pass `think=False` in the request options. Wire this into that shared client so it is not rediscovered per-agent.
 
 ## HTTP API cheatsheet
 

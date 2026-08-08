@@ -27,21 +27,25 @@ from pathlib import Path
 import pytest
 
 
-WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[2]
-    / ".github"
-    / "workflows"
-    / "merge-train.yml"
-)
+WORKFLOW_PATH = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "merge-train.yml"
 
 CAP = 10
 
 
+#: Applied by auto-merge-enable when /code-review cannot actually review a PR
+#: (#1234). Such a PR never gets auto-merge armed, so it would drop out of the
+#: `autoMergeRequest != null` selector — yet under `strict: true` branch
+#: protection its branch still has to be kept fresh, or the manual merge it is
+#: waiting for is blocked on a stale branch. Literal must match
+#: auto-merge-enable.yml's CARVE_OUT_LABEL.
+CARVE_OUT_LABEL = "automerge-withheld:review-blind"
+
+
 def _is_candidate(pr: dict) -> bool:
-    """Open + non-draft + auto-merge-enabled + not owner-parked."""
+    """Open + non-draft + not owner-parked + (auto-merge-enabled OR carve-out)."""
     if pr.get("isDraft"):
         return False
-    if not pr.get("autoMerge"):
+    if not pr.get("autoMerge") and CARVE_OUT_LABEL not in pr.get("labels", []):
         return False
     if "status:owner-queue" in pr.get("labels", []):
         return False
@@ -164,13 +168,13 @@ def test_conflicts_do_not_consume_cap():
 
 def test_mixed_realistic_set():
     prs = [
-        _pr(1, created="2026-06-01", ms="BEHIND"),                       # update
-        _pr(2, created="2026-06-02", draft=True),                        # excluded (draft)
-        _pr(3, created="2026-06-03", auto=False),                        # excluded (no auto)
-        _pr(4, created="2026-06-04", mg="CONFLICTING"),                  # conflict
-        _pr(5, created="2026-06-05", labels=["status:owner-queue"]),     # excluded (parked)
-        _pr(6, created="2026-06-06", ms="CLEAN"),                        # left alone
-        _pr(7, created="2026-06-07", ms="BEHIND"),                       # update
+        _pr(1, created="2026-06-01", ms="BEHIND"),  # update
+        _pr(2, created="2026-06-02", draft=True),  # excluded (draft)
+        _pr(3, created="2026-06-03", auto=False),  # excluded (no auto)
+        _pr(4, created="2026-06-04", mg="CONFLICTING"),  # conflict
+        _pr(5, created="2026-06-05", labels=["status:owner-queue"]),  # excluded (parked)
+        _pr(6, created="2026-06-06", ms="CLEAN"),  # left alone
+        _pr(7, created="2026-06-07", ms="BEHIND"),  # update
     ]
     to_update, conflicts = select(prs)
     assert to_update == [1, 7]
@@ -267,7 +271,45 @@ def test_workflow_reads_candidates_loud_not_swallowed():
 def test_workflow_filters_match_selection_rule():
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     for token in ("isDraft", "autoMergeRequest", "status:owner-queue", "BEHIND", "update-branch"):
-        assert token in text, f"merge-train.yml no longer references {token!r}; selection rule drifted from this test."
+        assert token in text, (
+            f"merge-train.yml no longer references {token!r}; selection rule drifted from this test."
+        )
+
+
+def test_carve_out_pr_is_a_candidate_without_automerge():
+    # AC5 (#1234): a carve-out PR never has auto-merge armed, but under
+    # `strict: true` branch protection its branch still has to be kept fresh —
+    # otherwise the manual merge it is waiting for is itself blocked on a stale
+    # branch, and the carve-out turns a review gap into a permanent stall.
+    to_update, _ = select(
+        [_pr(7, created="2026-07-23T00:00:00Z", auto=False, labels=[CARVE_OUT_LABEL])]
+    )
+    assert to_update == [7]
+
+
+def test_owner_queue_still_excludes_a_carve_out_pr():
+    # The carve-out widens the selector; it must not punch through the owner's
+    # explicit park. status:owner-queue stays the stronger signal.
+    to_update, to_flag = select(
+        [
+            _pr(
+                8,
+                created="2026-07-23T00:00:00Z",
+                auto=False,
+                labels=[CARVE_OUT_LABEL, "status:owner-queue"],
+            )
+        ]
+    )
+    assert to_update == [] and to_flag == []
+
+
+def test_workflow_selector_includes_carve_out_label():
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert CARVE_OUT_LABEL in text, (
+        "merge-train's candidate selector must also admit #1234 carve-out PRs "
+        "(auto-merge withheld, manual merge owed) or their branches go stale "
+        "behind main under strict branch protection."
+    )
 
 
 def test_workflow_has_concurrency_guard():

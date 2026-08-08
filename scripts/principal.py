@@ -18,7 +18,7 @@ inside hooks — a hard regression for ``protected-files.py`` decisions.
 
 **Contract for autonomous entry points**: launchers that run Claude headless
 (the reactive-core executor, any cron/task wrapper) MUST set
-``JARVIS_PRINCIPAL`` explicitly. The APScheduler scheduler service that
+``JARVIS_PRINCIPAL`` explicitly. The resident scheduler service that
 formerly demonstrated this via NSSM ``AppEnvironmentExtra=JARVIS_PRINCIPAL=autonomous``
 was retired in #743 (replaced by the event-driven ``agents/wake_driver.py``);
 the executor that spawns ``claude -p`` is the headless launcher now bound by

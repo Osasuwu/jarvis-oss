@@ -13,13 +13,50 @@ Requires SUPABASE_URL and SUPABASE_KEY env vars (same as sandcastle container).
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from supabase import create_client
-
 ROOT = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# Sensitive content patterns (fail-loud scrub).
+# These patterns detect infra topology, user-profile paths, and PII that
+# should never land in the public decision dump. If any match the rendered
+# output of a decision, the dump aborts before writing — forcing the DB
+# record to be cleaned rather than silently skipping the decision.
+# ---------------------------------------------------------------------------
+
+_OCTET = r"(?:25[0-5]|2[0-4]\d|1?\d?\d)"  # 0–255
+
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    # CGNAT/tailnet IP (100.x.x.x — matches the full 100/8 block)
+    (re.compile(rf"\b100\.{_OCTET}\.{_OCTET}\.{_OCTET}\b"), "tailnet-ip"),
+    # RFC-1918 private IPs
+    (re.compile(rf"\b10\.{_OCTET}\.{_OCTET}\.{_OCTET}\b"), "rfc1918-10"),
+    (re.compile(rf"\b172\.(?:1[6-9]|2\d|3[01])\.{_OCTET}\.{_OCTET}\b"), "rfc1918-172"),
+    (re.compile(rf"\b192\.168\.{_OCTET}\.{_OCTET}\b"), "rfc1918-192"),
+    # Windows user-profile paths (drive:\Users\<name>)
+    (re.compile(r"[A-Za-z]:\\Users\\[^\\/:*?\"<>|\n]+"), "win-user-path"),
+    # POSIX user-profile paths (/home/<name> or /Users/<name>)
+    (re.compile(r"/(?:home|Users)/[^/\\\s:*,?\"<>|\n]+"), "nix-user-path"),
+    # Email addresses
+    (re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"), "email"),
+]
+
+
+def _check_decision(d: dict) -> str | None:
+    """Return matched pattern label if rendered decision contains sensitive text.
+
+    Returns ``None`` when the decision is clean. The matched value itself is
+    never echoed in output — only the pattern label, which is metadata.
+    """
+    rendered = render_decision(d)
+    for pat, label in _SENSITIVE_PATTERNS:
+        if pat.search(rendered):
+            return label
+    return None
 
 
 def parse_quarter(quarter: str) -> tuple[int, int]:
@@ -40,9 +77,8 @@ def quarter_date_range(year: int, q: int) -> tuple[str, str]:
     end_month = start_month + 2
     # end_date is the last day of the last month in the quarter
     if end_month == 12:
-        end_year = year
+        pass
     else:
-        end_year = year
         end_month += 1  # go to first day of NEXT month
         # last day of quarter = first day of next month minus 1 day
     import calendar
@@ -230,6 +266,12 @@ def main():
         print("Error: SUPABASE_URL and SUPABASE_KEY env vars required.", file=sys.stderr)
         sys.exit(1)
 
+    # Lazy import: keep supabase off the module-import path so the scrub
+    # meta-test (tests/ci/test_dump_scrub_guard.py) can import this module in
+    # the minimal meta-tests CI env, which installs only pytest/pyyaml. Mirrors
+    # the pattern in capture-episode.py / consolidation-run.py.
+    from supabase import create_client
+
     client = create_client(url, key)
 
     decisions = fetch_decisions(client, start_iso, end_iso)
@@ -237,6 +279,20 @@ def main():
     if not decisions:
         print(f"No decisions found for {args.quarter} ({start_iso} to {end_iso})")
         sys.exit(0)
+
+    # Fail-loud scrub: abort if any decision's rendered output contains a
+    # sensitive pattern. The record itself needs cleaning — silent skip
+    # or redaction would hide the problem.
+    for d in decisions:
+        match = _check_decision(d)
+        if match is not None:
+            episode_id = d.get("id", "?")
+            print(
+                f"Error: decision {episode_id} triggered sensitive-content "
+                f"check (pattern: {match}). Aborting dump.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     doc = render_document(decisions, args.quarter, cutoff)
 

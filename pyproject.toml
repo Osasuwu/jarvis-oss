@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=83.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,18 +20,35 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
 ]
+# Every dependency below carries an explicit upper bound (next major, or <1
+# while still pre-1.0) — #1296, precedent: the 2026-07-28 mcp 2.0 outage
+# (#1292/#1294) where an unbounded `mcp>=1.0.0` turned every CI run red the
+# instant a breaking major shipped, with no PR/merge needed to trigger it.
+# Bounds are lifted by Dependabot's weekly constraint-bump PRs (already
+# configured for this file in .github/dependabot.yml) once that PR's own CI
+# run proves the new major resolves cleanly — not by hand ahead of time.
+# tests/ci/test_dependency_bounds_guard.py fails closed if a bare `>=`-only
+# spec is reintroduced here.
 dependencies = [
-  "python-dotenv>=1.0.1",
+  "python-dotenv>=1.0.1,<2",
 ]
 
 [project.optional-dependencies]
 # Core: MCP memory server (cross-device persistent memory via Supabase)
 memory = [
-  "mcp>=1.0.0",
-  "supabase>=2.0.0",
-  "voyageai>=0.2.3",
-  "httpx>=0.27",
-  "pyyaml>=6.0",
+  # Floor raised to 2.0 in #1294: mcp-memory/server.py, mcp-status/server.py,
+  # and scripts/telegram-mcp-server.py are now all ported to the v2 API
+  # (constructor-param `Server(on_list_tools=..., on_call_tool=...)` in place
+  # of 1.x decorator registration; `MCPServer`/`Context` from
+  # `mcp.server.mcpserver` in place of `mcp.server.fastmcp.FastMCP`).
+  # tests/memory/test_memory_server_script_launch.py is the tripwire that
+  # would go red again on a v1-only environment. Upper-bounded <3 per #1296 —
+  # lift once the ported files are re-verified against the v3 API when it ships.
+  "mcp>=2.0.0,<3",
+  "supabase>=2.0.0,<3",
+  "voyageai>=0.2.3,<1",
+  "httpx>=0.27,<1",
+  "pyyaml>=6.0,<7",
 ]
 # Pillar 7: reactive-core agents (Ollama + Postgres + Supabase bridge).
 # LangGraph (langgraph / langgraph-checkpoint-postgres / langchain-ollama) was
@@ -42,17 +59,20 @@ memory = [
 # can't open. psutil is conditional (lazy import in pid_sidecar #952) — used to
 # re-adopt live processes across driver restarts.
 agents = [
-  "psycopg[binary,pool]>=3.1",
-  "ollama>=0.4.0",
+  "psycopg[binary,pool]>=3.1,<4",
+  # STAGED-DORMANT (do-not-retire): no live consumer yet — staged for the
+  # orchestrator local-inference tick (decision a0a4ce7b, no tracking issue by
+  # design). See agents/ollama_client.py. Keep through native-first sweeps.
+  "ollama>=0.6.2,<1",
   # Supabase bridge — agents read/write memories/events/goals/audit_log directly
   # (MCP is Claude-Code-only, so graph nodes need a native client).
-  "supabase>=2.0.0",
+  "supabase>=2.0.0,<3",
   # GitHub Events API client. supabase-py pulls httpx transitively today,
   # but agents/github_client.py depends on it unconditionally — declare it
   # explicitly so the contract doesn't depend on a transitive.
-  "httpx>=0.27",
+  "httpx>=0.27,<1",
   # Process liveness tracking — survives driver restarts via PID sidecar (#952).
-  "psutil>=5.9.0",
+  "psutil>=7.2.2,<8",
 ]
 # All runtime components
 full = [
@@ -61,9 +81,9 @@ full = [
 ]
 # Development
 dev = [
-  "pytest>=7.4",
-  "pytest-asyncio>=0.23",
-  "ruff>=0.3",
+  "pytest>=7.4,<10",
+  "pytest-asyncio>=0.23,<2",
+  "ruff>=0.16.1,<1",
 ]
 
 [project.urls]
@@ -82,15 +102,19 @@ py-modules = ["risk_radar"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "."]
+pythonpath = ["src", ".", "tests/_support"]
 asyncio_mode = "auto"
-# Pin prepend import mode (today's pytest default) explicitly: tests/ is not a
-# package, and test modules import shared helpers as top-level names — both from
-# conftest (`from conftest import FakeRunner`, #980) and from sibling test
-# modules (`from test_utils import FakeClient`). That only works while the test
-# directory is on sys.path[0], which prepend mode guarantees. If pytest ever
-# changes its default to importlib, this keeps those imports working.
-# (#978 round-3 MINOR 6; #980.)
+# Pin prepend import mode (today's pytest default) explicitly. tests/ has no
+# __init__.py (only its domain subdirs do), so prepend inserts tests/ onto
+# sys.path and every test imports the root `conftest` as a top-level module
+# (`from conftest import FakeRunner`, #980) regardless of which subdir it lives
+# in. Shared test doubles moved out of the collected tree into tests/_support/
+# (renamed off the `test_` prefix so they are not themselves collected) and are
+# imported by bare name via the pythonpath entry above:
+#   `from supabase_stubs import FakeClient`  (was test_utils, #980)
+#   `from record_decision_doubles import make_client`  (was test_record_decision_helpers)
+# If pytest ever changes its default to importlib, this keeps those imports
+# working. (#978 round-3 MINOR 6; #980; #868.)
 addopts = "--import-mode=prepend"
 
 [tool.ruff]

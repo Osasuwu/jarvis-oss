@@ -1,6 +1,6 @@
 """Meta-test pinning the DB-gated advancer CI wiring (#975).
 
-The DB-gated tests in ``tests/test_global_task_advancer.py`` exercise the
+The DB-gated tests in ``tests/reactive_core/test_global_task_advancer.py`` exercise the
 advancer against a real Postgres: ``FOR UPDATE SKIP LOCKED`` claiming,
 ``ON CONFLICT (dedup_key) DO NOTHING`` dedup, and interval arithmetic. Before
 #975 they ``pytest.skip()``-ed whenever ``DATABASE_URL`` was unset — which is
@@ -43,7 +43,7 @@ BOOTSTRAP_SQL = REPO_ROOT / "tests" / "ci" / "global_task_schema_bootstrap.sql"
 # Canonical names — branch protection (if it ever references this job) and any
 # future path-filtered guard must use these exact strings.
 CANONICAL_JOB_NAME = "pytest-db"
-ADVANCER_TEST_FILE = "tests/test_global_task_advancer.py"
+ADVANCER_TEST_FILE = "tests/reactive_core/test_global_task_advancer.py"
 REAL_MIGRATION = "supabase/migrations/20260615120000_create_global_task_sources.sql"
 
 
@@ -154,7 +154,7 @@ def _fixture_decision(database_url: str | None, require_db: str | None) -> str:
     Returns one of: ``"connect"`` (DATABASE_URL present → real connection),
     ``"fail"`` (REQUIRE_DB set but DATABASE_URL missing → hard error), or
     ``"skip"`` (neither → clean skip). Mirrors the branch in
-    tests/test_global_task_advancer.py::db_connection — kept in sync by hand
+    tests/reactive_core/test_global_task_advancer.py::db_connection — kept in sync by hand
     because the fixture imports psycopg at call time and can't be invoked here.
     """
     if database_url:

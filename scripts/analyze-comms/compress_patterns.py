@@ -2,7 +2,7 @@
 
 Reads comms_extract.jsonl → {DEVICE}_patterns.json (aggregate, <20KB).
 Preserves actual text snippets (NOT paraphrased), truncated to 100 chars.
-Safe to upload to GDrive via MCP (base64 fits in Read tool limit).
+Small enough to scp between devices; never uploaded to third-party services.
 """
 from __future__ import annotations
 import json, re, socket, sys, random
@@ -128,7 +128,12 @@ def main(src_path: str, out_path: str) -> None:
                 (msgs[j] for j in range(i - 1, -1, -1) if msgs[j]["role"] == "a"),
                 None,
             )
-            trigger_text = prev_a["text"] if prev_a else ""
+            if prev_a is None:
+                # A correction/affirmative is a *reaction* to an assistant message;
+                # the opening message of a session can't be one. Style stats above
+                # still count it.
+                continue
+            trigger_text = prev_a["text"]
             correction_text = m["text"]
 
             if NEG_RE.search(correction_text):
@@ -208,7 +213,7 @@ def main(src_path: str, out_path: str) -> None:
     print(f"affirmatives: {len(affirmative_raw)}")
     print(f"out: {out}  size: {size_kb:.1f} KB")
     if size_kb > 80:
-        print(f"WARNING: {size_kb:.0f} KB exceeds 80 KB target — GDrive MCP upload may fail")
+        print(f"WARNING: {size_kb:.0f} KB exceeds 80 KB target — check for runaway examples")
 
 
 if __name__ == "__main__":

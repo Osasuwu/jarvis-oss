@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -38,7 +38,7 @@ jobs:
   # DB-gated integration tests (issue #975). Without a real Postgres the
   # advancer's FOR UPDATE SKIP LOCKED / ON CONFLICT dedup / interval arithmetic
   # were never exercised in CI — the DB-gated tests in
-  # tests/test_global_task_advancer.py silently skipped. This job stands up a
+  # tests/reactive_core/test_global_task_advancer.py silently skipped. This job stands up a
   # Postgres service, bootstraps the schema, and runs ONLY that file with
   # DATABASE_URL set so those tests actually run.
   #
@@ -76,7 +76,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -99,4 +99,62 @@ jobs:
       - name: Run DB-gated advancer tests
         env:
           REQUIRE_DB: "1"
-        run: pytest tests/test_global_task_advancer.py -v -rs
+        run: pytest tests/reactive_core/test_global_task_advancer.py -v -rs
+
+  # DB-gated find_consolidation_clusters tests (#1187). The rewritten RPC
+  # (supabase/migrations/20260715130000_rewrite_find_consolidation_clusters.sql)
+  # is plpgsql running inside Postgres itself — HNSW LATERAL probes, temp-table
+  # label propagation, cap-10 truncation — none of which a pure-Python unit
+  # test can exercise. This job stands up pgvector, bootstraps a minimal
+  # `memories` table, applies the REAL migration, and runs the RPC against
+  # synthetic rows so partition isolation / transitive merge / truncation /
+  # dead-row exclusion actually get verified in CI.
+  pytest-db-pgvector:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install package + extras
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[full,dev]"
+
+      - name: Bootstrap pgvector schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f tests/ci/pgvector_schema_bootstrap.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20260715130000_rewrite_find_consolidation_clusters.sql
+
+      - name: Run DB-gated consolidation-cluster tests
+        env:
+          REQUIRE_DB: "1"
+        run: pytest tests/memory/test_find_consolidation_clusters_db.py -v -rs

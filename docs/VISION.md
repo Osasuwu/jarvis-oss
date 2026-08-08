@@ -216,7 +216,7 @@ Owns axis *how it thinks*. SOUL.md identity, always-load rules, behavioral hooks
 ### Reach (cross-cutting / future)
 
 **Pillar 6 — Federation & Delegation**
-Multi-agent coordination architecture: jurisdiction boundaries, `/delegate` dispatch, persistent agents (LangGraph — Sprint 1 prototype, not production), action-agent safety gates. Direction is **HYBRID** — federation across independent jurisdictions (each project owns its own Jarvis instance and memory) + orchestrator-worker inside each delegated task.
+Multi-agent coordination architecture: jurisdiction boundaries, `/delegate` dispatch, persistent agents (Sprint 1 prototype, not production), action-agent safety gates. Direction is **HYBRID** — federation across independent jurisdictions (each project owns its own Jarvis instance and memory) + orchestrator-worker inside each delegated task.
 
 **Pillar 7 — Integrations** *(L1.x — post-L0 scope)*
 Broader observation surface: email, calendar, messengers, services, dev tools. Read access by default; writes manually configured per tool. Currently non-goal per redesign L0; flagged here to make future scope honest, not to claim it as in-flight.
@@ -229,7 +229,7 @@ Proactive protection: credential registry, expiry monitoring, secret-leak scanni
 **Digital Twin — acting as principal**
 Distinct operating mode: Jarvis drafts and acts in the principal's style for outbound work the principal would normally do (emails, messages, professional documents). Inverts the default principal-Jarvis role.
 
-Has its own gating: drafts welcome; final send stays with the principal until the digital-twin mode is mature (per SOUL §External content safety). Uses all five axes, but with judgment **calibrated to** the principal's voice rather than Jarvis's own — through accumulated examples and explicit style memories, not model fine-tuning.
+Has its own gating: drafts welcome; final send stays with the principal until the digital-twin mode is mature (per `docs/context/invariants.md` → *Sending as the owner isn't autonomous*). Uses all five axes, but with judgment **calibrated to** the principal's voice rather than Jarvis's own — through accumulated examples and explicit style memories, not model fine-tuning.
 
 Distinct from Pillar 5 (Judgment & Calibration): that one calibrates Jarvis-as-Jarvis; Digital Twin calibrates Jarvis-as-principal.
 

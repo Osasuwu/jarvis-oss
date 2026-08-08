@@ -25,7 +25,7 @@ Single positional argument — the GitHub PR number to rework.
 
 ## Contract
 
-This skill deliberately **skips** the SOUL.md grill-me checkbox. Findings are
+This skill deliberately **skips** the grill trigger checkbox. Findings are
 explicit reviewer signals; assumptions were already grilled (or not) when the
 initial `/implement` ran. Re-litigating findings as implicit assumptions adds
 no value and duplicates the review cycle.
@@ -568,7 +568,7 @@ the diagnostic signal the owner needs to choose between rebase and close.
 - Never modify PR title, `Closes #NNN` line, or labels other than
   `status:rework-in-progress` (entry) and `status:needs-human` (terminal stuck).
 - Never merge the PR — leave it open for human or orchestrator merge.
-- Never invoke the SOUL.md grill-me checkbox or any `/grill` skill.
+- Never invoke the grill trigger checkbox or any `/grill` skill.
 - Never push to `main` / `master` — only to the PR's `headRefName` branch.
 - If CI fails after a rework push, comment on the PR with the failure details
   but do not revert. The orchestrator or owner handles CI failures.
@@ -589,6 +589,10 @@ Check for:
 - Secrets or credentials in any form
 - Symmetric patterns: when fixing a class of finding, grep for sibling instances
   across the file AND related files
+- **Self-review (same vocabulary as `/implement`)**: run the Standards + Spec
+  checklist — especially the Spec lens to verify fixes stay faithful to the PR
+  scope and don't creep beyond the originating issue. Fowler-12 naming is shared
+  so pre-PR and post-review passes use the same language.
 
 ## Recovery playbook
 

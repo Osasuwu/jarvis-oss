@@ -3,7 +3,8 @@
 Two-gate alignment (#992, milestone #52): the event-side `review_negative`
 trigger must use the SAME merge-blocking predicate as the MERGE gate in
 code-review.yml — emit iff the bot comment carries an all-caps
-CRITICAL/MAJOR/BLOCKING severity heading (case-sensitive). The old parser keyed
+CRITICAL/MAJOR/BLOCKING/MEDIUM severity heading (case-sensitive; MEDIUM
+promoted into the blocking set, #1385 follow-up). The old parser keyed
 on a bare `^Found N issues:` line, which was simultaneously:
 
   - too loose — it fired `review_negative` (→ a /rework round) on a minor-only
@@ -45,8 +46,9 @@ REVIEW_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "code-review.yml"
 # anchored so a bare `^` is the line-start equivalent of the gate's `(^|\n)`.
 TITLE_RE = re.compile(r"^#{1,6}[ \t]*(?:Claude[ \t]+)?Code[ \t]+Review", re.I | re.M)
 
-# BLOCK signal: an all-caps CRITICAL/MAJOR/BLOCKING severity heading — the ONLY
-# merge-blocking shape (two-gate, #988/#992). Byte-identical to BLOCK_RE in
+# BLOCK signal: an all-caps CRITICAL/MAJOR/BLOCKING/MEDIUM severity heading —
+# the ONLY merge-blocking shapes (two-gate, #988/#992; MEDIUM promoted from
+# advisory, #1385 follow-up). Byte-identical to BLOCK_RE in
 # tests/ci/test_code_review_verdict_guard.py. Case-SENSITIVE (no re.I): real
 # plugin severity sections are all-caps; title-case prose ("### Blocking issues
 # — None", #962) must NOT match. MINOR dropped — minors never block.
@@ -57,7 +59,7 @@ TITLE_RE = re.compile(r"^#{1,6}[ \t]*(?:Claude[ \t]+)?Code[ \t]+Review", re.I | 
 # under_c_locale pins that). Without LC_ALL=C the bash would diverge — match 0
 # on the emoji while this mirror says 1 — so the locale pin is what keeps the
 # `test_emoji_decorated_blocking_emits` expectation truthful at runtime.
-BLOCK_RE = re.compile(r"^#{1,6}[^A-Za-z0-9\n]*(?:CRITICAL|MAJOR|BLOCKING)\b", re.M)
+BLOCK_RE = re.compile(r"^#{1,6}[^A-Za-z0-9\n]*(?:CRITICAL|MAJOR|BLOCKING|MEDIUM)\b", re.M)
 
 # Back-compat count derivation (blocking-heading counts).
 CRIT_RE = re.compile(r"^#{1,6}[^A-Za-z0-9\n]*(?:CRITICAL|BLOCKING)\b", re.M)
@@ -253,23 +255,24 @@ def parser_run() -> str:
 
 class TestParserWiring:
     def test_block_pattern_present_and_canonical(self, parser_run):
-        assert r"^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)\b" in parser_run, (
+        assert r"^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING|MEDIUM)\b" in parser_run, (
             "Parser must key the emit decision on the all-caps CRITICAL/MAJOR/"
-            "BLOCKING severity heading (two-gate, #992)."
+            "BLOCKING/MEDIUM severity heading (two-gate, #992; MEDIUM "
+            "promoted #1385 follow-up)."
         )
 
     def test_block_pattern_byte_identical_to_merge_gate(self, parser_run):
         # The whole point of #992: event trigger and merge gate share ONE
         # predicate. Pin them to the same literal so they cannot drift apart.
         review_run = REVIEW_WORKFLOW.read_text(encoding="utf-8")
-        pattern = r"^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)\b"
+        pattern = r"^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING|MEDIUM)\b"
         assert pattern in parser_run and pattern in review_run, (
             "Block pattern must be byte-identical in event-dispatch.yml and "
             "code-review.yml — divergence reopens the two-gate alignment gap."
         )
 
     def test_block_check_is_case_sensitive(self, parser_run):
-        assert "grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)" in parser_run, (
+        assert "grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING|MEDIUM)" in parser_run, (
             "Block check must be case-sensitive (grep -qE, not -qiE) so title-"
             "case prose like 'Blocking issues — None' does not false-trigger."
         )
@@ -299,7 +302,7 @@ class TestParserWiring:
         )
 
     def test_block_check_precedes_count_derivation(self, parser_run):
-        block_at = parser_run.index("(CRITICAL|MAJOR|BLOCKING)")
+        block_at = parser_run.index("(CRITICAL|MAJOR|BLOCKING|MEDIUM)")
         count_at = parser_run.index("N_CRITICAL=$(grep")
         assert block_at < count_at, (
             "The blocking-heading gate must run before count derivation — "
@@ -320,5 +323,5 @@ class TestParserWiring:
             "block check under the runner's C.UTF-8 default."
         )
         assert parser_run.index("export LC_ALL=C") < parser_run.index(
-            "(CRITICAL|MAJOR|BLOCKING)"
+            "(CRITICAL|MAJOR|BLOCKING|MEDIUM)"
         ), "LC_ALL=C must be exported before the first severity grep."

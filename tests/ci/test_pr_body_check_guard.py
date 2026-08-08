@@ -22,12 +22,7 @@ from pathlib import Path
 import pytest
 
 
-WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[2]
-    / ".github"
-    / "workflows"
-    / "pr-body-check.yml"
-)
+WORKFLOW_PATH = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "pr-body-check.yml"
 
 
 def evaluate(body: str, labels: list[str], title: str = "") -> tuple[bool, str]:
@@ -41,7 +36,14 @@ def evaluate(body: str, labels: list[str], title: str = "") -> tuple[bool, str]:
     if re.match(r"^refactor(\([^)]*\))?:", title, re.IGNORECASE):
         return True, "refactor"
 
-    matches = re.findall(r"(?:closes|fixes|resolves)\s+#(\d+)", body, re.IGNORECASE)
+    # Mirror of the YAML alternation (#1136 AC-GATE): closing keywords
+    # (closes/fixes/resolves) auto-close on merge; refs/references link WITHOUT
+    # closing (the partial-work escape). `refs?|references?` deliberately does
+    # not swallow the verb "refers" — `refers to #N` carries no `\s+#` right
+    # after "ref"/"refs", so it stays blocked.
+    matches = re.findall(
+        r"(?:closes|fixes|resolves|refs?|references?)\s+#(\d+)", body, re.IGNORECASE
+    )
     if matches:
         return True, "linked"
 
@@ -59,6 +61,34 @@ def test_alt_markers_allow():
         body = f"{marker} #42"
         allowed, _ = evaluate(body, [])
         assert allowed, f"{marker} should be accepted"
+
+
+def test_refs_marker_allows():
+    """#1136 AC-GATE: `Refs #N` links a partial-work PR without closing it."""
+    for marker in ("Ref", "Refs", "ref", "REFS"):
+        body = f"{marker} #42"
+        allowed, reason = evaluate(body, [])
+        assert allowed, f"{marker} should be accepted as a linkage keyword"
+        assert reason == "linked"
+
+
+def test_references_marker_allows():
+    """#1136 AC-GATE: `References #N` / `Reference #N` are linkage keywords."""
+    for marker in ("Reference", "References", "references", "REFERENCE"):
+        body = f"{marker} #42"
+        allowed, reason = evaluate(body, [])
+        assert allowed, f"{marker} should be accepted as a linkage keyword"
+        assert reason == "linked"
+
+
+def test_refers_to_still_blocked():
+    """#1136 AC-GATE: prose `refers to #N` is NOT a linkage keyword — must block.
+
+    Guards the alternation boundary: `refs?`/`references?` must not swallow the
+    English verb `refers`, which carries no linkage semantics.
+    """
+    allowed, _ = evaluate("This PR refers to #42 for background.", [])
+    assert not allowed
 
 
 def test_hotfix_label_bypasses():
@@ -97,6 +127,21 @@ def test_workflow_yaml_keeps_closes_regex():
     text = WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "closes|fixes|resolves" in text.lower(), (
         "PR Body Check regex changed shape — update this test to match."
+    )
+
+
+def test_workflow_yaml_carries_refs_alternation():
+    """Config dimension (#1136 AC-GATE): the YAML regex must accept refs/references.
+
+    Locks the executor-lane partial-work escape into the merge gate: a PR that
+    uses `Refs #N` (link-without-close) must pass require-linked-issue. If the
+    alternation drops the `refs?|references?` branch, this test (and the
+    `_augment_closes_mandate` escape it backs) is stale.
+    """
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "refs?|references?" in text.lower(), (
+        "PR Body Check regex no longer carries the refs/references alternation; "
+        "the #1136 partial-work `Refs #N` escape is now unsupported."
     )
 
 

@@ -1,7 +1,7 @@
 """Generate committed audit snapshots + seeded manifests for the baseline repos.
 
 Runs the live :class:`~scripts.repo_baseline.auditor.Auditor` over every repo in
-``BASELINE_REPOS`` and writes, per repo:
+every account pass (:data:`ACCOUNT_PASSES`) and writes, per repo:
 
 * ``snapshots/<owner>__<name>.snapshot.json`` — the full :class:`RepoSnapshot`,
   scrubbed of device/infra topology (the repo is PUBLIC). These are the canonical
@@ -11,13 +11,21 @@ Runs the live :class:`~scripts.repo_baseline.auditor.Auditor` over every repo in
 
 Re-runnable: re-auditing is the whole point of a *re-syncable* baseline. Output is
 deterministic (sorted-key JSON *and* sorted-key YAML) so a no-op re-audit produces
-no diff regardless of the order keys are emitted in the source. Scope comes from
-``config/repos.conf``.
+no diff regardless of the order keys are emitted in the source.
+
+Scope is keyed by **account pass** (:data:`ACCOUNT_PASSES`), the orchestration
+unit: one pass per owner listed in ``config/repos.conf``. Auditing is
+read-only, so the default covers *both* — an account silently missing from the
+default scope is exactly how a second-owner repo can stay absent from the
+fixture set while downstream slices are built against it.
 
 Usage::
 
-    # Generate (or re-generate) committed fixtures
+    # Generate (or re-generate) committed fixtures for every account
     python -m scripts.repo_baseline.generate_snapshots
+
+    # One account pass only
+    python -m scripts.repo_baseline.generate_snapshots --account redrobot
 
     # Check for drift without writing
     python -m scripts.repo_baseline.generate_snapshots --check
@@ -33,7 +41,7 @@ from pathlib import Path
 import yaml
 
 from .auditor import (
-    BASELINE_REPOS,
+    ACCOUNT_PASSES,
     Auditor,
     GhRunner,
     RepoSnapshot,
@@ -45,6 +53,20 @@ from .auditor import (
 _MODULE_DIR = Path(__file__).resolve().parent
 SNAPSHOTS_DIR = _MODULE_DIR / "snapshots"
 MANIFESTS_DIR = _MODULE_DIR / "manifests"
+
+
+def resolve_account(account: str) -> list[str]:
+    """Map an ``--account`` value to its repo list. ``all`` = every pass.
+
+    Raises :class:`KeyError` on an unknown account so a typo fails loudly
+    instead of silently auditing nothing (an empty scope reports "0 repos
+    match their snapshots" — a false clean).
+    """
+    if account == "all":
+        return [repo for repos in ACCOUNT_PASSES.values() for repo in repos]
+    if account not in ACCOUNT_PASSES:
+        raise KeyError(f"unknown account pass {account!r}; known: {sorted(ACCOUNT_PASSES)}, all")
+    return list(ACCOUNT_PASSES[account])
 
 
 def _slug(repo: str) -> str:
@@ -138,7 +160,9 @@ def check(
     for repo in repos:
         try:
             committed = RepoSnapshot.from_dict(
-                json.loads((snapshots_dir / f"{_slug(repo)}.snapshot.json").read_text(encoding="utf-8"))
+                json.loads(
+                    (snapshots_dir / f"{_slug(repo)}.snapshot.json").read_text(encoding="utf-8")
+                )
             )
             fresh_scrubbed = scrub_topology(auditor.audit(repo).to_dict())
             committed_dict = scrub_topology(committed.to_dict())
@@ -172,20 +196,28 @@ def main() -> None:
         action="store_true",
         help="Re-audit and diff against committed snapshots. Exit non-zero on drift.",
     )
+    parser.add_argument(
+        "--account",
+        default="all",
+        choices=[*sorted(ACCOUNT_PASSES), "all"],
+        help="Which account pass to audit (default: all).",
+    )
     args = parser.parse_args()
 
+    repos = resolve_account(args.account)
+
     if args.check:
-        drifts = check(BASELINE_REPOS)
+        drifts = check(repos)
         if drifts:
-            print(f"Drift detected in {len(drifts)} of {len(BASELINE_REPOS)} repo(s):")
+            print(f"Drift detected in {len(drifts)} of {len(repos)} repo(s):")
             for d in drifts:
                 print(f"  {d}")
             sys.exit(1)
-        print(f"All {len(BASELINE_REPOS)} repo(s) match their committed snapshots.")
+        print(f"All {len(repos)} repo(s) match their committed snapshots.")
         return
 
-    written = generate(BASELINE_REPOS)
-    print(f"Wrote {len(written)} files for {len(BASELINE_REPOS)} repos:")
+    written = generate(repos)
+    print(f"Wrote {len(written)} files for {len(repos)} repos:")
     for path in written:
         print(f"  {path}")
 

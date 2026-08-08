@@ -2,6 +2,7 @@
 name: setup-tasks
 description: "Bootstrap all scheduled tasks on a new device. Idempotent — safe to re-run."
 version: 2.1.0
+disable-model-invocation: true
 ---
 
 # Setup Tasks
@@ -79,7 +80,7 @@ Registered via `create_scheduled_task` MCP. All run on the designated host with 
 | Task ID | Why removed |
 |---|---|
 | morning-brief | superseded by `status-record` (2026-04 migration). |
-| autonomous-loop | superseded 2026-05-26 by reactive-core M44 (`wake_driver` + `task_queue`); cron pacing replaced by event-trigger (decision `a70c4460`). Skill file retained as pre-M44 catch-up baseline; cron entry removed. |
+| autonomous-loop | superseded 2026-05-26 by reactive-core M44 (`wake_driver` + `task_queue`); cron pacing replaced by event-trigger (decision `a70c4460`). Skill file deleted (#531) once M44 shipped; cron entry removed. |
 | nightly-research | removed 2026-05-26 — `/research` is a user-driven flow, scheduled blind discovery produced low-value noise. |
 | risk-radar | removed 2026-05-26 — overlapped with `status-record` + sandcastle-orchestrator gating; signal-to-noise was poor. |
 
@@ -114,22 +115,17 @@ Polls `claude -p "/usage"`, broadcasts `CLAUDE_QUOTA_PRESSURE` repo variable wit
 .\scripts\sandcastle\Register-SandcastleTask.ps1 -QuotaProbe
 ```
 
-### Orchestrator watcher daemon (M41/#639)
+### Orchestrator watcher daemon (M41/#639) — **DECOMMISSIONED**
+
+**SUPERSEDED by M44 reactive-core (`wake_driver` + `orchestrator.handle_event`, #1385), and fully deleted by #1391.** `scripts/orchestrator/watcher.py`, `scripts/orchestrator/register-watcher.ps1`, and its test are gone from the repo; the event-driven `wake_driver` LISTEN/NOTIFY loop routes `review_negative` (and every other event type) live instead. **Do not register `Orchestrator-Watcher`** — there is nothing left to register, and a live wake_driver instance already covers this path.
 
 | Task name | Schedule | Notes |
 |---|---|---|
-| `Orchestrator-Watcher` | At host startup, restart on failure | Continuous poll (45s) of `events` table for `review_negative`; dispatches `claude -p "/rework <N>"` on hit. Gated by quota probe cache. |
+| ~~`Orchestrator-Watcher`~~ | ~~At host startup, restart on failure~~ | ~~Continuous poll (45s) of `events` table for `review_negative`; dispatches `claude -p "/rework <N>"` on hit. Gated by quota probe cache. Deleted in #1391.~~ |
 
-**Registration script:** **NOT YET WRITTEN** — tracked as a follow-up to the routine-cleanup migration. Manual registration in the interim:
+**Registration script:** never written, and never will be — do not write one.
 
-```powershell
-$action = New-ScheduledTaskAction -Execute "python" -Argument "C:\Users\<user>\GitHub\jarvis\scripts\orchestrator\watcher.py" -WorkingDirectory "C:\Users\<user>\GitHub\jarvis"
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$settings = New-ScheduledTaskSettingsSet -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 5)
-Register-ScheduledTask -TaskName "Orchestrator-Watcher" -Action $action -Trigger $trigger -Settings $settings -RunLevel Highest
-```
-
-Prerequisites for the watcher to actually dispatch:
+Prerequisites (historical, for the deleted watcher — kept only for institutional memory):
 - `SUPABASE_URL` + `SUPABASE_KEY` in the watcher's environment
 - `~/.jarvis/orchestrator/usage.json` present and fresh (written by Quota-Probe)
 - `/rework` skill installed (`install.ps1 -Apply`)

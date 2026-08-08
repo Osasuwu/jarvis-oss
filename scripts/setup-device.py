@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parent.parent
 IS_WINDOWS = platform.system() == "Windows"
 CLAUDE_BIN = "claude"  # resolved to absolute path in check_prerequisites()
 
+sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+import env_sync  # noqa: E402
+
 # ── Formatting helpers ──────────────────────────────────────────────────────
 
 # Use ANSI colors only if the terminal supports them
@@ -113,17 +116,17 @@ def check_prerequisites():
     return errors
 
 
+# A from-scratch device setup installs the full dependency tree (~90 packages
+# incl. numpy, cryptography, pillow, tokenizers) -- measured at ~80s even with
+# cached wheels, well past env_sync's DEFAULT_HEAL_TIMEOUT=40 which is tuned
+# for session-context.py's incremental drift-heal (#1312).
+_FRESH_INSTALL_HEAL_TIMEOUT = 300
+
+
 def setup_venv():
-    """Create Python venv and install dependencies."""
+    """Create Python venv and install dependencies via env_sync (#1312)."""
     header(2, "Python environment")
     venv_dir = ROOT / ".venv"
-
-    if IS_WINDOWS:
-        venv_python = venv_dir / "Scripts" / "python.exe"
-        venv_pip = venv_dir / "Scripts" / "pip.exe"
-    else:
-        venv_python = venv_dir / "bin" / "python"
-        venv_pip = venv_dir / "bin" / "pip"
 
     if not venv_dir.exists():
         print("  Creating virtual environment...")
@@ -132,26 +135,25 @@ def setup_venv():
     else:
         ok(".venv/ exists")
 
-    # Install deps
-    reqs = ROOT / "mcp-memory" / "requirements.txt"
-    if reqs.exists():
-        print("  Installing memory server dependencies...")
-        result = subprocess.run(
-            [str(venv_pip), "install", "-q", "-r", str(reqs)],
-            capture_output=True, text=True,
-        )
-        if result.returncode == 0:
-            ok("Dependencies installed (supabase, mcp, voyageai, httpx)")
-        else:
-            # pip may fail but deps might already be installed -- verify
-            check_ok, _ = run([str(venv_python), "-c", "import supabase, mcp, httpx"])
-            if check_ok:
-                ok("Dependencies already installed")
-            else:
-                err = (result.stderr or result.stdout or "unknown error").strip()
-                fail(f"pip install failed: {err[:200]}")
-                return 1
-    return 0
+    env = env_sync.get_env("main")
+    if env is None:
+        fail("env_sync registry has no 'main' entry -- cannot install dependencies")
+        return 1
+
+    check_result = env_sync.check(env)
+    if check_result.in_sync:
+        ok("Dependencies already installed")
+        return 0
+
+    print("  Installing memory server dependencies...")
+    heal_result = env_sync.heal(env, timeout=_FRESH_INSTALL_HEAL_TIMEOUT)
+    if heal_result.success:
+        ok("Dependencies installed (supabase, mcp, voyageai, httpx)")
+        return 0
+
+    err = heal_result.reason or "unknown error"
+    fail(f"Dependency install failed: {err[:200]}")
+    return 1
 
 
 def setup_env():

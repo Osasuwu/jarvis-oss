@@ -1,6 +1,8 @@
 ---
 name: learn
 description: "Drain the memory review queue: review pending classifier decisions, candidates, and merge proposals one-by-one. Use when the owner says /learn, or on the weekly cron."
+model: opus
+effort: high
 ---
 
 # /learn — memory review queue drain

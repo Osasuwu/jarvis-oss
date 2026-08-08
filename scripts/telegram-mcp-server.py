@@ -16,9 +16,9 @@ from urllib.parse import unquote, urlparse
 # Third-party libraries
 import nest_asyncio
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.mcpserver import Context, MCPServer
 from mcp.types import ToolAnnotations
-from mcp.shared.exceptions import McpError
+from mcp.shared.exceptions import MCPError
 from pythonjsonlogger import jsonlogger
 from telethon import TelegramClient, functions, types, utils
 from telethon.sessions import StringSession
@@ -227,7 +227,7 @@ def _acl_readonly_msg(identifier) -> str:
 # Initialize ACL configuration
 _parse_acl_config()
 
-mcp = FastMCP("telegram")
+mcp = MCPServer("telegram")
 
 if SESSION_STRING:
     # Use the string session if available
@@ -702,7 +702,7 @@ async def _get_effective_allowed_roots(ctx: Optional[Context]) -> List[Path]:
 
 
 def _is_roots_unsupported_error(error: Exception) -> bool:
-    if isinstance(error, McpError):
+    if isinstance(error, MCPError):
         error_code = getattr(getattr(error, "error", None), "code", None)
         error_message = (
             getattr(getattr(error, "error", None), "message", None) or str(error)

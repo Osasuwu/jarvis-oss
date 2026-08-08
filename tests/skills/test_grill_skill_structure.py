@@ -1,11 +1,16 @@
 """Test suite for /grill skill anti-sycophancy improvements (issue #689).
 
-Tests enforce the two key anti-sycophancy prompt-level edits:
+Tests enforce the surviving anti-sycophancy prompt-level edit:
 1. Third-person reframing when grilling proposals (researcher role instead of direct advice)
-2. Assumption verbalization opening phase (calibrate expectations before questioning)
 
-All features must be explicitly present in SKILL.md with literal example phrasing.
 Decision UUID 316c5911-9f06-44de-8f99-20fe3e9fa448 must be referenced.
+
+The opening-phase "assumption verbalization" behavior originally covered here was
+superseded by issue #1413, which replaced it with a session-parameter gate (time
+budget / decision stage / cadence) and dropped the confirmation-gate restatement of
+expertise/context. See tests/skills/test_grill_frontier_rounds.py for the current
+Phase 1 (session-parameter gate) and Phase 2 (dependency-gated frontier rounds)
+coverage.
 """
 
 import re
@@ -95,77 +100,6 @@ class TestGrillSkillStructure:
         assert has_example, \
             "SKILL.md must include literal example phrasing of third-person reviewer framing"
 
-    def test_assumption_verbalization_phase_heading(self):
-        """AC: SKILL.md includes 'Assumption verbalization' as a named first phase.
-
-        Must have explicit heading or section titled with 'Assumption verbalization'
-        or similar before the WHY/HOW questioning starts.
-        """
-        has_assumption_section = bool(
-            re.search(
-                r"Assumption.*verbali|verbali.*assumption|assump.*phase|phase.*assump",
-                self.skill_content,
-                re.IGNORECASE
-            )
-        )
-        assert has_assumption_section, \
-            "SKILL.md must include explicit 'Assumption verbalization' phase heading"
-
-    def test_assumption_verbalization_lists_expectations(self):
-        """AC: Assumption verbalization phase lists 3-5 assumptions about user level/context/time.
-
-        Must mention assumptions about expertise, time constraints, context, or similar
-        calibration points.
-        """
-        # Look for the assumption section and check it mentions relevant calibration points
-        assumption_section = re.search(
-            r"(?:Assumption.*verbali|assumption.*phase).*?(?=##|$)",
-            self.skill_content,
-            re.IGNORECASE | re.DOTALL
-        )
-
-        assert assumption_section is not None, \
-            "Assumption verbalization section must exist in SKILL.md"
-
-        section_text = assumption_section.group(0).lower()
-
-        # Check for mention of key calibration dimensions
-        has_calibration = bool(
-            re.search(
-                r"expertise|time.*constraint|time.*budget|context|experience|level|scope",
-                section_text,
-                re.IGNORECASE
-            )
-        )
-        assert has_calibration, \
-            "Assumption verbalization phase must mention assumptions about user expertise, time, or context"
-
-    def test_assumption_verbalization_asks_for_correction(self):
-        """AC: Assumption verbalization phase explicitly asks user to confirm or correct assumptions.
-
-        Must include language like 'confirm', 'correct', 'adjust', 'wrong about', etc.
-        """
-        assumption_section = re.search(
-            r"(?:Assumption.*verbali|assumption.*phase).*?(?=##|$)",
-            self.skill_content,
-            re.IGNORECASE | re.DOTALL
-        )
-
-        assert assumption_section is not None, \
-            "Assumption verbalization section must exist"
-
-        section_text = assumption_section.group(0)
-
-        has_confirmation_request = bool(
-            re.search(
-                r"confirm|correct|adjust|wrong about|off base|disagree",
-                section_text,
-                re.IGNORECASE
-            )
-        )
-        assert has_confirmation_request, \
-            "Assumption verbalization must ask user to confirm or correct assumptions"
-
     def test_decision_uuid_reference(self):
         """AC: SKILL.md references decision UUID 316c5911-9f06-44de-8f99-20fe3e9fa448.
 
@@ -173,28 +107,6 @@ class TestGrillSkillStructure:
         """
         assert "316c5911-9f06-44de-8f99-20fe3e9fa448" in self.skill_content, \
             "SKILL.md must reference decision UUID 316c5911-9f06-44de-8f99-20fe3e9fa448"
-
-    def test_phase_ordering_assumption_before_why_how(self):
-        """AC: Assumption verbalization phase comes before WHY/HOW questioning in SKILL.md.
-
-        If both assumption phase and questioning phase mention WHY/HOW,
-        assumption section must appear first in the file.
-        """
-        assumption_match = re.search(
-            r"assumption.*verbali|assumption.*phase",
-            self.skill_content,
-            re.IGNORECASE
-        )
-        why_how_match = re.search(
-            r"WHY.*HOW|why.*how|questioning.*phase",
-            self.skill_content,
-            re.IGNORECASE
-        )
-
-        # If both exist, assumption must come first
-        if assumption_match and why_how_match:
-            assert assumption_match.start() < why_how_match.start(), \
-                "Assumption verbalization phase must come before WHY/HOW questioning phase"
 
     def test_arxiv_reference_for_sycophancy_baseline(self):
         """AC (optional but recommended): SKILL.md references arxiv 2505.23840 for sycophancy baseline.

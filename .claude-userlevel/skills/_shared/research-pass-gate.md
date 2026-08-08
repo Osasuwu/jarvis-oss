@@ -14,7 +14,7 @@ The calling skill specifies which mode applies:
 
 | Mode | Applies to | Behaviour |
 |---|---|---|
-| **Unconditional** | `/to-prd`, `/improve-codebase-architecture` | Gate always fires before the protected action |
+| **Unconditional** | `/to-spec`, `/improve-codebase-architecture` | Gate always fires before the protected action |
 | **High-stakes only** | `/grill`, `/reason` | Gate fires only when the about-to-emit decision has `reversibility` in `{hard, irreversible}` OR `confidence < 0.7` |
 
 ---

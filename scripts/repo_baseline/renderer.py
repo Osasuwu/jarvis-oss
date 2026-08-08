@@ -18,6 +18,15 @@ _OPTIONAL_AXES: set[str] = {
     "test_extras",  # empty-string OK — no extra install
 }
 
+# Axes appended to a shell command rather than assigned to a YAML key. They
+# carry their own separating space so an unset axis leaves no trailing
+# whitespace behind — the template writes ``pytest ...{{ axis }}``, not
+# ``pytest ... {{ axis }}`` (#1406). A YAML-array format would be wrong here:
+# the value is argv, not a sequence.
+_SHELL_ARG_AXES: set[str] = {
+    "ci_meta_pytest_args",
+}
+
 
 class RenderError(ValueError):
     """Raised when a template references an unknown or missing axis."""
@@ -32,8 +41,16 @@ class Renderer:
         result = renderer.render(template_text, manifest)
     """
 
-    def resolve(self, key: str, manifest: Manifest) -> Any:
-        """Resolve a single axis name to its value."""
+    def resolve(self, key: str, manifest: Manifest, overrides: dict[str, Any] | None = None) -> Any:
+        """Resolve a single axis name to its value.
+
+        *overrides* carries the **observed** axes — facts read from the live
+        audit rather than declared in a manifest (``runs_on``,
+        ``default_branch``; #1406). They win outright: a manifest cannot
+        declare them, so there is nothing to arbitrate against.
+        """
+        if overrides and key in overrides:
+            return overrides[key]
         return manifest.resolve_axis(key)
 
     def _format(self, key: str, value: Any) -> str:
@@ -41,8 +58,12 @@ class Renderer:
 
         Lists are rendered as inline YAML arrays ``[a, b]`` to avoid
         indentation-dependent block-sequence issues in line-level
-        substitutions.
+        substitutions. Axes in ``_SHELL_ARG_AXES`` are the exception — see
+        that set's comment.
         """
+        if key in _SHELL_ARG_AXES:
+            text = str(value or "").strip()
+            return f" {text}" if text else ""
         if isinstance(value, bool):
             return str(value).lower()
         if isinstance(value, list):
@@ -52,14 +73,17 @@ class Renderer:
             return f"[{parts}]"
         return str(value) if value is not None else ""
 
-    def render(self, template: str, manifest: Manifest) -> str:
+    def render(
+        self, template: str, manifest: Manifest, overrides: dict[str, Any] | None = None
+    ) -> str:
         """Substitute ``{{ axis }}`` placeholders in *template*.
 
         Raises ``RenderError`` for unknown or missing mandatory axes.
         """
+
         def _sub(m: re.Match) -> str:
             key = m.group(1)
-            val = self.resolve(key, manifest)
+            val = self.resolve(key, manifest, overrides)
             if val is None and key not in _OPTIONAL_AXES:
                 raise RenderError(
                     f"Axis '{key}' is required but has no value in manifest "

@@ -31,8 +31,13 @@ This script recovers the link retroactively.
 
 Issue body says "events table" and "payload contains pr_url" — both
 wrong against the live DB. Decisions actually live in `episodes`
-(kind='decision_made'), payload holds `decision` text + `memories_used`
-(list of names, not UUIDs). This script matches the live shape.
+(kind='decision_made'). Payload holds `decision` text + `memories_used`.
+
+Post-#325, `memories_used` entries are UUIDs (primary source of truth).
+Legacy entries may be name strings. This script handles both:
+- UUID-shaped entries are existence-checked against memories.id directly.
+- Name strings are resolved via memories.name (name-based lookup).
+- UUID entries with no matching memories row are flagged as dangling.
 
 ## Usage
 
@@ -94,6 +99,32 @@ def _extract_single_hash(text: str | None) -> int | None:
     return int(hits[0])
 
 
+def _is_uuid_shaped(value: str | None) -> bool:
+    """Check if a value looks like a UUID (v4 format with or without hyphens).
+
+    UUIDs are 36 chars with hyphens (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+    or 32 chars without (xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx).
+    All chars are hex digits.
+    """
+    if not isinstance(value, str):
+        return False
+    if len(value) == 36:
+        # Standard UUID format with hyphens
+        if value[8] != "-" or value[13] != "-" or value[18] != "-" or value[23] != "-":
+            return False
+        hex_parts = value.replace("-", "")
+    elif len(value) == 32:
+        # UUID without hyphens
+        hex_parts = value
+    else:
+        return False
+    try:
+        int(hex_parts, 16)
+        return True
+    except ValueError:
+        return False
+
+
 def _client():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_KEY") or os.environ.get("SUPABASE_KEY")
@@ -152,6 +183,49 @@ def _resolve_memory_name(client, name: str) -> str | None:
     return None
 
 
+def _resolve_memory_uuid(client, uuid: str) -> str | None:
+    """Resolve a UUID directly against memories.id (existence check only).
+
+    Returns the UUID if it exists as a live (non-deleted) memory row,
+    None if it is dangling or deleted.
+    """
+    result = (
+        client.table("memories")
+        .select("id")
+        .eq("id", uuid)
+        .is_("deleted_at", "null")
+        .limit(1)
+        .execute()
+    )
+    if result.data:
+        return uuid
+    return None
+
+
+def _resolve_memory_ref(client, ref: str) -> tuple[str | None, bool]:
+    """Resolve a memories_used entry to a memory id.
+
+    Post-#325, memories_used entries are UUIDs (primary) or names (legacy).
+    Strategy:
+    1. If ref looks like a UUID, try existence-check against memories.id.
+       If found, return (uuid, False). If not found, return (None, True) [dangling].
+    2. If ref is a name string, resolve via name lookup.
+       If found, return (id, False). If not found, return (None, False) [unresolved name].
+
+    Returns (memory_id, is_dangling) tuple.
+    - is_dangling=True only for UUID entries that don't exist.
+    - is_dangling=False for unresolved names (they may have been renamed/deleted).
+    """
+    if _is_uuid_shaped(ref):
+        # Try UUID resolution; if not found, it's dangling.
+        resolved = _resolve_memory_uuid(client, ref)
+        return (resolved, resolved is None)
+    else:
+        # Name-based resolution; unresolved names are not marked dangling.
+        resolved = _resolve_memory_name(client, ref)
+        return (resolved, False)
+
+
 def _fetch_null_outcomes(client) -> list[dict]:
     result = (
         client.table("task_outcomes")
@@ -178,9 +252,10 @@ def backfill(apply: bool) -> int:
     skipped_no_url = 0
     skipped_no_decision = 0
     unresolved: set[str] = set()
+    dangling_uuids: set[str] = set()
 
-    # Cache memory-name -> id to avoid hammering the memories table.
-    name_cache: dict[str, str | None] = {}
+    # Cache memory-ref -> id to avoid hammering the memories table.
+    ref_cache: dict[str, tuple[str | None, bool]] = {}
 
     for oc in candidates:
         issue_n = _parse_issue_number(oc.get("issue_url"))
@@ -199,27 +274,33 @@ def backfill(apply: bool) -> int:
             skipped_no_decision += 1
             continue
 
-        primary_name, _ep_id, _preview = match
-        if primary_name not in name_cache:
-            name_cache[primary_name] = _resolve_memory_name(client, primary_name)
-        memory_id = name_cache[primary_name]
+        primary_ref, _ep_id, _preview = match
+        if primary_ref not in ref_cache:
+            ref_cache[primary_ref] = _resolve_memory_ref(client, primary_ref)
+        memory_id, is_dangling = ref_cache[primary_ref]
         if memory_id is None:
-            unresolved.add(primary_name)
+            if is_dangling:
+                dangling_uuids.add(primary_ref)
+            else:
+                unresolved.add(primary_ref)
             continue
 
         desc = (oc.get("task_description") or "")[:60]
-        linked.append((oc["id"], memory_id, matched_n, primary_name, desc))
+        linked.append((oc["id"], memory_id, matched_n, primary_ref, desc))
 
     total = len(candidates)
     print(
         f"\n=== Plan: {len(linked)} linkable, "
         f"{skipped_no_url} missing issue/PR url, "
         f"{skipped_no_decision} no matching decision, "
-        f"{len(unresolved)} memory names unresolved "
+        f"{len(dangling_uuids)} dangling UUIDs, "
+        f"{len(unresolved)} unresolved names "
         f"(of {total} candidates) ===\n"
     )
-    for out_id, mem_id, n, name, desc in linked:
-        print(f"  #{n}  outcome {out_id[:8]} -> memory {mem_id[:8]} ({name})  | {desc}")
+    for out_id, mem_id, n, ref, desc in linked:
+        print(f"  #{n}  outcome {out_id[:8]} -> memory {mem_id[:8]} ({ref})  | {desc}")
+    if dangling_uuids:
+        print(f"\nDangling UUIDs (memory deleted or superseded?): {sorted(dangling_uuids)}")
     if unresolved:
         print(f"\nUnresolved memory names (renamed/deleted?): {sorted(unresolved)}")
 

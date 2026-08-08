@@ -166,24 +166,24 @@ class TestReasonGate:
         assert "reversibility" in content or "high-stakes" in content.lower()
 
 
-class TestToPrdGate:
-    """Verify /to-prd SKILL.md references the research-pass gate."""
+class TestToSpecGate:
+    """Verify /to-spec SKILL.md references the research-pass gate."""
 
-    def test_to_prd_references_fragment(self):
-        """AC: /to-prd SKILL.md references the research-pass gate before PRD publication."""
-        _, content = _load_file("to-prd", "SKILL.md")
+    def test_to_spec_references_fragment(self):
+        """AC: /to-spec SKILL.md references the research-pass gate before PRD publication."""
+        _, content = _load_file("to-spec", "SKILL.md")
         assert content is not None
         assert "research-pass-gate" in content.lower() or "research_pass_gate" in content
 
-    def test_to_prd_gate_unconditional(self):
-        """AC: to-prd gate is unconditional."""
-        _, content = _load_file("to-prd", "SKILL.md")
+    def test_to_spec_gate_unconditional(self):
+        """AC: to-spec gate is unconditional."""
+        _, content = _load_file("to-spec", "SKILL.md")
         assert content is not None
         assert "unconditional" in content.lower()
 
-    def test_to_prd_gate_before_publish(self):
+    def test_to_spec_gate_before_publish(self):
         """AC: Gate appears before the publication step."""
-        _, content = _load_file("to-prd", "SKILL.md")
+        _, content = _load_file("to-spec", "SKILL.md")
         assert content is not None
         # The gate block should reference running before publishing
         assert "Before publishing" in content or "before publish" in content.lower()

@@ -20,7 +20,9 @@ yarn-error.log*
 .sandcastle/runtime/
 .sandcastle/worktrees/
 .sandcastle/hfcache/
-docs/research/
+
+# Reactive-core per-task git worktrees (#1390 AC3)
+.reactive/worktrees/
 
 # Logs
 *.log
@@ -39,6 +41,11 @@ Thumbs.DB
 .claude/scheduled_tasks.lock
 .claude/session-snapshots/
 .claude/launch.json
+
+# env_sync / MCP bootstrap runtime artifacts (#1312)
+.claude/logs/
+.claude/mcp-failures.jsonl
+.claude/mcp-failures.reported.json
 
 # Device-specific config (auto-generated per machine)
 config/device.json

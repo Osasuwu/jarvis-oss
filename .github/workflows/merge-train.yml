@@ -102,8 +102,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Candidate PRs: open, non-draft, auto-merge enabled, not parked for
-          # the owner. Sorted oldest-first (FIFO — deterministic, no starvation).
+          # Candidate PRs: open, non-draft, not parked for the owner, and either
+          # auto-merge-enabled OR carrying the #1234 carve-out label. Sorted
+          # oldest-first (FIFO — deterministic, no starvation).
+          #
+          # Why the carve-out label is a candidate despite having no
+          # autoMergeRequest: auto-merge-enable deliberately WITHHOLDS auto-merge
+          # on PRs that /code-review cannot actually review, so the merge is owed
+          # manually. Under `strict: true` branch protection that manual merge is
+          # itself blocked while the branch is behind — so without this clause the
+          # carve-out would convert a review gap into a permanent stall. The train
+          # keeps the branch fresh; a human still does the merging.
+          # status:owner-queue stays the stronger signal and excludes either kind.
+          # The label literal must stay in lockstep with auto-merge-enable.yml's
+          # CARVE_OUT_LABEL (pinned from both sides in tests/ci/).
           #
           # Capture-then-check, NOT a `mapfile`-from-process-substitution read
           # (`< <(gh pr list …)`): a process-substitution failure is invisible to
@@ -118,7 +130,8 @@ jobs:
               --json number,isDraft,autoMergeRequest,labels,createdAt \
               --jq 'sort_by(.createdAt) | .[]
                     | select(.isDraft | not)
-                    | select(.autoMergeRequest != null)
+                    | select(.autoMergeRequest != null
+                             or ([.labels[].name] | index("automerge-withheld:review-blind") != null))
                     | select([.labels[].name] | index("status:owner-queue") | not)
                     | .number'
           ); then

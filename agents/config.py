@@ -1,4 +1,4 @@
-"""Shared configuration for LangGraph agents.
+"""Shared configuration for reactive-core agents.
 
 Loaded from environment variables (with sensible defaults for local dev).
 See `.env.example` for the canonical list.
@@ -17,7 +17,6 @@ from dataclasses import dataclass
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = "qwen3:4b"
-DEFAULT_POSTGRES_URL = "postgresql://jarvis:jarvis@localhost:5433/agents?sslmode=disable"
 
 
 @dataclass(frozen=True)
@@ -26,6 +25,11 @@ class AgentConfig:
 
     ollama_host: str
     ollama_model: str
+    # Direct-Postgres DSN for wake_driver's LISTEN/NOTIFY socket (the PostgREST
+    # client can't LISTEN). Empty string is intentionally allowed at load time —
+    # same idiom as the Supabase fields below — so imports/tests don't require a
+    # live DSN; `wake_driver._build_psycopg_queue` raises a clear error naming
+    # AGENTS_POSTGRES_URL if someone tries to open the socket without it.
     postgres_url: str
     # Supabase bridge — shared with Claude Code's MCP memory server. Empty
     # strings are intentionally allowed at load time so imports/tests don't
@@ -40,7 +44,7 @@ def load_config() -> AgentConfig:
     return AgentConfig(
         ollama_host=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_HOST),
         ollama_model=os.environ.get("OLLAMA_MODEL", DEFAULT_OLLAMA_MODEL),
-        postgres_url=os.environ.get("AGENTS_POSTGRES_URL", DEFAULT_POSTGRES_URL),
+        postgres_url=os.environ.get("AGENTS_POSTGRES_URL", ""),
         supabase_url=os.environ.get("SUPABASE_URL", ""),
         supabase_key=os.environ.get("SUPABASE_KEY", ""),
     )

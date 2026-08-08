@@ -68,12 +68,18 @@ __all__ = [
     "load_manifest",
     "load_snapshot",
     "plan_account_pass",
+    "resolve_runs_on",
+    "summarize_account_pass",
 ]
 
 _MODULE_DIR = Path(__file__).resolve().parent
 CANON_DIR = _MODULE_DIR / "canon"
 MANIFESTS_DIR = _MODULE_DIR / "manifests"
 SNAPSHOTS_DIR = _MODULE_DIR / "snapshots"
+
+# The one canon file whose applicability depends on the repo's own layout
+# (#1406) — see ``Applier._skip_reason``.
+_CI_META_PATH = ".github/workflows/ci-meta.yml"
 
 
 class ApplyError(ValueError):
@@ -149,6 +155,7 @@ class Applier:
         manifest: Manifest,
         canon: dict[str, str],
         renderer: Optional[Renderer] = None,
+        snapshot: Optional[RepoSnapshot] = None,
     ):
         self.manifest = manifest
         # Canon templates keyed by basename (see ``load_canon``). A string
@@ -156,6 +163,67 @@ class Applier:
         # Python tooling, so it stays a real comment.
         self.canon = canon
         self.renderer = renderer or Renderer()
+        # Observed axes (#1406): facts read from the live audit, not declared.
+        # A caller with no snapshot renders from profile defaults, which is the
+        # pre-#1406 behaviour — kept so the pure-translator tests and any
+        # snapshot-free caller still work.
+        self.runs_on_defaulted = True
+        self.overrides: dict[str, object] = {}
+        # Tri-state, mirroring ``RepoSnapshot.has_tests_ci``: ``None`` means the
+        # audit did not look, which is NOT the same as "the directory is absent".
+        self.has_tests_ci: Optional[bool] = None
+        # Filled by translate(); see observed_notes().
+        self._skip_notes: list[str] = []
+        if snapshot is not None:
+            runs_on, self.runs_on_defaulted = resolve_runs_on(snapshot, manifest)
+            self.overrides["runs_on"] = runs_on
+            # ``default_branch`` needs no majority vote — the audit reads exactly
+            # one value off the repo. It is an override rather than a manifest
+            # axis for the same reason as ``runs_on``: canon hardcoded ``main``,
+            # so every dependabot PR it wrote for redrobot targeted a branch that
+            # does not exist there.
+            self.overrides["default_branch"] = snapshot.settings.default_branch
+            self.has_tests_ci = snapshot.has_tests_ci
+
+    def _skip_reason(self, repo_path: str) -> Optional[str]:
+        """Why *repo_path* must not be written to this repo, or ``None``.
+
+        Currently one rule (#1406): canon ``ci-meta.yml`` runs ``pytest
+        tests/ci/``, which exits 4 (usage error) when that directory does not
+        exist — writing it into such a repo manufactures a permanently red
+        required check. The guard fires only on a *positive* observation of
+        absence, never on silence.
+        """
+        if repo_path == _CI_META_PATH and self.has_tests_ci is False:
+            return (
+                f"{_CI_META_PATH}: skipped — the repo has no tests/ci directory, "
+                f"so `pytest tests/ci/` would fail the check on every run"
+            )
+        return None
+
+    def observed_notes(self) -> list[str]:
+        """Operator-facing disclosures about how the observed axes resolved.
+
+        Named ``observed_notes`` (not ``notes``) so it never collides with the
+        :attr:`RepoPlan.notes` *field* it feeds — same reasoning as
+        ``canon_gaps`` vs :meth:`missing_canon` below: a bound method is always
+        truthy, so ``if plan.notes:`` must be unambiguously a field read.
+
+        Only the *unobserved* case speaks up: an observed value is self-evident
+        in the rendered content, whereas a fallback to the profile default is
+        an assumption the plan is making on the repo's behalf and must not pass
+        silently (#1406). A file dropped by :meth:`_skip_reason` is the same
+        class of thing — a plan the operator asked for that the observation
+        overruled — so it is disclosed here too, once :meth:`translate` has run.
+        """
+        notes = list(self._skip_notes)
+        if self.runs_on_defaulted:
+            notes.append(
+                f"runs_on: no runner class observed in the repo's own workflows — "
+                f"using the {self.manifest.profile!r} profile default "
+                f"{self.overrides.get('runs_on', self.manifest.resolve_axis('runs_on'))}"
+            )
+        return notes
 
     def render_content(self, repo_path: str) -> str:
         """Render the canon template for *repo_path* through the manifest axes.
@@ -170,7 +238,7 @@ class Applier:
                 f"No canon template for managed path {repo_path!r} "
                 f"(expected canon entry {name!r}; repo={self.manifest.repo!r})"
             )
-        return self.renderer.render(template, self.manifest)
+        return self.renderer.render(template, self.manifest, self.overrides)
 
     def missing_canon(self, plan: list[Action]) -> list[str]:
         """Repo-paths in *plan* that WRITE but have no canon template.
@@ -219,8 +287,13 @@ class Applier:
                 f"(repo={self.manifest.repo!r}); basenames must be unique"
             )
         calls: list[GhCall] = []
+        self._skip_notes = []
         for action in plan:
             if action.kind == ActionKind.WRITE_FILE:
+                skip = self._skip_reason(action.path)
+                if skip is not None:
+                    self._skip_notes.append(skip)
+                    continue
                 content = self.render_content(action.path)
                 actual_hash = actual.files.get(action.path)
                 # Three distinct states, only the third is idempotent:
@@ -356,6 +429,42 @@ def actual_state_from_snapshot(snapshot: RepoSnapshot) -> ActualState:
     return ActualState(files=files, required_check_contexts=contexts)
 
 
+# ── Observed axes: facts read from the audit, not declared (#1406) ────
+
+
+def resolve_runs_on(snapshot: RepoSnapshot, manifest: Manifest) -> tuple[list[str], bool]:
+    """Resolve the runner class for *manifest*'s repo from its observed workflows.
+
+    Returns ``(labels, defaulted)`` — ``defaulted`` is True when nothing was
+    observable and the profile default stood in, which the plan output must say
+    out loud (a silent default is exactly what shipped GitHub-hosted workflows
+    into a billing-blocked account, #1406).
+
+    Resolution is a **majority**, not a match-or-abort check: a repo may
+    legitimately mix runner classes (redrobot deliberately keeps
+    ``runner-health-check.yml`` on ``ubuntu-latest`` so the health check still
+    reports when the self-hosted runner is down). Ties break on the
+    lexicographically smallest class so two passes over one repo can never
+    render different workflows.
+    """
+    counts: dict[tuple[str, ...], int] = {}
+    for path, classes in snapshot.observed_runners.items():
+        # A prior mis-sync's own output is not evidence of the correct runner
+        # class — counting it would let the mistake justify itself. Only the
+        # repo's own (non-managed) workflows get a vote.
+        if path in manifest.resolved_managed_files:
+            continue
+        for labels in classes:
+            key = tuple(labels)
+            counts[key] = counts.get(key, 0) + 1
+
+    if not counts:
+        return list(manifest.resolve_axis("runs_on") or []), True
+
+    winner = max(sorted(counts), key=lambda key: counts[key])
+    return list(winner), False
+
+
 # ── Per-account-pass orchestrator (dry-run) ──────────────────────────
 
 
@@ -373,10 +482,46 @@ class RepoPlan:
     :meth:`Applier.missing_canon` *method*: ``if plan.canon_gaps:`` can't be
     confused with a forgotten method call (a bound method is always truthy)."""
 
+    notes: list[str] = field(default_factory=list)
+    """Non-fatal disclosures the operator must see before a live run — an
+    observed axis that fell back to its profile default, a managed file skipped
+    because its precondition is absent. A note never fences the repo off; it
+    exists so the plan cannot quietly assume something it did not observe
+    (#1406)."""
+
     error: Optional[str] = None
     """Set when this repo's plan could not be built at all (bad fixture,
     malformed manifest/snapshot, render defect). Isolated per-repo so one bad
     repo never discards the rest of the account pass (PRD story 9)."""
+
+    @property
+    def gapped(self) -> bool:
+        """True when this repo was fenced off by a canon gap (``calls`` left
+        empty, not translated)."""
+        return bool(self.canon_gaps)
+
+    @property
+    def applyable(self) -> bool:
+        """True when this repo's plan translated cleanly: no canon gap, no
+        load/translate error. ``calls`` may still be ``[]`` for an applyable
+        repo — that means "already synced", not "fenced off"."""
+        return not self.canon_gaps and self.error is None
+
+
+def summarize_account_pass(plans: list[RepoPlan]) -> dict[str, int]:
+    """Aggregate counts over an account pass, so an all-gapped run is visibly
+    distinguishable from a clean one instead of silently reading as empty.
+
+    ``applyable`` and ``gapped`` are mutually exclusive per repo (an errored
+    repo is neither); the three counts need not sum to ``total`` as a result.
+    """
+    return {
+        "total": len(plans),
+        "applyable": sum(1 for p in plans if p.applyable),
+        "gapped": sum(1 for p in plans if p.gapped),
+        "errored": sum(1 for p in plans if p.error is not None),
+        "total_calls": sum(len(p.calls) for p in plans),
+    }
 
 
 def plan_account_pass(
@@ -395,6 +540,23 @@ def plan_account_pass(
     the whole pass; a repo that fails to load/translate at all is reported with
     ``error`` set. Either way the rest of the account pass continues — staged
     blast-radius (PRD story 9) starts with knowing which repos are applyable.
+
+    Why a canon gap fences off the *whole* repo instead of just the ungapped
+    paths: it is tempting to justify this as avoiding a "SET_CHECK_CONTEXTS
+    deadlock" (branch protection landing before its required workflow exists).
+    That justification does not hold — ``Applier.translate()``'s idempotency
+    check (this module, the ``sorted(desired) == sorted(actual...)`` comparison
+    a few dozen lines up) already drops SET_CHECK_CONTEXTS when desired equals
+    actual, which is true for every committed snapshot; no deadlock is actually
+    at risk. The real reason is narrower and more important: a *partial* plan
+    — one that silently skips the gapped WRITE_FILE but still emits every other
+    action — would leave the DELETE_FILE hazard for that same file's siblings
+    unfixed while the repo's plan looks otherwise clean and applyable. Fencing
+    the whole repo off (``calls=[]``, ``canon_gaps`` populated) makes that
+    cross-axis drift visible instead of silently shipping a half-synced repo
+    that reads as synced. See ``RepoPlan.applyable``/``gapped`` and
+    :func:`summarize_account_pass` for how a caller distinguishes "clean" from
+    "gapped" without inspecting every repo by hand.
 
     This performs **no live writes**: it is the planning half of slice 5. The
     live sync-PR executor that consumes these ``RepoPlan``\\ s is the supervised
@@ -415,12 +577,18 @@ def plan_account_pass(
             snapshot = load_snapshot(repo, snapshots_dir)
             actual = actual_state_from_snapshot(snapshot)
             plan = Planner(manifest).plan(actual)
-            applier = Applier(manifest, canon)
+            applier = Applier(manifest, canon, snapshot=snapshot)
             gaps = applier.missing_canon(plan)
             if gaps:
-                plans.append(RepoPlan(repo=repo, calls=[], canon_gaps=gaps))
+                plans.append(
+                    RepoPlan(repo=repo, calls=[], canon_gaps=gaps, notes=applier.observed_notes())
+                )
                 continue
-            plans.append(RepoPlan(repo=repo, calls=applier.translate(plan, actual)))
+            # observed_notes() AFTER translate(): skip disclosures are produced
+            # by the translation itself (#1406), so reading notes first would
+            # drop them silently.
+            calls = applier.translate(plan, actual)
+            plans.append(RepoPlan(repo=repo, calls=calls, notes=applier.observed_notes()))
         except (ApplyError, RenderError, OSError, ValueError, json.JSONDecodeError) as exc:
             # Per-repo isolation: a bad fixture / malformed manifest / render
             # defect for one repo must not sink the whole account pass.

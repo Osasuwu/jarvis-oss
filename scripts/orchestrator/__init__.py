@@ -1,1 +1,1 @@
-# Orchestrator package — watcher daemon + supporting modules.
+# Orchestrator package — reactive-core supporting modules.

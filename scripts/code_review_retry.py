@@ -12,16 +12,29 @@ conclusion=failure. Re-dispatches the same PR's review, with two guards:
      before re-dispatching. Otherwise retry immediately (other transient
      failures: runner setup, plugin hiccup, GitHub API blip).
 
+Also logs a `failure_signature` classification (`classify_failure_signature`,
+#1325 Option C') on every code path — quota-reset / permission-denied /
+no-log-available / unknown. The mechanism has a historically 0% observed
+success rate with no record of *why*; this is diagnostic only (does not
+affect the dispatch decision) and exists to give a follow-up investigation
+something to grep for instead of raw Action logs.
+
 Env contract:
-  GH_TOKEN       — gh CLI auth (provided by Actions)
+  GH_TOKEN       — gh CLI auth (provided by Actions; a GitHub App installation
+                   token as of #1325 Option B — see code-review-retry.yml)
   REPO           — owner/name
   HEAD_BRANCH    — branch of the failed run (from workflow_run event)
   HEAD_SHA       — head SHA of the failed run
-  FAILED_RUN_ID  — id of the failed run (used to fetch log + link in comments)
+  FAILED_RUN_ID  — id of the failed run — reused as the rerun target (#1325
+                   Option A: `gh run rerun <id> --failed` reruns this SAME
+                   run in place instead of firing a fresh dispatch)
+  RUN_ATTEMPT    — github.event.workflow_run.run_attempt; drives the retry
+                   cap directly instead of counting runs-list rows (#1325)
 
-The pure functions (`decide`, `parse_reset_time_utc`, `count_failed_attempts`)
+The pure functions (`decide`, `parse_reset_time_utc`, `classify_failure_signature`)
 are covered by `tests/ci/test_code_review_retry.py`.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,18 +44,27 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Iterable
+from datetime import datetime, timezone
 
 MAX_ATTEMPTS = 4  # counts the triggering run; net retries = MAX_ATTEMPTS - 1 = 3
 RESET_BUFFER_SEC = 60
 MAX_SLEEP_SEC = 6 * 60 * 60  # 6h — Claude Max rolling window is ~5h, leave headroom
-FAILED_CONCLUSIONS = frozenset({"failure", "cancelled", "timed_out", "action_required"})
 
 # Pattern observed in claude-code-action SDK failures, e.g.
 # "Claude Code returned an error result: You've hit your session limit · resets 3:40am (UTC)"
 _RESET_RE = re.compile(
     r"session limit\s*[·\-]\s*resets\s+(\d{1,2}):(\d{2})\s*(am|pm)?\s*\(UTC\)",
+    re.IGNORECASE,
+)
+
+# #1325 Option C': the retry mechanism has a historically 0% observed success
+# rate — before this, a failed retry left no trace of *why* a rerun didn't
+# help. GitHub App / GITHUB_TOKEN permission errors surface in gh CLI /
+# Actions logs in a couple of recognizable shapes; a rerun can't fix a
+# permission error (Option B addresses the App-token half of that, but a
+# misconfigured App installation would still show up here).
+_PERMISSION_DENIED_RE = re.compile(
+    r"resource not accessible by integration|bad credentials|HTTP 40[13]",
     re.IGNORECASE,
 )
 
@@ -54,29 +76,31 @@ class Decision:
     pr_number: int | None = None
 
 
-def count_failed_attempts(runs: Iterable[dict]) -> int:
-    return sum(1 for r in runs if r.get("conclusion") in FAILED_CONCLUSIONS)
-
-
 def decide(
     open_prs: list[dict],
     head_branch: str,
-    runs_for_sha: list[dict],
+    head_sha: str,
+    run_attempt: int,
     max_attempts: int = MAX_ATTEMPTS,
 ) -> Decision:
     pr = next((p for p in open_prs if p.get("headRefName") == head_branch), None)
     if pr is None:
         return Decision("skip", f"no open PR for branch {head_branch}")
-    fails = count_failed_attempts(runs_for_sha)
-    if fails >= max_attempts:
+    if pr.get("headRefOid") != head_sha:
+        return Decision(
+            "skip",
+            f"PR head moved past {head_sha[:8]} (now {str(pr.get('headRefOid'))[:8]}) — stale retry",
+            pr_number=pr["number"],
+        )
+    if run_attempt >= max_attempts:
         return Decision(
             "exhausted",
-            f"{fails} failed attempts >= cap {max_attempts}",
+            f"run_attempt {run_attempt} >= cap {max_attempts}",
             pr_number=pr["number"],
         )
     return Decision(
         "dispatch",
-        f"failed attempt {fails + 1}/{max_attempts}",
+        f"attempt {run_attempt}/{max_attempts}",
         pr_number=pr["number"],
     )
 
@@ -106,6 +130,23 @@ def parse_reset_time_utc(log_text: str, now: datetime) -> datetime | None:
     return target
 
 
+def classify_failure_signature(log_text: str) -> str:
+    """Classify a failed run's log into a diagnostic bucket (#1325 Option C').
+
+    Purely observational — does not affect the dispatch decision. Logged
+    alongside `decision=...` so a run of failed retries builds up a signal on
+    *why* the mechanism has historically shown a 0% observed success rate,
+    without requiring manual log archaeology after the fact.
+    """
+    if not log_text:
+        return "no-log-available"
+    if _RESET_RE.search(log_text):
+        return "quota-reset"
+    if _PERMISSION_DENIED_RE.search(log_text):
+        return "permission-denied"
+    return "unknown"
+
+
 def _gh(*args: str) -> str:
     return subprocess.check_output(["gh", *args], text=True)
 
@@ -121,12 +162,24 @@ def _fetch_failed_log(repo: str, run_id: str) -> str:
         return ""
 
 
-def _dispatch(repo: str, branch: str, pr_number: int) -> None:
-    subprocess.check_call([
-        "gh", "workflow", "run", "code-review.yml",
-        "--repo", repo, "--ref", branch,
-        "-f", f"pr_number={pr_number}",
-    ])
+def _dispatch(repo: str, run_id: str) -> None:
+    # #1325 Option A: rerun the SAME run in place instead of a fresh
+    # `gh workflow run` dispatch. A fresh dispatch creates a new run (and a
+    # new `review` check-run) alongside the earlier failing one, and the
+    # stale failure is never cleared — mergeStateStatus stays BLOCKED even
+    # after the retry succeeds (#1325 Finding 2). Rerunning in place updates
+    # the one check-run's conclusion instead of shadowing it with a second.
+    subprocess.check_call(
+        [
+            "gh",
+            "run",
+            "rerun",
+            run_id,
+            "--repo",
+            repo,
+            "--failed",
+        ]
+    )
 
 
 def _post_exhausted_comment(repo: str, pr_number: int, head_sha: str, run_id: str) -> None:
@@ -134,15 +187,23 @@ def _post_exhausted_comment(repo: str, pr_number: int, head_sha: str, run_id: st
         f"WARNING: Claude code-review auto-retry exhausted after {MAX_ATTEMPTS} "
         f"failed attempts on `{head_sha[:8]}`.\n\n"
         f"Last failed run: https://github.com/{repo}/actions/runs/{run_id}\n\n"
-        f"Re-dispatch manually once resolved:\n"
+        f"Re-run manually once resolved:\n"
         f"```\n"
-        f"gh workflow run code-review.yml --repo {repo} -f pr_number={pr_number}\n"
+        f"gh run rerun {run_id} --repo {repo} --failed\n"
         f"```"
     )
-    subprocess.check_call([
-        "gh", "pr", "comment", str(pr_number),
-        "--repo", repo, "--body", body,
-    ])
+    subprocess.check_call(
+        [
+            "gh",
+            "pr",
+            "comment",
+            str(pr_number),
+            "--repo",
+            repo,
+            "--body",
+            body,
+        ]
+    )
 
 
 def main() -> int:
@@ -150,43 +211,42 @@ def main() -> int:
     head_branch = os.environ["HEAD_BRANCH"]
     head_sha = os.environ["HEAD_SHA"]
     failed_run_id = os.environ.get("FAILED_RUN_ID", "")
+    # #1325 Option A: run_attempt comes straight off the workflow_run webhook
+    # payload (github.event.workflow_run.run_attempt), not a runs-list count.
+    # `gh run rerun` increments run_attempt on the SAME run row, so a
+    # count-the-runs-list approach silently stayed at 1 forever once dispatch
+    # stopped creating new run rows — this is the direct fix for that.
+    run_attempt = int(os.environ.get("RUN_ATTEMPT", "1"))
 
-    open_prs = json.loads(_gh(
-        "pr", "list", "--repo", repo, "--state", "open",
-        "--head", head_branch,
-        "--json", "number,headRefName,headRefOid", "--limit", "5",
-    ))
-    runs_resp = json.loads(_gh(
-        "api",
-        f"repos/{repo}/actions/workflows/code-review.yml/runs?head_sha={head_sha}&per_page=100",
-    ))
-    if "workflow_runs" not in runs_resp:
-        print(f"ERROR: unexpected API response (no workflow_runs key): {list(runs_resp.keys())}")
-        return 1
-    runs = runs_resp["workflow_runs"]
+    open_prs = json.loads(
+        _gh(
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--head",
+            head_branch,
+            "--json",
+            "number,headRefName,headRefOid",
+            "--limit",
+            "5",
+        )
+    )
 
-    # Finding #4: GitHub API can lag a few seconds after a workflow_run event fires.
-    # If the triggering run's conclusion is still null, wait once and re-fetch.
-    if any(r.get("id") == int(failed_run_id) and r.get("conclusion") is None
-           for r in runs if failed_run_id):
-        print("head run conclusion is null — sleeping 5s for API propagation, then retrying")
-        time.sleep(5)
-        runs_resp2 = json.loads(_gh(
-            "api",
-            f"repos/{repo}/actions/workflows/code-review.yml/runs?head_sha={head_sha}&per_page=100",
-        ))
-        if "workflow_runs" not in runs_resp2:
-            print(f"ERROR: unexpected API response on propagation-lag retry "
-                  f"(no workflow_runs key): {list(runs_resp2.keys())}")
-            return 1
-        runs = runs_resp2["workflow_runs"]
-        if any(r.get("id") == int(failed_run_id) and r.get("conclusion") is None
-               for r in runs):
-            print("head run conclusion still null after propagation-lag retry — count may undercount")
-
-    decision = decide(open_prs, head_branch, runs)
-    print(f"failed_run={failed_run_id} sha={head_sha[:8]} branch={head_branch}")
+    decision = decide(open_prs, head_branch, head_sha, run_attempt)
+    print(
+        f"failed_run={failed_run_id} sha={head_sha[:8]} branch={head_branch} attempt={run_attempt}"
+    )
     print(f"decision={decision.kind} reason={decision.reason} pr={decision.pr_number}")
+
+    # #1325 Option C': classify the failed run's log unconditionally, not only
+    # on the dispatch path — skip/exhausted outcomes are data too. The retry
+    # mechanism has a historically 0% observed success rate with no record of
+    # *why*; this is the diagnostic trail that follow-up issue is meant to read.
+    log_text = _fetch_failed_log(repo, failed_run_id) if failed_run_id else ""
+    print(f"failure_signature={classify_failure_signature(log_text)}")
 
     if decision.kind == "skip":
         return 0
@@ -195,43 +255,52 @@ def main() -> int:
         return 0
 
     # decision.kind == "dispatch"
-    log_text = _fetch_failed_log(repo, failed_run_id) if failed_run_id else ""
     now = datetime.now(timezone.utc)
     reset_at = parse_reset_time_utc(log_text, now)
 
     if reset_at is not None:
         delay = (reset_at - now).total_seconds() + RESET_BUFFER_SEC
         if delay > MAX_SLEEP_SEC:
-            print(f"quota reset at {reset_at.isoformat()} is {delay/60:.0f}min away "
-                  f"(> cap {MAX_SLEEP_SEC/60:.0f}min) — marking exhausted")
+            print(
+                f"quota reset at {reset_at.isoformat()} is {delay / 60:.0f}min away "
+                f"(> cap {MAX_SLEEP_SEC / 60:.0f}min) — marking exhausted"
+            )
             _post_exhausted_comment(repo, decision.pr_number, head_sha, failed_run_id)
             return 0
         if delay > 0:
-            print(f"quota reset at {reset_at.isoformat()}; sleeping {delay:.0f}s "
-                  f"({delay/60:.1f}min) before retry")
+            print(
+                f"quota reset at {reset_at.isoformat()}; sleeping {delay:.0f}s "
+                f"({delay / 60:.1f}min) before retry"
+            )
             time.sleep(delay)
 
     # Finding #2: double-dispatch guard runs before every _dispatch(), not only
-    # after quota-sleep. GitHub sometimes delivers duplicate workflow_run events.
-    # Also covers the immediate-retry path (reset_at is None / non-quota failure).
-    runs_before_dispatch_resp = json.loads(_gh(
-        "api",
-        f"repos/{repo}/actions/workflows/code-review.yml/runs?head_sha={head_sha}&per_page=20",
-    ))
-    if "workflow_runs" not in runs_before_dispatch_resp:
-        print(f"ERROR: unexpected API response before dispatch "
-              f"(no workflow_runs key): {list(runs_before_dispatch_resp.keys())}")
-        return 1
-    runs_before_dispatch = runs_before_dispatch_resp["workflow_runs"]
-    if any(r.get("conclusion") == "success" for r in runs_before_dispatch):
-        print("pre-dispatch: success run already exists for this SHA — no dispatch")
-        return 0
-    if any(r.get("status") in ("queued", "in_progress") for r in runs_before_dispatch):
-        print("pre-dispatch: a run is already queued/in_progress — no dispatch")
-        return 0
+    # after quota-sleep. GitHub sometimes delivers duplicate workflow_run
+    # events. Now targeted at the specific failed_run_id being rerun (rather
+    # than a head_sha-wide runs-list scan) since #1325 Option A reruns that
+    # exact run in place — a duplicate event racing this one would show up as
+    # that same run already queued/in_progress/succeeded.
+    if failed_run_id:
+        run_state = json.loads(
+            _gh(
+                "run",
+                "view",
+                failed_run_id,
+                "--repo",
+                repo,
+                "--json",
+                "status,conclusion",
+            )
+        )
+        if run_state.get("status") in ("queued", "in_progress"):
+            print("pre-dispatch: run already queued/in_progress — no rerun")
+            return 0
+        if run_state.get("conclusion") == "success":
+            print("pre-dispatch: run already succeeded — no rerun")
+            return 0
 
-    print(f"dispatching retry for PR #{decision.pr_number} at {head_branch}")
-    _dispatch(repo, head_branch, decision.pr_number)
+    print(f"rerunning failed run {failed_run_id} for PR #{decision.pr_number} at {head_branch}")
+    _dispatch(repo, failed_run_id)
     return 0
 
 

@@ -1,7 +1,7 @@
 ---
 name: diagnose
-description: Disciplined diagnosis loop for hard bugs and performance regressions. Reproduce → minimise → hypothesise → instrument → fix → regression-test. Use when user says "diagnose this" / "debug this", reports a bug, says something is broken/throwing/failing, or describes a performance regression.
-model: opus
+description: Disciplined diagnosis loop: reproduce → minimise → hypothesise → instrument → fix → regression-test. Triggers: "diagnose this"/"debug this", a reported bug, "broken/throwing/failing", or a performance regression.
+model: fable
 effort: xhigh
 context: fork
 ---
@@ -47,11 +47,21 @@ A 30-second flaky loop is barely better than no loop. A 2-second deterministic l
 
 The goal is not a clean repro but a **higher reproduction rate**. Loop the trigger 100×, parallelise, add stress, narrow timing windows, inject sleeps. A 50%-flake bug is debuggable; 1% is not — keep raising the rate until it's debuggable.
 
+### Exit criterion — make it fail on demand
+
+Phase 1 closes on a failure you can summon, not on a loop you feel good about. The bar is one artefact: **a single command that produces the failure**. Until a single command produces it, Phase 1 is not closed. "I can get it to happen if I click around for a while" is an open Phase 1, not a loop — the knowledge is in your head, where bisection and hypothesis-testing cannot consume it.
+
+Write the command down (or the script it invokes) and hand it to the next phase. For a non-deterministic bug the repetition lives *inside* the command — one invocation that loops the trigger 100× and reports the rate, per §Non-deterministic bugs above. The failure must be summoned by the artefact, not by you.
+
 ### When you genuinely cannot build a loop
 
 Stop and say so explicitly. List what you tried. Ask the user for: (a) access to whatever environment reproduces it, (b) a captured artifact (HAR file, log dump, core dump, screen recording with timestamps), or (c) permission to add temporary production instrumentation. Do **not** proceed to hypothesise without a loop.
 
-Do not proceed to Phase 2 until you have a loop you believe in.
+**A bug you cannot summon on demand is itself a finding.** Record the finding where the work lives — issue comment, PR body, bug report — with what you tried, what each attempt showed, and the narrowest conditions under which the failure has ever been observed. That is the deliverable of a Phase 1 that did not close; the next session starts from it instead of re-walking your dead ends.
+
+What it is not is permission to move on: failing to reproduce is not a reason to enter Phase 2. Phase 2 runs the loop, and there is no loop — hypotheses stacked on an unreproducible bug are unfalsifiable, and a "fix" for one cannot be verified afterwards. Report the finding and stop.
+
+Do not proceed to Phase 2 until a single command produces the failure.
 
 ## Phase 2 — Reproduce
 

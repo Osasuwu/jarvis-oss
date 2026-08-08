@@ -29,16 +29,61 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 420  # 7h covers max sleep (~6h) + dispatch overhead
     permissions:
-      actions: write
-      pull-requests: write
-      contents: read
+      contents: read  # write scopes live on the minted App token below (#1325 Option B)
     steps:
       - uses: actions/checkout@v7
+
+      # #1325 Option B: a GITHUB_TOKEN-attributed rerun/comment is still a bot
+      # action, so GitHub's recursion-prevention suppresses the downstream
+      # workflow_run event a failed retry would otherwise re-arm — a retry
+      # that itself fails can never trigger a further retry (Finding 1). A
+      # GitHub App installation token is not GITHUB_TOKEN-attributed, so the
+      # downstream event fires normally. Same pattern as auto-merge-enable.yml
+      # / merge-train.yml (decision 2ccfa29a) — see those files for the fuller
+      # rationale (native linked-issue auto-close is a separate, unrelated
+      # mechanism this does NOT restore; decision 1b0cbbcc).
+      - name: Assert App credentials present
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP_ID}" ] || [ -z "${APP_PRIVATE_KEY}" ]; then
+            echo "::error::code-review-retry requires the 'jarvis-ci' GitHub App, but APP_ID and/or APP_PRIVATE_KEY repo secrets are unset."
+            echo "::error::Without it, retries fall back to GITHUB_TOKEN, whose recursion-prevention silently breaks self-healing retries (#1325 Finding 1)."
+            exit 1
+          fi
+          echo "App credentials present."
+
+      - name: Derive repo name for least-privilege token scoping
+        run: |
+          set -euo pipefail
+          : "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is unset or empty}"
+          echo "REPO_NAME=${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+
+      - name: Mint App installation token
+        id: app-token
+        if: env.REPO_NAME != ''
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: ${{ env.REPO_NAME }}
+          permission-actions: write
+          permission-pull-requests: write
+
       - name: Decide and dispatch retry
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
           FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
-        run: python scripts/code_review_retry.py
+          RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::error::App token is empty — the Mint step was skipped (REPO_NAME unset?). Refusing to call gh, which could fall back to GITHUB_TOKEN and re-suppress the downstream workflow_run event (#1325 Finding 1)."
+            exit 1
+          fi
+          python scripts/code_review_retry.py

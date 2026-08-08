@@ -34,6 +34,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -70,7 +71,7 @@ from supabase import create_client
 
 # recall.py is the deep module (#496-#499). Hook adds mcp-memory/ to
 # sys.path and re-exports the public names so tests that introspect
-# mrh.<NAME> directly (tests/test_memory_recall_hook.py) keep working.
+# mrh.<NAME> directly (tests/memory/test_memory_recall_hook.py) keep working.
 # noqa: F401 — names not used inside this module; they exist as the
 # re-export surface for downstream test code.
 sys.path.insert(0, str(_root / "mcp-memory"))
@@ -92,6 +93,17 @@ from recall import (  # noqa: E402
     score_linked_rows as _score_linked_rows,  # noqa: F401
 )
 
+# Per-session (id, mode, generation) dedup state, shared with the PreToolUse
+# recall hook (#1276). Mode keeps the two hooks' namespaces disjoint so a
+# memory shown at UserPromptSubmit can still surface mid-turn and vice versa.
+sys.path.insert(0, str(_root / "scripts"))
+from lib.recall_dedup import (  # noqa: E402
+    MODE_BRIEF,
+    MODE_FULL,
+    filter_emittable,
+    record_emitted,
+)
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -108,7 +120,7 @@ SIMILARITY_THRESHOLD = 0.30
 # on hits it actually wants. Reduces per-turn rot since we no longer dump
 # 5-10 full bodies into every UserPromptSubmit.
 BRIEF_MODE = True
-CHAR_BUDGET_FULL = 40_000  # ~10K tokens, ~5% of 200K window (legacy path)
+CHAR_BUDGET_FULL = 16_000  # ~4K tokens — widened full-mode cap (#1276, was 40K)
 CHAR_BUDGET_BRIEF = 12_000  # ~3K tokens ceiling — rarely hit after MAX_BRIEF_ENTRIES cap
 CHAR_BUDGET = CHAR_BUDGET_BRIEF if BRIEF_MODE else CHAR_BUDGET_FULL
 FETCH_LIMIT = 50  # retained for legacy reference; recall() controls its own fetch window
@@ -117,6 +129,10 @@ FETCH_LIMIT = 50  # retained for legacy reference; recall() controls its own fet
 # noise the agent never reads. Top-7 preserves the relevance head; deeper hits
 # stay reachable via memory_recall on demand.
 MAX_BRIEF_ENTRIES = 7
+# Top-N safety net for widened full mode, on top of the CHAR_BUDGET_FULL char
+# cap — a pathological recall can't inject an unbounded number of bodies even
+# when each individual one is small (#1276).
+MAX_FULL_ENTRIES = 8
 
 # Phase 7.3: known-unknowns as per-prompt gate. When the current prompt is
 # semantically close to an open known_unknown (a query that previously hit
@@ -169,6 +185,40 @@ def _load_known_projects() -> set[str]:
 
 
 KNOWN_PROJECTS = _load_known_projects()
+
+# Stats file for per-session fire-rate audit (#1276). Mirrors the
+# pretooluse-recall-hook stats file (same keys, same best-effort semantics):
+# fired (recall returned ≥1 allowed hit), emitted (≥1 memory injected),
+# deduped (memories skipped by the (id, mode) generation dedup).
+_CLAUDE_HOME_OVERRIDE = os.environ.get("JARVIS_CLAUDE_HOME")
+_CLAUDE_HOME = (
+    Path(_CLAUDE_HOME_OVERRIDE).expanduser()
+    if _CLAUDE_HOME_OVERRIDE
+    else Path.home() / ".claude"
+)
+STATS_FILE = _CLAUDE_HOME / "cache" / "memory-recall-stats.json"
+
+
+def _bump_stat(key: str, delta: int = 1) -> None:
+    """Increment a counter in the stats file. Best-effort; never raises."""
+    try:
+        STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if STATS_FILE.exists():
+            try:
+                data = json.loads(STATS_FILE.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, json.JSONDecodeError):
+                data = {}
+        else:
+            data = {}
+        data[key] = int(data.get(key, 0)) + delta
+        data.setdefault("session_started_at", time.time())
+        tmp = STATS_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data), encoding="utf-8")
+        tmp.replace(STATS_FILE)
+    except OSError:
+        pass
 
 VOYAGE_API_URL = "https://api.voyageai.com/v1/embeddings"
 VOYAGE_MODEL = "voyage-3-lite"
@@ -336,12 +386,19 @@ def rewrite_prompt(prompt: str) -> dict | None:
 
 
 def detect_project(cwd: str) -> str | None:
-    """Return project name if cwd is a known project dir, else None."""
+    """Return the known project a path belongs to, scanning all components.
+
+    Worktree cwds (`<repo>/.claude/worktrees/<name>`) and subdirectories
+    resolve to the containing repo; rightmost match wins.
+    """
     try:
-        name = Path(cwd).name.lower()
+        parts = Path(cwd).parts
     except Exception:
         return None
-    return name if name in KNOWN_PROJECTS else None
+    for part in reversed(parts):
+        if part.lower() in KNOWN_PROJECTS:
+            return part.lower()
+    return None
 
 
 def check_known_unknown_gate(client, query_embedding: list[float] | None) -> bool:
@@ -405,13 +462,11 @@ def _score_str(m: dict) -> str:
 def format_memory_brief(m: dict) -> str:
     """One-line preview for bulk auto-injection (Phase 7.2).
 
-    Format: `- name [type/project] [tags] (score): description`. Similar in
-    spirit to the session-start catalog layout
-    (scripts/session-context.py::_fmt_catalog_entry) — this hook block adds
-    the per-query score so the agent can distinguish hybrid-ranked hits
-    from the recency-sorted inventory, and always emits an explicit
-    `type/project` scope (the catalog omits project for the current one).
-    No content body — agent pulls via memory_get on anything worth reading.
+    Format: `- name [type/project] [tags] (score): description`. This hook
+    block adds the per-query score so the agent can distinguish hybrid-ranked
+    hits from a recency-sorted inventory, and always emits an explicit
+    `type/project` scope. No content body — agent pulls via memory_get on
+    anything worth reading.
     """
     tags = m.get("tags") or []
     tags_str = f" [{', '.join(tags)}]" if tags else ""
@@ -449,6 +504,10 @@ def main():
     prompt = (data.get("prompt") or "").strip()
     if len(prompt) < MIN_PROMPT_CHARS:
         silent_exit()
+
+    # session_id keys the per-session compaction generation + dedup state.
+    # Missing → dedup disabled (filter_emittable/record_emitted no-op).
+    session_id = data.get("session_id") or data.get("sessionId") or ""
 
     cwd = data.get("cwd") or os.getcwd()
     project = detect_project(cwd)
@@ -488,11 +547,15 @@ def main():
 
     # Phase 7.3: is this prompt a repeat of a topic we've had weak recall on?
     # If yes, widen — disable brief mode for this invocation and raise the
-    # char budget to the legacy full-content limit so the agent gets bodies,
-    # not just names. Gate is best-effort; any DB error falls back to False.
+    # char budget to CHAR_BUDGET_FULL (bounded by the widen-gate, #1276) so
+    # the agent gets bodies, not just names. Gate is best-effort; any DB error
+    # falls back to False.
     widened = BRIEF_MODE and check_known_unknown_gate(client, query_embedding)
     brief_mode = BRIEF_MODE and not widened
     char_budget = CHAR_BUDGET_BRIEF if brief_mode else CHAR_BUDGET_FULL
+    # Dedup mode: brief and full (widened) are disjoint namespaces, so a memory
+    # shown in a brief turn can still be deep-dived when the topic is widened.
+    mode = MODE_BRIEF if brief_mode else MODE_FULL
 
     # Hook config: tighter semantic threshold than the PROD default (0.25),
     # calibrated for conversational prompts which carry more glue tokens.
@@ -529,6 +592,20 @@ def main():
     # user/project memories are loaded by scripts/session-context.py at
     # session start and excluded here to avoid duplication.
     hits = [h for h in hits if h.memory.get("type") in ALLOWED_TYPES]
+    if not hits:
+        silent_exit()
+    _bump_stat("fired")
+
+    # (id, mode) generation dedup (#1276): a memory already injected in this
+    # mode during the current compaction generation is not injected again.
+    # filter_emittable is keyed off the memory row's id (name as fallback), so
+    # we remap kept rows back onto their RecallHit objects by that same key.
+    kept_memories = filter_emittable(session_id, [h.memory for h in hits], mode)
+    kept_keys = {m.get("id") or m.get("name") for m in kept_memories}
+    deduped_count = len(hits) - len(kept_memories)
+    hits = [h for h in hits if (h.memory.get("id") or h.memory.get("name")) in kept_keys]
+    if deduped_count:
+        _bump_stat("deduped", delta=deduped_count)
     if not hits:
         silent_exit()
     signal = (
@@ -572,13 +649,14 @@ def main():
     # so a single newline is enough and keeps the injected block compact.
     separator = "\n" if brief_mode else "\n\n---\n\n"
     formatter = format_memory_brief if brief_mode else format_memory
+    entry_cap = MAX_BRIEF_ENTRIES if brief_mode else MAX_FULL_ENTRIES
 
     for hit in hits:
         row = hit.memory
         block = formatter(row) + separator
         if total + len(block) > char_budget:
             break
-        if brief_mode and len(included_ids) >= MAX_BRIEF_ENTRIES:
+        if len(included_ids) >= entry_cap:
             break
         parts.append(block)
         total += len(block)
@@ -592,7 +670,15 @@ def main():
     if parts[-1].endswith(separator):
         parts[-1] = parts[-1][: -len(separator)]
 
-    # Touch accessed memories (fire-and-forget; failures ignored)
+    # Record this generation's emissions BEFORE the touch, so a memory is
+    # deduped from the next prompt only once the model has actually seen it.
+    record_emitted(session_id, included_ids, mode)
+    _bump_stat("emitted")
+
+    # Touch accessed memories (fire-and-forget; failures ignored). Only the
+    # emitted ids are touched — a hit that was deduped or cut by the budget was
+    # not injected, so bumping its recency would lie about what the model saw
+    # (#1276 accessed-fix).
     try:
         client.rpc("touch_memories", {"memory_ids": included_ids}).execute()
     except Exception:

@@ -50,23 +50,37 @@ issues**, not to the prompt-level context blocks.
    protocol violation** — the live `/implement` session always recalls; the
    sandcastle agent must match. Empty result is fine; refusing to call is not.
 3. **Claim** — `gh issue edit <N> --add-label status:in-progress` and comment
-   `Claimed by sandcastle agent. Branch: feat/<N>-<slug>`.
-4. **Branch** — `git checkout -b feat/<N>-<slug>` (exact name — race mitigation).
-5. **Explore** — read the issue body fully. Check acceptance criteria. Read
+   `Claimed by sandcastle agent.` The branch is already pinned and checked out
+   for you before this container started (`.sandcastle/main.mts` — issue
+   #1118) — do NOT create or check out a different branch. Just commit and
+   push to the current branch; the supervisor pushes it and opens the PR
+   after this run finishes.
+4. **Explore** — read the issue body fully. Check acceptance criteria. Read
    referenced files. Run a second `memory_recall` keyed off any new entities
    the issue body introduces.
-6. **Implement** — follow the project /implement skill rules:
+5. **Implement** — follow the project /implement skill rules:
    - TDD when tests are non-trivial: red → green → refactor
    - Preserve existing values, defaults, seeds, magic numbers unless the issue
      explicitly says to change them
    - Lint + tests must pass before commit
-7. **Commit + PR** — single rich commit. Open PR with `Closes #<N>` in body.
-8. **Record outcome** — emit one `outcome_record` describing the iteration
+6. **Commit** — single rich commit. Do NOT open the PR yourself; the
+   supervisor pushes the pinned branch and opens (or updates) the PR after
+   this run finishes (AC1, #1118). Just leave the commit(s) on the current
+   branch. **The commit message body MUST contain `Closes #<N>` on its own
+   line** (N = the issue you claimed in step 3). The supervisor opens the PR
+   with `gh pr create --fill`, which derives the PR body from this commit
+   message — if `Closes #<N>` is not in the commit, the merged PR will NOT
+   auto-close the issue, silently leaving it open with stale labels (the
+   #948 failure mode documented in CLAUDE.md). This is the only place the
+   closing keyword can enter a fresh-run PR now that the agent no longer
+   opens the PR itself.
+7. **Record outcome** — emit one `outcome_record` describing the iteration
    (success / partial / failure) with the provenance tags from §"Memory
    provenance" below. Always record, even on failure — failed outcomes are
    the most valuable signal for the orchestrator review.
-9. **Stop on this issue** — do NOT merge. The orchestrator (live Claude Code
-   session) reviews and merges separately.
+8. **Stop on this issue** — do NOT merge, push, or open the PR yourself. The
+   supervisor pushes the pinned branch and opens the PR; the orchestrator
+   (live Claude Code session) reviews and merges separately.
 
 ## Rework workflow
 
@@ -81,9 +95,13 @@ this section replaces it entirely.
      `task_description="Rework skipped — unable to fetch PR #$SANDCASTLE_TARGET_PR"`.
      Then **stop** (exit cleanly — no lock, no label, no rework attempt). Do NOT
      delete any existing lock — a stale lock is a deliberate anomaly signal.
-2. **Checkout the PR branch** — `git fetch origin <headRefName>` then
-   `git checkout <headRefName>`. This is the PR author's branch; push fix commits
-   directly to it. Do NOT create a new branch or PR.
+2. **Confirm the PR branch** — the supervisor already checked out `<headRefName>`
+   for you before this container started (`.sandcastle/main.mts` — issue
+   #1118); `git branch --show-current` should already match. The
+   `git fetch origin <headRefName> && git checkout <headRefName>` sequence is
+   a harmless defensive fallback if it somehow doesn't. Either way: commit
+   fix commits to this branch. Do NOT create a new branch or PR — the
+   supervisor pushes after this run finishes.
 3. **Write per-PR lock** — call `outcome_record` with:
    - `task_type="fix"`
    - `task_description="Rework sandcastle agent processing PR #$SANDCASTLE_TARGET_PR"`
@@ -157,7 +175,9 @@ of a missing field, fix the call and retry — do not skip the write.
 
 ## Hard rules (subagent boundaries)
 
-- **NEVER merge a PR.** Open + push + stop. The PR is the terminal action.
+- **NEVER merge a PR.** Commit + stop; the supervisor pushes the pinned
+  branch and opens the PR (AC1, #1118). The commit is the terminal action for
+  the standard workflow.
 - **NEVER edit protected files.** If the issue scope requires touching any of
   these, refuse the issue: comment on it explaining the blocker, add label
   `unsafe-for-AFK`, drop `status:in-progress`, and continue to the next issue.
@@ -165,7 +185,8 @@ of a missing field, fix the call and retry — do not skip the write.
   - `CLAUDE.md`, `config/SOUL.md`, `CONTEXT.md`
   - `mcp-memory/server.py`
   - anything under `.github/workflows/`
-  - any `.env*` file other than `.env.example`
+  - any `.env*` file, `.env.example` included — the `Edit(**/.env.*)` deny
+    globs the whole family and cannot carry an exception (#1452)
 
   Note: at sandbox-ready time the runtime overwrites the worktree's `.mcp.json`
   with the container-scoped MCP config (`/opt/sandcastle/container-mcp.json`).

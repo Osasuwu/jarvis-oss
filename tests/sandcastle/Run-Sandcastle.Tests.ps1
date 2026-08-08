@@ -525,6 +525,11 @@ Describe 'Invoke-Watchdog tier escalation matrix (slice 5, #543)' {
         }
         Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-tier-test-$([guid]::NewGuid())" }
         Mock Invoke-RuntimeSweep { @() }   # #572: keep sweep no-op in matrix tests
+        # #1403: reconciliation sweep + container/worktree reap now run
+        # unconditionally at Invoke-Watchdog startup -- no-op them here so
+        # these tests don't shell out to real gh/docker.
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
         Mock Write-OutcomeRecord { 'mocked' }
         Mock Send-TelegramAlert  { 'mocked' }
         Mock Add-IssueLabel      { $true }
@@ -811,6 +816,11 @@ Describe 'Invoke-Watchdog Tier 2-as-primary (AFK quota split, 2026-05-14)' {
         }
         Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-tier2primary-$([guid]::NewGuid())" }
         Mock Invoke-RuntimeSweep { @() }
+        # #1403: reconciliation sweep + container/worktree reap now run
+        # unconditionally at Invoke-Watchdog startup -- no-op them here so
+        # these tests don't shell out to real gh/docker.
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
         Mock Write-OutcomeRecord { 'mocked' }
         Mock Send-TelegramAlert  { 'mocked' }
         Mock Add-IssueLabel      { $true }
@@ -1061,6 +1071,11 @@ Describe 'Invoke-Watchdog subscription-primary (Anthropic Max Agent-SDK credit, 
         }
         Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-subprimary-$([guid]::NewGuid())" }
         Mock Invoke-RuntimeSweep { @() }
+        # #1403: reconciliation sweep + container/worktree reap now run
+        # unconditionally at Invoke-Watchdog startup -- no-op them here so
+        # these tests don't shell out to real gh/docker.
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
         Mock Write-OutcomeRecord { 'mocked' }
         Mock Send-TelegramAlert  { 'mocked' }
         Mock Add-IssueLabel      { $true }
@@ -1293,6 +1308,11 @@ Describe 'Invoke-Watchdog daemon-state matrix' {
         # No real .sandcastle/runtime/* directories or HTTP calls during tests.
         Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-test-$([guid]::NewGuid())" }
         Mock Invoke-RuntimeSweep { @() }   # #572: keep sweep no-op in matrix tests
+        # #1403: reconciliation sweep + container/worktree reap now run
+        # unconditionally at Invoke-Watchdog startup -- no-op them here so
+        # these tests don't shell out to real gh/docker.
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
         Mock Send-TelegramAlert { 'mocked-tg-response' }
     }
 
@@ -2064,6 +2084,11 @@ Describe 'Invoke-Watchdog pytest gate integration (your-second-repo)' {
         Mock Read-DotEnvFile { @{ SUPABASE_URL = 'https://x'; SUPABASE_KEY = 'k'; TELEGRAM_BOT_TOKEN = 't'; TELEGRAM_CHAT_ID = '1' } }
         Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-pytest-int-$([guid]::NewGuid())" }
         Mock Invoke-RuntimeSweep { @() }
+        # #1403: reconciliation sweep + container/worktree reap now run
+        # unconditionally at Invoke-Watchdog startup -- no-op them here so
+        # these tests don't shell out to real gh/docker.
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
         Mock Write-OutcomeRecord { 'mocked' }
         Mock Send-TelegramAlert  { 'mocked' }
         Mock Add-IssueLabel      { $true }
@@ -2179,5 +2204,319 @@ Describe 'Invoke-Watchdog pytest gate integration (your-second-repo)' {
         Assert-MockCalled Invoke-PytestGate -Times 0 -Exactly -Scope It
         Assert-MockCalled Write-OutcomeRecord -Times 1 -Exactly -Scope It `
             -ParameterFilter { $Status -eq 'success' }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# #1403: crash-resilience regression coverage.
+#
+# The claim-lifecycle gap (redrobot#1716 sat orphaned 7.5+ hours): the Watchdog
+# claims an issue then only released it inside the pytest-gate branch. Any
+# other abnormal termination -- uncaught exception, killed process, host
+# crash -- left the claim stuck forever. The fix is two layers: (a) a
+# catch+rethrow around the whole iteration section that releases the claim
+# whenever the *current* run survives long enough to reach it, and (b) a
+# startup-time reconciliation sweep that catches the case where it doesn't
+# (a true host crash never runs any PowerShell cleanup code at all). These
+# Describe blocks cover both layers plus their building blocks.
+# ---------------------------------------------------------------------------
+
+Describe 'Invoke-Watchdog claim release on crash (#1403)' {
+    BeforeEach {
+        Mock Test-DockerRunning { $true }
+        Mock Test-OllamaRunning { $true }
+        Mock Start-DockerDesktop { }
+        Mock Start-OllamaServer  { }
+        Mock Get-RepoRoot { $env:TEMP }
+        Mock Read-DotEnvFile {
+            @{
+                SUPABASE_URL       = 'https://x'
+                SUPABASE_KEY       = 'k'
+                TELEGRAM_BOT_TOKEN = 't'
+                TELEGRAM_CHAT_ID   = '1'
+                DEEPSEEK_API_KEY   = 'ds-key'
+                ANTHROPIC_API_KEY  = 'cl-key'
+            }
+        }
+        Mock New-RuntimeDir { Join-Path $env:TEMP "sandcastle-crash-test-$([guid]::NewGuid())" }
+        Mock Invoke-RuntimeSweep { @() }
+        Mock Invoke-ClaimReconciliationSweep { @() }
+        Mock Invoke-ContainerWorktreeReap { @{ containers = @(); worktrees = @() } }
+        Mock Write-OutcomeRecord { 'mocked' }
+        Mock Send-TelegramAlert  { 'mocked' }
+        Mock Add-IssueLabel      { $true }
+        Mock Get-IssueLabels     { @() }
+        Mock Test-DeepSeekBalance { $true }
+        # Mocked directly (rather than via the underlying Invoke-Gh choke
+        # point) so assertions below can check the exact Issue/Label/Body
+        # this catch block hands them -- the behavior under test.
+        Mock Remove-IssueLabel  { $true }
+        Mock Add-IssueComment   { $true }
+    }
+
+    It 'AC #1403: releases the claim on an uncaught crash mid-iteration, then still throws' {
+        # Reproduces the OOM-escalation billing pre-flight throw (the one
+        # throw site where $targetIssue is already resolved from the earlier
+        # Tier 0 invocation's branch by the time the crash happens) -- the
+        # scenario the generalized catch block exists to cover.
+        Mock Invoke-Sandcastle {
+            [pscustomobject]@{
+                ok = $false; exitCode = 137; reason = 'exit=137'
+                result = [pscustomobject]@{ branch = 'feat/4242-thing' }
+            }
+        }
+        Mock Test-IsOOM { $true }
+        Mock Test-DeepSeekBalance { $false }   # forces the pre-flight throw
+
+        { Invoke-Watchdog -Repo 'jarvis' -MaxIterations 1 -Model 'qwen-large' `
+              -Tier1Model '' -Tier2Provider 'deepseek' `
+              -WindowEnd '' -DockerTimeoutSec 5 -OllamaTimeoutSec 5 } | Should Throw
+
+        Assert-MockCalled Remove-IssueLabel -Times 1 -Exactly -Scope It -ParameterFilter {
+            $Issue -eq 4242 -and $Label -eq 'status:in-progress' -and $RepoSlug -eq 'Osasuwu/jarvis'
+        }
+        Assert-MockCalled Add-IssueComment -Times 1 -Exactly -Scope It -ParameterFilter {
+            $Issue -eq 4242 -and $RepoSlug -eq 'Osasuwu/jarvis' -and $Body -like '*releasing claim*'
+        }
+    }
+
+    It 'does not attempt a release when the crashed run never resolved an issue (the true host-crash gap the reconciliation sweep covers instead)' {
+        # A failed run with no result (e.g. a hard process kill before the
+        # branch was even parsed) leaves $targetIssue=$null. Release-StaleClaim
+        # guards on ($targetIssue -and $repoSlug), so it must be a silent
+        # no-op here -- recovery for this case is the sweep on the NEXT
+        # invocation, not this catch block.
+        Mock Invoke-Sandcastle {
+            [pscustomobject]@{ ok = $false; exitCode = 7; reason = 'exit=7'; result = $null }
+        }
+        Mock Test-IsOOM { $false }
+
+        { Invoke-Watchdog -Repo 'jarvis' -MaxIterations 1 -Model 'qwen-large' `
+              -Tier1Model 'qwen-small' -Tier2Provider 'deepseek' `
+              -WindowEnd '' -DockerTimeoutSec 5 -OllamaTimeoutSec 5 } | Should Throw
+
+        Assert-MockCalled Remove-IssueLabel -Times 0 -Exactly -Scope It
+        Assert-MockCalled Add-IssueComment  -Times 0 -Exactly -Scope It
+    }
+
+    It 'does not release any claim on successful completion' {
+        Mock Invoke-Sandcastle {
+            [pscustomobject]@{
+                ok = $true; exitCode = 0; reason = $null
+                result = [pscustomobject]@{ branch = 'feat/4242-thing'; commits = @(); iterations = @() }
+            }
+        }
+        Mock Test-IsOOM { $false }
+
+        Invoke-Watchdog -Repo 'jarvis' -MaxIterations 1 -Model 'qwen-large' `
+            -Tier1Model 'qwen-small' -Tier2Provider 'deepseek' `
+            -WindowEnd '' -DockerTimeoutSec 5 -OllamaTimeoutSec 5
+
+        Assert-MockCalled Remove-IssueLabel -Times 0 -Exactly -Scope It
+        Assert-MockCalled Add-IssueComment  -Times 0 -Exactly -Scope It
+    }
+}
+
+Describe 'Invoke-ClaimReconciliationSweep' {
+    BeforeEach {
+        Mock Test-IssueHasOpenPR { $false }
+        Mock Get-IssueClaimCommentAgeHours { 10 }
+        Mock Release-StaleClaim { $true }
+    }
+
+    It 'releases a stale claim with no open PR past the threshold' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '[123]' }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours 4
+
+        @($released) | Should Be 123
+        Assert-MockCalled Release-StaleClaim -Times 1 -Exactly -Scope It -ParameterFilter {
+            $Issue -eq 123 -and $RepoSlug -eq 'Osasuwu/jarvis'
+        }
+    }
+
+    It 'skips an issue that already has an open PR' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '[123]' }
+        Mock Test-IssueHasOpenPR { $true }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours 4
+
+        @($released).Count | Should Be 0
+        Assert-MockCalled Release-StaleClaim -Times 0 -Exactly -Scope It
+    }
+
+    It 'skips an issue whose claim is younger than the staleness threshold' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '[123]' }
+        Mock Get-IssueClaimCommentAgeHours { 1 }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours 4
+
+        @($released).Count | Should Be 0
+        Assert-MockCalled Release-StaleClaim -Times 0 -Exactly -Scope It
+    }
+
+    It 'fails closed: skips an issue with unknown claim age' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '[123]' }
+        Mock Get-IssueClaimCommentAgeHours { $null }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours 4
+
+        @($released).Count | Should Be 0
+        Assert-MockCalled Release-StaleClaim -Times 0 -Exactly -Scope It
+    }
+
+    It '-StaleHours -lt 0 disables the sweep entirely (no gh calls)' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '[123]' }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours -1
+
+        @($released).Count | Should Be 0
+        Assert-MockCalled Invoke-Gh -Times 0 -Exactly -Scope It
+    }
+
+    It 'returns empty when RepoSlug is not provided' {
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug '' -StaleHours 4
+        @($released).Count | Should Be 0
+    }
+
+    It 'returns empty when the issue-list gh call fails' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 1; $null }
+
+        $released = Invoke-ClaimReconciliationSweep -RepoSlug 'Osasuwu/jarvis' -StaleHours 4
+
+        @($released).Count | Should Be 0
+        Assert-MockCalled Release-StaleClaim -Times 0 -Exactly -Scope It
+    }
+}
+
+Describe 'Get-SandcastleExitedContainers' {
+    BeforeEach {
+        Mock Invoke-Docker { $global:LASTEXITCODE = 0; '' }
+    }
+
+    It 'returns exited container names filtered by image ancestor' {
+        Mock Invoke-Docker { $global:LASTEXITCODE = 0; "sandcastle-abc123`nsandcastle-def456" }
+
+        $names = @(Get-SandcastleExitedContainers -ImageName 'sandcastle:jarvis')
+
+        $names.Count | Should Be 2
+        ($names -contains 'sandcastle-abc123') | Should Be $true
+        ($names -contains 'sandcastle-def456') | Should Be $true
+    }
+
+    It 'returns an empty array when nothing is exited' {
+        @(Get-SandcastleExitedContainers -ImageName 'sandcastle:jarvis').Count | Should Be 0
+    }
+
+    It 'fails safe to an empty array when docker errors' {
+        Mock Invoke-Docker { throw 'docker: command not found' }
+        @(Get-SandcastleExitedContainers -ImageName 'sandcastle:jarvis').Count | Should Be 0
+    }
+
+    It 'returns an empty array when ImageName is not provided (no docker call)' {
+        @(Get-SandcastleExitedContainers -ImageName '').Count | Should Be 0
+        Assert-MockCalled Invoke-Docker -Times 0 -Exactly -Scope It
+    }
+}
+
+Describe 'Invoke-ContainerWorktreeReap' {
+    BeforeEach {
+        Mock Get-SandcastleExitedContainers { @() }
+        Mock Invoke-Docker { $global:LASTEXITCODE = 0 }
+    }
+
+    It 'reaps exited containers for the repo image' {
+        Mock Get-SandcastleExitedContainers { @('sandcastle-abc123') }
+        $script:dockerCalls = @()
+        Mock Invoke-Docker { $script:dockerCalls += ,$args; $global:LASTEXITCODE = 0 }
+
+        $reaped = Invoke-ContainerWorktreeReap -RepoRoot $TestDrive -Repo 'jarvis' -StaleHours 4
+
+        ($reaped.containers -contains 'sandcastle-abc123') | Should Be $true
+        ($script:dockerCalls | Where-Object { $_[0] -eq 'rm' -and $_ -contains 'sandcastle-abc123' }) |
+            Should Not BeNullOrEmpty
+    }
+
+    It 'reaps worktree directories older than the staleness threshold, leaves fresh ones' {
+        $worktreeRoot = Join-Path $TestDrive '.sandcastle/worktrees'
+        New-Item -ItemType Directory -Path (Join-Path $worktreeRoot 'stale-one') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $worktreeRoot 'fresh-one') -Force | Out-Null
+        (Get-Item (Join-Path $worktreeRoot 'stale-one')).LastWriteTimeUtc =
+            (Get-Date).ToUniversalTime().AddHours(-10)
+
+        $reaped = Invoke-ContainerWorktreeReap -RepoRoot $TestDrive -Repo 'jarvis' -StaleHours 4
+
+        ($reaped.worktrees -contains 'stale-one') | Should Be $true
+        ($reaped.worktrees -contains 'fresh-one') | Should Be $false
+        Test-Path (Join-Path $worktreeRoot 'stale-one') | Should Be $false
+        Test-Path (Join-Path $worktreeRoot 'fresh-one')  | Should Be $true
+    }
+
+    It '-StaleHours -lt 0 disables reaping entirely (no docker calls, no filesystem changes)' {
+        Mock Get-SandcastleExitedContainers { @('sandcastle-abc123') }
+        $script:dockerCalls = @()
+        Mock Invoke-Docker { $script:dockerCalls += ,$args; $global:LASTEXITCODE = 0 }
+        $worktreeRoot = Join-Path $TestDrive '.sandcastle/worktrees'
+        New-Item -ItemType Directory -Path (Join-Path $worktreeRoot 'stale-one') -Force | Out-Null
+        (Get-Item (Join-Path $worktreeRoot 'stale-one')).LastWriteTimeUtc =
+            (Get-Date).ToUniversalTime().AddHours(-100)
+
+        $reaped = Invoke-ContainerWorktreeReap -RepoRoot $TestDrive -Repo 'jarvis' -StaleHours -1
+
+        $reaped.containers.Count | Should Be 0
+        $reaped.worktrees.Count  | Should Be 0
+        $script:dockerCalls.Count | Should Be 0
+        Test-Path (Join-Path $worktreeRoot 'stale-one') | Should Be $true
+    }
+
+    It 'a missing worktree-root directory produces no error and an empty worktrees list' {
+        $reaped = Invoke-ContainerWorktreeReap -RepoRoot (Join-Path $TestDrive 'no-worktrees-here') `
+            -Repo 'jarvis' -StaleHours 4
+
+        $reaped.worktrees.Count | Should Be 0
+    }
+}
+
+Describe 'Test-IssueHasOpenPR' {
+    It 'fails open when Issue is missing' {
+        Test-IssueHasOpenPR -Issue 0 -RepoSlug 'x/y' | Should Be $true
+    }
+
+    It 'fails open when RepoSlug is missing' {
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug '' | Should Be $true
+    }
+
+    It 'returns false when no open PR references the issue' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '0' }
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug 'x/y' | Should Be $false
+    }
+
+    It 'returns true when an open PR references the issue' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 0; '1' }
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug 'x/y' | Should Be $true
+    }
+
+    It 'fails open on a gh error (non-zero exit)' {
+        Mock Invoke-Gh { $global:LASTEXITCODE = 1; $null }
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug 'x/y' | Should Be $true
+    }
+
+    It 'fails open when Invoke-Gh throws' {
+        Mock Invoke-Gh { throw 'gh not found' }
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug 'x/y' | Should Be $true
+    }
+
+    It 'regression guard (backslash-escaping bug): the jq expression embeds the literal issue number' {
+        # The jq filter is built as a single-quoted PS string precisely so `\b`
+        # reaches jq as a literal word-boundary, not a corrupted PS string --
+        # see the comment on Test-IssueHasOpenPR. A prior version built it with
+        # a double-quoted string containing `\"`, which doesn't escape in
+        # PowerShell and broke the expression.
+        $script:capturedArgs = $null
+        Mock Invoke-Gh { $script:capturedArgs = $args; $global:LASTEXITCODE = 0; '0' }
+
+        Test-IssueHasOpenPR -Issue 123 -RepoSlug 'x/y' | Out-Null
+
+        ($script:capturedArgs -join ' ') | Should Match '#123'
     }
 }

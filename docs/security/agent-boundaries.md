@@ -19,7 +19,7 @@ Detection chain (#429):
 2. Claude Code headless env vars → `autonomous`
 3. Default → `live`
 
-**Contract for autonomous entry points**: launchers that run Claude headless (the reactive-core executor, any cron/task wrapper) MUST set `JARVIS_PRINCIPAL` explicitly. The APScheduler scheduler service that formerly demonstrated this via NSSM `AppEnvironmentExtra=JARVIS_PRINCIPAL=autonomous` was retired in #743 (replaced by the event-driven `agents/wake_driver.py`); when wake_driver gets a service launcher it carries the same contract. wake_driver itself owns no decisions and spawns nothing directly — the executor that spawns `claude -p` is the headless launcher bound by this rule.
+**Contract for autonomous entry points**: launchers that run Claude headless (the reactive-core executor, any cron/task wrapper) MUST set `JARVIS_PRINCIPAL` explicitly. The resident scheduler service that formerly demonstrated this via NSSM `AppEnvironmentExtra=JARVIS_PRINCIPAL=autonomous` was retired in #743 (replaced by the event-driven `agents/wake_driver.py`); when wake_driver gets a service launcher it carries the same contract. wake_driver itself owns no decisions and spawns nothing directly — the executor that spawns `claude -p` is the headless launcher bound by this rule.
 
 The earlier "default-safe to autonomous" design (#426) was reverted in #429 because hook subprocesses always have piped stdin, so an `isatty()` fallback would mis-classify every interactive session as autonomous. Today's autonomous launchers explicitly set the env; future ones must do the same.
 
@@ -62,7 +62,7 @@ Editing these changes behaviour for **every Claude Code session on the device**,
 | File | Why |
 |------|-----|
 | `~/.claude/settings.json` | User-level hooks — run in every session on this device |
-| `~/.claude/SOUL.md` | User-level identity — loaded by SessionStart hook before project CLAUDE.md |
+| `~/.claude/SOUL.md` | User-level identity — loaded via a **bare, line-start** `@SOUL.md` import in `~/.claude/CLAUDE.md` (#1328; the import only actually resolved from #1426 — before that it sat mid-prose and delivered nothing) |
 | `~/.claude/.mcp.json` | User-level MCP config — mounts servers for every project |
 | `~/.claude/skills/*/SKILL.md` | User-level skill definitions — available in every project |
 

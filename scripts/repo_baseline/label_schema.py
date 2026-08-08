@@ -87,6 +87,25 @@ CLEAN_LABELS: list[CleanLabel] = [
         "CI and quality infrastructure",
         "area",
     ),
+    # area:memory / area:security added per #942 owner decision (0610fc63):
+    # the two heaviest jarvis topic-tags (`memory` 23 uses, `security` 7 uses)
+    # had no area:* home and would have orphan-deleted, losing the signal.
+    CleanLabel(
+        # Muted steel-blue — distinct from the saturated blues (0075ca,
+        # 0052cc, 1d76db) and the pale blues (c5def5 draft, d4c5f9 review).
+        "area:memory",
+        "8fbcdb",
+        "Memory subsystem (mcp-memory, recall, derivation)",
+        "area",
+    ),
+    CleanLabel(
+        # Soft red — distinct from the saturated/dark reds (b60205, d73a4a,
+        # e92c42, 7b0000, d93f0b) and area:infrastructure's peach f9d0c4.
+        "area:security",
+        "e99695",
+        "Security & digital hygiene",
+        "area",
+    ),
     # ── Needs ─────────────────────────────────────────────────────────
     # NOTE: the needs-* family uses a dash, not the `category:value` colon
     # convention the other categories follow. This is an intentional
@@ -102,6 +121,18 @@ CLEAN_LABELS: list[CleanLabel] = [
         "needs",
     ),
     CleanLabel("needs-prd", "ffc844", "Needs PRD before slicing", "needs"),
+    # needs-triage added per #942 owner decision: already live on one repo
+    # (32 uses) and referenced by scripts/review_debt_collector.py in jarvis
+    # (which previously pointed at a non-existent label). Same dash format as
+    # the rest of the needs-* family per the NOTE above.
+    CleanLabel(
+        # Distinct light-amber — unique vs priority:medium (fbca04),
+        # needs-grill (fdd835), needs-prd (ffc844), tier:2-review (dbab09).
+        "needs-triage",
+        "ffe082",
+        "Awaiting triage into the issue state machine",
+        "needs",
+    ),
     # ── Tier ──────────────────────────────────────────────────────────
     CleanLabel(
         "tier:1-auto",

@@ -34,6 +34,12 @@ from scripts.repo_baseline.canon import load_all_canon_templates
 #
 # "verify-verdict" is the final-gate job in the code-review retry-wrapper;
 # the check name that branch protection sees is "verify-verdict".
+# What the live audit supplies for the *observed* axes (#1406) — facts read off
+# the repo rather than declared in a manifest, so there is no profile default to
+# fall back on and a rendering caller must stand one in. This guard only cares
+# about job names, so any plausible branch does.
+_OBSERVED: Dict[str, str] = {"default_branch": "main"}
+
 EXPECTED_CHECK_CONTEXTS: Dict[str, tuple[str, str]] = {
     "verify-verdict": (
         ".github/workflows/code-review.yml",
@@ -88,14 +94,18 @@ def _extract_job_names(workflow_yaml: str, workflow_path: str) -> Dict[str, str]
 
 def _render_workflow(workflow_path: str, templates: Dict[str, str], renderer: Renderer,
                      manifest: Manifest) -> str | None:
-    """Render a canon workflow template with a default manifest."""
+    """Render a canon workflow template with a default manifest.
+
+    ``None`` means one thing only: no canon template covers *workflow_path*. A
+    template that fails to render raises — swallowing that here reported it to
+    the caller as "workflow not found in canon templates", which is a lie about
+    the cause and cost a debugging round when ci-meta.yml grew a
+    ``{{ default_branch }}`` placeholder (#1406).
+    """
     template = templates.get(workflow_path)
     if template is None:
         return None
-    try:
-        return renderer.render(template, manifest)
-    except Exception:
-        return None
+    return renderer.render(template, manifest, _OBSERVED)
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────

@@ -87,6 +87,18 @@ def current_git_sha(repo_root: Path) -> str:
     return _run_git(repo_root, "rev-parse", "HEAD")
 
 
+def _is_git_worktree_checkout(repo_root: Path) -> bool:
+    """True when `repo_root` is a linked worktree, not the main checkout.
+
+    A worktree's `.git` is a FILE holding a `gitdir: ...` pointer into the
+    main checkout's `.git/worktrees/<name>`; the main checkout's `.git` is a
+    directory. #1199: the installer resolves `repo_root` from its own file
+    location, which for a worktree is the worktree tree — global-scope MCP
+    registration (`claude mcp add -s user`) must run from the main checkout.
+    """
+    return (repo_root / ".git").is_file()
+
+
 def read_version(target_root: Path) -> str | None:
     marker = target_root / ".jarvis-version"
     if not marker.exists():
@@ -135,7 +147,7 @@ _POSIX_PATH_PATTERN = re.compile(r"(?<!\S)(scripts|config)/")
 
 
 # A pre-migration `.mcp.json` sitting in any parent dir of JARVIS_HOME (e.g.
-# `D:\Github\.mcp.json`) shadows the correctly-templated user-level file:
+# `<repos-root>\.mcp.json`) shadows the correctly-templated user-level file:
 # Claude Code walks up from CWD and binds the first `.mcp.json` it finds.
 # Pre-migration files reference `jarvis/scripts/...` as a *relative* path,
 # which only resolves when CWD == the legacy file's parent. From any other
@@ -426,6 +438,58 @@ def _plan_mcp_user_registrations(
     return actions
 
 
+def _venv_python_candidates(repo_root: Path) -> list[Path]:
+    """Mirrors scripts/run-memory-server.py's venv-python lookup order."""
+    return [
+        repo_root / ".venv" / "Scripts" / "python.exe",  # Windows
+        repo_root / ".venv" / "bin" / "python",  # macOS/Linux
+    ]
+
+
+def _mcp_action_requires_venv(spec: dict[str, Any], repo_root: Path) -> bool:
+    """True when `spec` invokes a repo-venv python — e.g. `python
+    scripts/x.py`, templated to an absolute `repo_root`-rooted path by
+    `_plan_mcp_user_registrations`. A python command pointed at a path
+    outside `repo_root` (e.g. `${UML_MCP_HOME}/server.py`) doesn't depend on
+    this repo's own `.venv`.
+
+    `template_content` renders args with forward slashes regardless of OS
+    (#1199 — a raw string `.startswith(str(repo_root))` breaks on Windows,
+    where `repo_root` renders with backslashes), so args are compared as
+    `Path` objects rather than strings.
+    """
+    if spec.get("command") not in ("python", "python3"):
+        return False
+    repo_root = repo_root.resolve()
+    for a in spec.get("args") or []:
+        try:
+            if Path(a).resolve().is_relative_to(repo_root):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
+def _check_mcp_venv_dependencies(actions: list[Action], repo_root: Path) -> None:
+    """Raise loudly if a planned MCP registration depends on `.venv` and no
+    venv-python candidate exists at `repo_root` (#1199) — otherwise the
+    registration succeeds but the server fails to launch on first use.
+    """
+    for action in actions:
+        if action.kind != "register_mcp_user":
+            continue
+        payload = json.loads(action.note)
+        spec = payload["spec"]
+        if not _mcp_action_requires_venv(spec, repo_root):
+            continue
+        if not any(p.is_file() for p in _venv_python_candidates(repo_root)):
+            raise RuntimeError(
+                f"MCP server {payload['name']!r} requires a repo .venv, but none "
+                f"was found at {repo_root / '.venv'}; run scripts/setup-device.py "
+                "(or setup-device.sh) before installing"
+            )
+
+
 def _resolve_claude_cli() -> str:
     """Return an executable path for the Claude Code CLI.
 
@@ -551,15 +615,13 @@ def _substitute_placeholders(text: str, repo_root: Path, claude_home: Path) -> s
     )
 
 
-def template_content(source: Path, repo_root: Path, claude_home: Path) -> bytes:
-    """Read source, apply templating, return bytes to write at dest.
+def _template_bytes(raw: bytes, ext: str, repo_root: Path, claude_home: Path) -> bytes:
+    """Templating core shared by `template_content` and git-history reads.
 
-    For .json files: parse, rewrite relative `scripts/`/`config/` paths to
-    absolute, pretty-print. For other files: plain placeholder replace.
-    Non-text / non-json files fall back to a raw copy (no transformation).
+    For .json content: parse, rewrite relative `scripts/`/`config/` paths to
+    absolute, pretty-print. For other content: plain placeholder replace.
+    Non-text / non-json content falls back to a raw copy (no transformation).
     """
-    ext = source.suffix.lower()
-    raw = source.read_bytes()
     if ext == ".json":
         try:
             data = json.loads(raw.decode("utf-8"))
@@ -573,6 +635,32 @@ def template_content(source: Path, repo_root: Path, claude_home: Path) -> bytes:
     except UnicodeDecodeError:
         return raw
     return _substitute_placeholders(text, repo_root, claude_home).encode("utf-8")
+
+
+def template_content(source: Path, repo_root: Path, claude_home: Path) -> bytes:
+    """Read source, apply templating, return bytes to write at dest."""
+    return _template_bytes(source.read_bytes(), source.suffix.lower(), repo_root, claude_home)
+
+
+def _git_show_at(repo_root: Path, sha: str, rel_path: str) -> bytes | None:
+    """Return file bytes at `sha:rel_path` in `repo_root`'s git history.
+
+    None on any failure — no git repo, unknown sha, or the path didn't exist
+    at that commit. Callers must treat None as "no base to diff against" and
+    fall back to plain union (no pruning).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "show", f"{sha}:{rel_path}"],
+            cwd=repo_root,
+            capture_output=True,
+            timeout=_ENV_SUBPROCESS_TIMEOUT,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout
 
 
 # ---------- planning ----------
@@ -633,6 +721,24 @@ def build_plan(
             src = repo_root / entry["source"]
             dest = target_root / entry["dest"]
             include = entry.get("include")
+            if not include and entry.get("dest") == "rules":
+                # The rules carrier is where deleting a Tier-B rule file must
+                # actually remove it from ~/.claude/rules/ on next apply. A
+                # glob-based (no include:) entry skips orphan-detection (see
+                # test_directory_without_include_skips_orphan_check — that's
+                # deliberate for e.g. the skills group), which for `rules`
+                # means a deleted file silently comes back (#1274 AC4).
+                # ceiling: only `dest == "rules"` is guarded — a future carrier
+                # group needing the same delete-detection guarantee needs its
+                # own `== "<name>"` branch here. Upgrade path: a manifest-level
+                # `require_include: true` flag, read the same way `include`/
+                # `template` already are, so the guard is declarative instead
+                # of an enumerated string list.
+                raise ValueError(
+                    f"manifest group {gid!r}: directories entry {entry.get('source')!r} "
+                    "dest=rules has no `include:` whitelist — the rules carrier "
+                    "must declare one explicitly so deletions are detectable"
+                )
             actions.append(
                 Action(
                     kind="copy_dir",
@@ -743,6 +849,12 @@ def _copy_dir(
     repo_root: Path,
     claude_home: Path,
 ) -> None:
+    # A manifest `directories:` entry may name a source that doesn't exist
+    # yet (e.g. a `rules` group declared ahead of the first rule file) —
+    # treat that as "nothing to install for this entry" rather than crashing
+    # install.ps1 -Apply for every user (#1274).
+    if not src.exists():
+        return
     dest.mkdir(parents=True, exist_ok=True)
     allowed = set(include) if include else None
     for child in src.iterdir():
@@ -777,7 +889,7 @@ def _copy_file(
 _JARVIS_OWNED_REPLACE_PARENTS = ("hooks", "mcpServers")
 
 
-def _deep_merge_jarvis_json(existing: Any, source: Any) -> Any:
+def _deep_merge_jarvis_json(existing: Any, source: Any, base: Any = None) -> Any:
     """Merge `source` onto `existing` using jarvis-aware semantics.
 
     - For dict parents named in `_JARVIS_OWNED_REPLACE_PARENTS`
@@ -795,11 +907,32 @@ def _deep_merge_jarvis_json(existing: Any, source: Any) -> Any:
       1-element list so a scalar/array mismatch unions cleanly.
     - For other non-dicts at the leaf: `source` wins.
 
+    `base` (optional) is the source's content at the previously-installed
+    commit — the missing third state that lets list-leaf merges distinguish
+    "jarvis removed this entry upstream" (prune from `existing`) from "the
+    user added this entry locally, it was never in any source version"
+    (always preserved, since it's never in `base`). Pass `None` (default) to
+    reproduce the plain union-only behavior — used when there's no previous
+    install, no git history, or the file wasn't tracked at that commit.
+
+    The same distinction applies one level up, at whole dict keys: a key
+    present in `base` but dropped from `source` (e.g. a deprecated top-level
+    setting like `skillOverrides`) is pruned from `existing` too, provided
+    `existing` still matches what `base` had there — i.e. the local mirror
+    was never customized away from the installed default. A key the user
+    edited locally so it differs from `base` is left alone; a key that was
+    never in `base` at all (genuinely user-added) is untouched regardless.
+
     Not a general-purpose deep-merge — tuned for the two files M3 ships.
     """
     if not isinstance(existing, dict) or not isinstance(source, dict):
         return source
+    base_dict = base if isinstance(base, dict) else {}
     out = dict(existing)
+    if base is not None:
+        for key in base_dict:
+            if key not in source and key in out and out[key] == base_dict[key]:
+                del out[key]
     for key, src_val in source.items():
         if (
             key in _JARVIS_OWNED_REPLACE_PARENTS
@@ -811,26 +944,36 @@ def _deep_merge_jarvis_json(existing: Any, source: Any) -> Any:
                 merged_child[child_key] = child_val
             out[key] = merged_child
         elif isinstance(src_val, dict) and isinstance(out.get(key), dict):
-            out[key] = _deep_merge_jarvis_json(out[key], src_val)
+            out[key] = _deep_merge_jarvis_json(out[key], src_val, base_dict.get(key))
         elif isinstance(src_val, list) or isinstance(out.get(key), list):
-            out[key] = _union_list_leaf(out.get(key), src_val)
+            out[key] = _union_list_leaf(out.get(key), src_val, base_dict.get(key))
         else:
             out[key] = src_val
     return out
 
 
-def _union_list_leaf(existing: Any, source: Any) -> list[Any]:
+def _union_list_leaf(existing: Any, source: Any, base: Any = None) -> list[Any]:
     """Stable-dedup union of two list-valued leaves, existing entries first.
 
     Either argument may be a scalar (coerced to a 1-element list) or absent
     (``None`` → empty list). Preserves order and drops duplicates by value,
     so re-applying the installer is idempotent. See `_deep_merge_jarvis_json`
     for why list leaves union rather than source-wins.
+
+    When `base` is given, entries present in `base` but absent from `source`
+    are treated as deliberately removed upstream and pruned from `existing`
+    before the union — this is what lets a source-side deletion actually
+    reach the mirror instead of surviving forever via the union. Entries
+    never seen in `base` (genuinely user-added) are untouched by pruning.
     """
     existing_items = (
         existing if isinstance(existing, list) else ([] if existing is None else [existing])
     )
     source_items = source if isinstance(source, list) else ([] if source is None else [source])
+    if base is not None:
+        base_items = base if isinstance(base, list) else [base]
+        removed = [item for item in base_items if item not in source_items]
+        existing_items = [item for item in existing_items if item not in removed]
     merged: list[Any] = list(existing_items)
     for item in source_items:
         if item not in merged:
@@ -844,12 +987,19 @@ def _merge_json_file(
     template: bool,
     repo_root: Path,
     claude_home: Path,
+    previous_sha: str | None = None,
 ) -> None:
     """Write `src` to `dest`, deep-merging with any existing dest JSON.
 
     If dest exists and parses as JSON, merge (user keys jarvis doesn't own
     are preserved). If dest is absent or unparseable, fall through to a
     plain write — identical to `_copy_file` in that case.
+
+    `previous_sha`, when given, is used to fetch `src`'s content as of the
+    previously-installed commit (`git show <sha>:<rel_path>`) as the merge's
+    "base" state — see `_deep_merge_jarvis_json`. Any failure to resolve it
+    (no git history, path not tracked at that commit, `src` outside
+    `repo_root`) degrades silently to the old union-only behavior.
     """
     if template:
         new_bytes = template_content(src, repo_root, claude_home)
@@ -864,11 +1014,29 @@ def _merge_json_file(
         dest.write_bytes(new_bytes)
         return
 
+    base_data: Any = None
+    if previous_sha and dest.exists():
+        try:
+            rel_src = src.resolve().relative_to(repo_root.resolve()).as_posix()
+        except ValueError:
+            rel_src = None
+        if rel_src:
+            base_bytes = _git_show_at(repo_root, previous_sha, rel_src)
+            if base_bytes is not None:
+                if template:
+                    base_bytes = _template_bytes(
+                        base_bytes, src.suffix.lower(), repo_root, claude_home
+                    )
+                try:
+                    base_data = json.loads(base_bytes.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    base_data = None
+
     merged: Any = new_data
     if dest.exists():
         try:
             existing = json.loads(dest.read_text(encoding="utf-8"))
-            merged = _deep_merge_jarvis_json(existing, new_data)
+            merged = _deep_merge_jarvis_json(existing, new_data, base_data)
         except (OSError, json.JSONDecodeError):
             # Unparseable existing → treat as absent (backup already captured it).
             merged = new_data
@@ -935,19 +1103,63 @@ def _copy_tolerant(src: str, dst: str, *, follow_symlinks: bool = True) -> str |
         return None
 
 
-def _backup_target_root(target_root: Path, backup_path: Path) -> None:
-    """Copy ``target_root`` to ``backup_path`` tolerating mid-copy disappearance/locks.
+_BACKUP_MANIFEST_NAME = ".jarvis-backup-manifest.json"
+_DESTRUCTIVE_KINDS = {"copy_file", "copy_dir", "merge_json"}
+
+
+def _backup_target_root(target_root: Path, backup_path: Path, actions: list[Action]) -> None:
+    """Back up only the paths ``actions`` will overwrite, not the whole target_root tree.
+
+    ``target_root`` can hold hundreds of MB of unrelated runtime state
+    (session transcripts under ``projects/``, telemetry, debug logs) that the
+    installer never writes to and that may be actively growing/locked while a
+    Claude Code session is running on the device. Copying the whole tree made
+    backups slow enough to be interrupted mid-copy (see memory
+    ``install_apply_not_during_active_claude_session``). Scoping the backup to
+    actual write targets keeps it fast and avoids racing live writers.
+
+    A manifest of the touched relative paths ships alongside the backup so
+    ``rollback`` can undo exactly this set — including dest paths that didn't
+    exist yet pre-apply (nothing to restore, but still removed on rollback).
 
     ``symlinks=True`` preserves symlinks as symlinks rather than dereferencing;
     combined with ``ignore_dangling_symlinks=True`` this future-proofs against
     broken junctions inside the target tree (Claude Code can create them).
     """
-    shutil.copytree(
-        target_root,
-        backup_path,
-        copy_function=_copy_tolerant,
-        symlinks=True,
-        ignore_dangling_symlinks=True,
+    touched: list[str] = []
+    seen: set[str] = set()
+    for action in actions:
+        if action.kind not in _DESTRUCTIVE_KINDS:
+            continue
+        try:
+            rel_str = Path(action.dest).relative_to(target_root).as_posix()
+        except ValueError:
+            continue
+        if rel_str in seen:
+            continue
+        seen.add(rel_str)
+        touched.append(rel_str)
+
+    backup_path.mkdir(parents=True, exist_ok=True)
+    for rel_str in touched:
+        src = target_root / rel_str
+        if not src.exists():
+            continue
+        dst = backup_path / rel_str
+        if src.is_dir():
+            shutil.copytree(
+                src,
+                dst,
+                copy_function=_copy_tolerant,
+                symlinks=True,
+                ignore_dangling_symlinks=True,
+            )
+        else:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            _copy_tolerant(str(src), str(dst))
+
+    (backup_path / _BACKUP_MANIFEST_NAME).write_text(
+        json.dumps(touched, indent=2), encoding="utf-8"
     )
 
 
@@ -961,7 +1173,7 @@ def apply_plan(
     if plan.state == "current":
         return
     if plan.backup_path is not None:
-        _backup_target_root(plan.target_root, plan.backup_path)
+        _backup_target_root(plan.target_root, plan.backup_path, plan.actions)
 
     plan.target_root.mkdir(parents=True, exist_ok=True)
 
@@ -981,6 +1193,7 @@ def apply_plan(
                 action.template,
                 plan.repo_root,
                 plan.target_root,
+                plan.previous_sha,
             )
         elif action.kind == "copy_dir":
             # Re-derive include from manifest — cheaper than threading it through.
@@ -1071,11 +1284,41 @@ def prune_backups(target_root: Path, prefix: str, retain: int) -> list[Path]:
 
 
 def rollback(target_root: Path, backup_path: Path) -> None:
+    """Restore ``target_root`` from ``backup_path``.
+
+    Scoped backups (see ``_backup_target_root``) carry a manifest of exactly
+    which relative paths were touched — rollback removes and restores only
+    those, leaving unrelated target_root state (session transcripts, caches)
+    untouched. Backups without a manifest (pre-scoping legacy format, or a
+    hand-built directory as in tests/manual ``--rollback <path>`` use) fall
+    back to a full wholesale replace.
+    """
     if not backup_path.exists():
         raise FileNotFoundError(f"backup {backup_path} not found")
-    if target_root.exists():
-        shutil.rmtree(target_root)
-    shutil.copytree(backup_path, target_root)
+
+    manifest_file = backup_path / _BACKUP_MANIFEST_NAME
+    if not manifest_file.exists():
+        if target_root.exists():
+            shutil.rmtree(target_root)
+        shutil.copytree(backup_path, target_root)
+        return
+
+    touched: list[str] = json.loads(manifest_file.read_text(encoding="utf-8"))
+    for rel_str in touched:
+        dst = target_root / rel_str
+        if dst.exists():
+            if dst.is_dir():
+                shutil.rmtree(dst)
+            else:
+                dst.unlink()
+        src = backup_path / rel_str
+        if not src.exists():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        if src.is_dir():
+            shutil.copytree(src, dst, symlinks=True)
+        else:
+            shutil.copy2(src, dst)
 
 
 def _rollback_failed_apply(plan: Plan) -> None:
@@ -1336,6 +1579,7 @@ def main(argv: list[str] | None = None) -> int:
       2  apply error (rolled back)
       3  health check non-zero exit (rolled back)
       4  health check timeout — inconclusive, apply left in place
+      5  refused --apply from a git worktree checkout (no write performed)
     """
     # Line-buffer stdout/stderr so per-action progress shows in real time even
     # when output is captured through a pipe (install.ps1 tees it). Otherwise
@@ -1413,12 +1657,23 @@ def main(argv: list[str] | None = None) -> int:
         print("\n(dry-run — re-run with --apply to execute)")
         return 0
 
+    if _is_git_worktree_checkout(repo_root):
+        print(
+            f"\nERROR: refusing --apply from a git worktree checkout ({repo_root}).\n"
+            "Global-scope MCP registration (`claude mcp add -s user`) must run from "
+            "the main checkout, not a linked worktree — re-run the installer from "
+            "the main checkout directory.",
+            file=sys.stderr,
+        )
+        return 5
+
     # `state == "current"` short-circuit must NOT skip --fix-env-encoding:
     # the common re-run case is a user with an installed-but-encoding-broken
     # ~/.claude who runs `install.ps1 -Apply -FixEncoding` to repair it.
     if plan.state != "current":
         env_runner = None if args.skip_env else _set_env
         try:
+            _check_mcp_venv_dependencies(plan.actions, repo_root)
             apply_plan(plan, manifest, run_env=env_runner)
         except Exception as exc:  # noqa: BLE001
             print(f"\napply failed: {exc}", file=sys.stderr)

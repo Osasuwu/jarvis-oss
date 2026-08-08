@@ -52,8 +52,8 @@ See `docs/security/mcp-audit.md` for per-server analysis. Summary:
 
 | Vector | Risk | Current mitigation |
 |--------|------|--------------------|
-| .env file read by agent | High | SOUL.md rule: never read .env |
-| Home directory dotfile access | Medium | SOUL.md boundary rule |
+| .env file read by agent | High | `permissions.deny` globs in `~/.claude/settings.json` (`Read`/`Edit` on `**/.env*`) — a Read deny also blocks Edit |
+| Home directory dotfile access | Medium | `permissions.deny` globs on `~/.ssh/**`, `~/.aws/**`, `~/.gnupg/**`, `**/id_rsa*`, `**/*.pem` |
 | Cross-device config divergence | Low | Portable .mcp.json (no hardcoded paths) |
 
 ## Data Flow
@@ -98,7 +98,8 @@ Key flows to protect:
 - [x] Secret scanner on bash commands (PreToolUse hook)
 - [x] Secret scanner on memory_store (#159)
 - [x] Protected file write blocking (#162)
-- [x] SOUL.md behavioral rules (never read .env, never output secrets)
+- [x] Secret scanner on file writes — Edit/Write/NotebookEdit (#1418)
+- [x] `permissions.deny` globs for credential paths (settings.json)
 - [x] Gitleaks pre-commit hook + CI workflow
 - [x] Credential registry with CHECK constraint (no values stored)
 

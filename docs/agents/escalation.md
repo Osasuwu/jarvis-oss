@@ -71,7 +71,7 @@ emits the event; the queue update is skipped rather than failing.
 
 ## Testing
 
-`tests/test_agents_escalation.py` — 33 unit tests. Pure checks use
+`tests/reactive_core/test_agents_escalation.py` — 33 unit tests. Pure checks use
 dict rows + fake clock; `escalate()` uses a stub Supabase client that
 records insert/update shape.
 

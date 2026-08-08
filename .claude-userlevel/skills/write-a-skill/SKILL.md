@@ -117,3 +117,62 @@ After drafting, verify:
 - [ ] Consistent terminology
 - [ ] Concrete examples included
 - [ ] References one level deep
+
+## Glossary
+
+Shared vocabulary used across the skill suite. Consistent terminology makes skills more predictable and maintainable.
+
+### Model-invoked vs User-invoked
+
+Controls whether the agent sees the `description` and can fire the skill autonomously.
+
+- **Model-invoked**: `disable-model-invocation` is absent or `false`. The description sits in agent context every turn (context load). Agent can fire it on trigger; other skills can reach it. Use when the agent needs autonomous access.
+- **User-invoked**: `disable-model-invocation: true`. No description in agent view — zero context load. Only the human can invoke it by typing the name. Use when the skill fires only on explicit request.
+
+When user-invoked skills multiply, a **router skill** (one user-invoked skill cataloging the others) reduces cognitive load.
+
+### Leading Word
+
+A compact concept the model already knows (e.g. *fog of war*, *tracer bullets*, *tight*) that anchors a region of behaviour by recruiting existing priors. Better than a made-up term that must be defined from scratch. Serves predictability twice: in the body it anchors execution; in the description it anchors invocation when the same word appears in user prompts.
+
+### Description
+
+The frontmatter `description` field — the trigger surface for model-invoked skills. Rules: front-load the leading word, one trigger per distinct branch, collapse synonyms. Every word is a context cost, so descriptions need more pruning than body text.
+
+### Completion Criterion
+
+What "done" means at the end of a step. A sharp, checkable criterion resists the agent declaring done prematurely. The strongest criteria are both checkable and exhaustive ("every modified model accounted for" vs "produce a change list").
+
+### Branch
+
+A distinct invocation path through a skill — different runs take different routes. A linear skill has no branches. Progressive disclosure is licensed by branching: inline what every branch needs, push branch-specific material behind context pointers.
+
+### Granularity
+
+How finely skills are divided. Each split spends either context load (model-invoked) or cognitive load (user-invoked). Two justified cuts: by **invocation** (distinct leading word justifies its own model-invoked skill) or by **sequence** (hide post-completion steps to prevent rushing).
+
+### Progressive Disclosure
+
+Moving reference material behind context pointers (linked files) so SKILL.md stays legible. Disclose what only some branches need; keep inline what every run needs. See "When to Split Files" above — same principle, formalised vocabulary.
+
+## Failure-Mode Taxonomy
+
+Common skill defects, how to recognise them, and how to fix them.
+
+| Failure mode | Symptoms | Fix |
+|---|---|---|
+| **Premature Completion** | Agent ends a step early; attention slips to "being done" | Sharpen the completion criterion first (cheap, local). If still fuzzy and rushing persists, hide post-completion steps by splitting. |
+| **Duplication** | Same meaning in multiple places — repeated prose, restated rules | Consolidate to one **single source of truth** per meaning. A leading word is the deliberate exception (repeat the *token*, not the meaning). |
+| **Sediment** | Stale layers accumulate because "adding feels safe, removing feels risky" | Regular pruning. Check every line for **relevance** — does it still bear on what the skill does? Delete what doesn't. |
+| **Sprawl** | Skill too long even when every line is live — hurts readability, wastes tokens | Push reference behind context pointers; split by branch or sequence so each path carries only what it needs. |
+| **No-Op** | Instruction changes nothing because the model already does it by default | Test each line: does it change behaviour vs default? Delete it or sharpen with a stronger **leading word**. |
+| **Negation** | Steering by prohibition — "don't do X" — which makes X *more* available | Rewrite as positive guidance: describe the target behaviour so the banned one is never mentioned. |
+
+### Map to existing Jarvis rules
+
+- **No skill-to-skill calls / no shared abstractions** (`skills_independent_complementary`) — a Duplication variant where skills share logic instead of each being self-contained.
+- **Anchored routing** (CLAUDE.md `/status` precedent) — prevents over-triggering, a Premature Completion variant at invocation level.
+- **Description discipline** (one trigger per branch, front-load leading word) — counters No-Op and Duplication in descriptions.
+- **Progressive disclosure via sub-files** — counters Sprawl. Already encoded in "When to Split Files" section.
+
+The cure order: **sharpen the criterion** (local, cheap) before **splitting** (structural, expensive).

@@ -1,12 +1,13 @@
-"""One-shot live smoke test for the dispatcher — seed one row, spawn real Claude, verify.
+"""One-shot live smoke test for the reactive-core dispatch path — seed one row, spawn real Claude, verify.
 
 Usage:
     python scripts/dispatcher_smoke_live.py seed      # insert a row, print marker
     python scripts/dispatcher_smoke_live.py check     # inspect row/audit/marker file
     python scripts/dispatcher_smoke_live.py cleanup   # delete row + audit + marker file
 
-The workflow is deliberately split so the operator runs `python -m agents.dispatcher`
-in between `seed` and `check`, keeping each subprocess boundary observable.
+The workflow is deliberately split so the operator runs `python -m agents.wake_driver --once`
+in between `seed` and `check`, keeping each subprocess boundary observable. The wake driver
+drains the seeded `task_queue` row and the executor spawns the real Claude subprocess.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ def seed() -> int:
     marker = uuid.uuid4().hex[:12]
     # Marker lives inside the project dir so the spawned Claude's acceptEdits
     # permission mode approves the Write. Writes outside the project root
-    # still require explicit --add-dir flags, which the dispatcher does not
+    # still require explicit --add-dir flags, which the executor does not
     # grant (and shouldn't for a test utility).
     smoke_file = MARKER_DIR / f"{marker}.ok"
 
@@ -86,7 +87,7 @@ def seed() -> int:
     print(f"[seed] expected smoke file: {smoke_file}")
     print(f"[seed] state saved to: {STATE_FILE}")
     print()
-    print("Next: python -m agents.dispatcher")
+    print("Next: python -m agents.wake_driver --once")
     return 0
 
 

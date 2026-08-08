@@ -48,9 +48,9 @@ invoking tools.
 
 ### 3. Repos on disk
 
-The jarvis repo lives at `D:\Github\jarvis` (this device's `config/device.json`
-sets `repos_path` to `D:\Github`). The redrobot repo lives at
-`D:\Github\redrobot` (the inner directory is the actual repo). Both
+The jarvis repo lives under your repos root, e.g. `C:\repos\jarvis` (the
+device's `config/device.json` sets `repos_path` to that root). The second
+repo (redrobot in the examples below) lives alongside it. Both
 must be cloned and on `main`/`master` before scheduling.
 
 ### 4. `.sandcastle/.env`
@@ -73,7 +73,7 @@ fill in:
 ### 5. Build the image
 
 ```powershell
-cd D:\Github\jarvis
+cd C:\repos\jarvis
 npm install                                                  # one-time: pulls tsx + sandcastle
 docker build -t sandcastle:jarvis -f .sandcastle/Dockerfile .
 ```
@@ -92,7 +92,7 @@ Once the prerequisites above are in place, the Task Scheduler entries are
 
 ```powershell
 # One-time machine env so the redrobot watchdog finds the worktree at 02:00.
-setx /M REDROBOT_REPO_ROOT D:\Github\redrobot
+setx /M REDROBOT_REPO_ROOT C:\repos\redrobot
 # (open a fresh shell after setx — Machine vars don't refresh in the current one)
 
 # jarvis loop — 22:00 nightly, soft-stop at 02:00

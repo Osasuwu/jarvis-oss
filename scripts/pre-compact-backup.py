@@ -9,6 +9,9 @@ Invariants:
 - **Never** blocks compaction. Exits 0 on all paths, including failures.
 - Snapshot content stays under SIZE_BUDGET bytes (~30KB). Long transcripts
   keep only the last TAIL_KEEP entries with a dropped-head counter.
+- TTL retention (#1272): snapshot rows older than SNAPSHOT_TTL_DAYS are
+  deleted at write time (best-effort; the Supabase path calls
+  `_purge_stale_snapshots` after each successful upsert).
 - Every invocation appends one heartbeat line to
   `.claude/session-snapshots/hook.log` — no line at compaction time means the
   harness never ran the hook (e.g. the 2026-06-12 outage: rewriting
@@ -80,6 +83,7 @@ SIZE_BUDGET = 30_000  # bytes — content column target
 MAX_TRANSCRIPT_LINES = 10_000  # tail-truncate above this
 TAIL_KEEP = 8_000  # keep last N lines when truncating
 ACTIONS_CAP = 200  # per-section cap on verbose action lines
+SNAPSHOT_TTL_DAYS = 30  # snapshot rows older than this are purged at write time
 
 
 # Derived from config/repos.conf so the set is owner-agnostic; falls back to
@@ -102,16 +106,26 @@ KNOWN_PROJECTS = _load_known_projects()
 
 
 # ---------------------------------------------------------------------------
-# Helpers (pure — unit-tested in tests/test_pre_compact_backup.py)
+# Helpers (pure — unit-tested in tests/infrastructure/test_pre_compact_backup.py)
 # ---------------------------------------------------------------------------
 def _detect_project(cwd: str | None) -> str | None:
+    """Return the known project a path belongs to, scanning all components.
+
+    Basename-only matching missed worktree sessions
+    (`<repo>/.claude/worktrees/<name>` → basename is the worktree name), so
+    snapshots landed under project=NULL and the /end lookup missed them.
+    Rightmost match wins so a nested checkout resolves to the inner repo.
+    """
     if not cwd:
         return None
     try:
-        name = Path(cwd).name.lower()
+        parts = Path(cwd).parts
     except Exception:
         return None
-    return name if name in KNOWN_PROJECTS else None
+    for part in reversed(parts):
+        if part.lower() in KNOWN_PROJECTS:
+            return part.lower()
+    return None
 
 
 def _read_hook_input(stream=None) -> dict:
@@ -377,6 +391,36 @@ def _compose_markdown(
 # ---------------------------------------------------------------------------
 # Persistence
 # ---------------------------------------------------------------------------
+def _purge_stale_snapshots(client, ttl_days: int = SNAPSHOT_TTL_DAYS) -> int | None:
+    """Delete session_snapshot_* rows older than ttl_days (#1272 AC3).
+
+    Enforced at write time — called after each successful upsert. Best-effort:
+    returns the number of rows deleted, or None on failure; never raises, so
+    the never-blocks-compaction invariant holds. RLS may filter the delete to
+    zero rows for an anon-key caller; that is logged, not fatal.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=ttl_days)).isoformat()
+        # ceiling: LIKE scan over name with no index — fine at ~1.4k rows once
+        # per compaction; add idx_memories_name if the table ever grows large.
+        result = (
+            client.table("memories")
+            .delete()
+            .like("name", "session_snapshot_%")
+            .lt("updated_at", cutoff)
+            .execute()
+        )
+        deleted = len(result.data or [])
+        if deleted:
+            print(f"[pre-compact] TTL purge: deleted {deleted} stale snapshot rows", file=sys.stderr)
+        return deleted
+    except Exception as e:
+        print(f"[pre-compact] snapshot TTL purge failed: {e}", file=sys.stderr)
+        return None
+
+
 def _persist_supabase(
     session_id: str,
     project: str | None,
@@ -409,6 +453,7 @@ def _persist_supabase(
             "content": content,
         }
         client.table("memories").upsert(payload, on_conflict="project,name").execute()
+        _purge_stale_snapshots(client)
         return True
     except Exception as e:
         print(f"[pre-compact] supabase persist failed: {e}", file=sys.stderr)

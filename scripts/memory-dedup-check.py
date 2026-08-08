@@ -43,6 +43,17 @@ for _env in [_root / ".env", _root.parent / ".env"]:
 
 from supabase import create_client
 
+# recall.py is the deep module (#496-#499) that owns EXCLUDE_TAGS_FROM_RECALL —
+# same list used to hide operational artifacts (session snapshots) from
+# memory_recall. Reused here so the dedup guard can't drift out of sync with
+# the recall path (#1184: snapshot rows were excluded from recall but not
+# from dedup, causing false-positive blocks on unrelated working_state writes).
+sys.path.insert(0, str(_root / "mcp-memory"))
+from recall import (  # noqa: E402
+    EXCLUDE_TAGS_FROM_RECALL,  # noqa: F401
+    filter_excluded_tags as _filter_excluded_tags,
+)
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -69,6 +80,25 @@ def is_exempt_series(tags) -> bool:
     """True if the memory carries a tag marking it as an auto-generated serial
     snapshot, which is intentionally near-identical to its siblings."""
     return isinstance(tags, list) and bool(SERIES_EXEMPT_TAGS.intersection(tags))
+
+
+def row_exists(client, name: str, project) -> bool:
+    """True if a live (project, name) row already exists.
+
+    A memory_store against an existing (project, name) is an upsert of a
+    known row, not a candidate for cross-name duplicate detection — the
+    unique constraint already owns that identity (#1184). Fail-open: any
+    error here just means the dedup guard runs as before, never that a
+    real duplicate silently skips the check.
+    """
+    norm_project = None if project == "global" else project
+    try:
+        q = client.table("memories").select("id").eq("name", name).is_("deleted_at", "null")
+        q = q.eq("project", norm_project) if norm_project is not None else q.is_("project", "null")
+        result = q.limit(1).execute()
+        return bool(result.data)
+    except Exception:
+        return False
 
 
 def allow():
@@ -150,22 +180,40 @@ def main():
     if not url or not key:
         allow()
 
+    try:
+        client = create_client(url, key)
+    except Exception:
+        allow()
+
+    # (project, name) already exists → this is an upsert of a known row, not
+    # a new write to check for duplicates. Skip before spending an embedding
+    # call. (#1184)
+    if row_exists(client, new_name, new_project):
+        allow()
+
     query_embedding = embed(embed_text)
     if query_embedding is None:
         allow()
 
     try:
-        client = create_client(url, key)
-        result = client.rpc("match_memories", {
-            "query_embedding": query_embedding,
-            "match_limit": 5,
-            "similarity_threshold": BLOCK_THRESHOLD,
-            "filter_project": new_project,
-            "filter_type": new_type,
-        }).execute()
+        result = client.rpc(
+            "match_memories",
+            {
+                "query_embedding": query_embedding,
+                "match_limit": 5,
+                "similarity_threshold": BLOCK_THRESHOLD,
+                "filter_project": new_project,
+                "filter_type": new_type,
+            },
+        ).execute()
         rows = result.data or []
     except Exception:
         allow()
+
+    # Operational artifacts (session snapshots etc.) are excluded from recall
+    # (#417) — exclude them from dedup comparison too, or a snapshot's mixed
+    # transcript content false-positives against unrelated writes. (#1184)
+    rows = _filter_excluded_tags(rows)
 
     # Same name = intended update — pass through
     candidates = [r for r in rows if r.get("name") != new_name]

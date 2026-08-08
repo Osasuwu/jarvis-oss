@@ -40,9 +40,13 @@ logger = logging.getLogger(__name__)
 class PollerPort(Protocol):
     """Interface the poller depends on for events and task_queue access.
 
-    Implemented by an in-memory fake in tests. No live adapter is wired yet —
-    ``main()`` passes ``poller_port=None``. Path B is inert in production until
-    the Supabase-backed adapter is written and threaded in; see #745.
+    Implemented by an in-memory fake in tests, and by
+    ``wake_driver.PsycopgEventQueue`` in production (#1393) — ``main()``
+    passes ``poller_port=queue`` unconditionally at both the ``--once`` and
+    long-running call sites. The consumer side of Path B is live; nothing in
+    production yet *writes* ``blocked_by_task_id`` into a parked event's
+    payload, so the poller runs every tick and finds nothing until a producer
+    exists — tracked in #1455.
     """
 
     def find_parked_events(self) -> list[dict[str, Any]]:
@@ -53,13 +57,19 @@ class PollerPort(Protocol):
         ``blocked_by_task_id``) are filtered out by the port implementation.
         """
 
-    def get_task_status(self, task_id: str) -> str | None:
-        """Return the current FSM state of a task, or ``None`` if not found.
+    def get_task_statuses(self, task_ids: list[str]) -> dict[str, str]:
+        """Look up several tasks' current FSM status in one round-trip.
 
-        Expected values: ``"pending"``, ``"claimed"``, ``"running"``,
+        A task id with no matching row is absent from the returned dict —
+        same "absent means unknown" contract as a single-row lookup.
+        Expected status values: ``"pending"``, ``"claimed"``, ``"running"``,
         ``"done"``, ``"failed"``, ``"parked"``. The poller only acts on
         terminal states (``done`` / ``failed`` / ``parked``); all others
         leave the event parked for the next pass.
+
+        Batched (#1475 review, MEDIUM — the M2 finding PR #964 deferred
+        until the production adapter shipped) so one poll sweep costs one
+        task_queue round-trip instead of one per parked event.
         """
 
     def requeue_event(self, event_id: str, *, reason: str) -> bool:
@@ -109,16 +119,38 @@ def poll(port: PollerPort) -> int:
       exists → leave the event parked.
 
     Returns the number of events requeued.
+
+    Statuses are fetched in one batch call before the per-event loop (#1475
+    review, MEDIUM — the M2 finding PR #964 deferred until the production
+    adapter shipped): one round-trip per sweep instead of one per parked
+    event. Trade-off: failure granularity moves from per-event to per-pass —
+    if the batch call itself raises, every parked event this pass is left
+    parked (not lost) for the next sweep, rather than isolating just the one
+    bad task id the way a per-event call would.
     """
     parked = port.find_parked_events()
+    if not parked:
+        return 0
+
+    task_ids = [tid for tid in (_blocking_task_id(event) for event in parked) if tid is not None]
+    try:
+        statuses = port.get_task_statuses(task_ids)
+    except Exception:  # noqa: BLE001 — a batch failure must not abort the sweep
+        logger.exception(
+            "Poller failed fetching task statuses for %d parked event(s); "
+            "all left parked for the next pass",
+            len(parked),
+        )
+        return 0
+
     requeued = 0
     for event in parked:
         try:
-            requeued += _process_parked_event(port, event)
+            requeued += _process_parked_event(port, event, statuses)
         except Exception:  # noqa: BLE001 — one bad event must not abort the sweep
-            # A status probe or requeue can raise (network blip, malformed row).
-            # Isolate per event: log and continue so the remaining parked events
-            # are still evaluated this pass instead of being stranded until the
+            # A requeue can raise (network blip, malformed row). Isolate per
+            # event: log and continue so the remaining parked events are
+            # still evaluated this pass instead of being stranded until the
             # next poll because an earlier event blew up the loop.
             logger.exception(
                 "Poller failed on event %s; left parked for the next pass",
@@ -128,8 +160,8 @@ def poll(port: PollerPort) -> int:
     return requeued
 
 
-def _process_parked_event(port: PollerPort, event: dict[str, Any]) -> int:
-    """Evaluate one parked event; return 1 if it was requeued, else 0.
+def _process_parked_event(port: PollerPort, event: dict[str, Any], statuses: dict[str, str]) -> int:
+    """Evaluate one parked event against pre-fetched statuses; return 1 if requeued, else 0.
 
     A requeue only counts when ``requeue_event`` confirms the transition
     (returns ``True``). A ``False`` return means the event was *not* moved to
@@ -140,7 +172,7 @@ def _process_parked_event(port: PollerPort, event: dict[str, Any]) -> int:
     if task_id is None:
         return 0
 
-    task_status = port.get_task_status(task_id)
+    task_status = statuses.get(task_id)
     if task_status is None:
         logger.debug(
             "Event %s blocked on task %s which is not in task_queue — left parked",

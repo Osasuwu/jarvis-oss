@@ -23,6 +23,9 @@ from unittest.mock import MagicMock
 
 _mcp_types = types.ModuleType("mcp.types")
 _mcp_types.CallToolResult = MagicMock
+_mcp_types.CallToolRequestParams = MagicMock
+_mcp_types.ListToolsResult = MagicMock
+_mcp_types.PaginatedRequestParams = MagicMock
 
 
 class _FakeTextContent:
@@ -35,7 +38,7 @@ _mcp_types.TextContent = _FakeTextContent
 _mcp_types.Tool = MagicMock
 
 
-def _noop_decorator(*args, **kwargs):
+def _noop_decorator(*_args, **_kwargs):
     def decorator(fn):
         return fn
 
@@ -43,6 +46,15 @@ def _noop_decorator(*args, **kwargs):
 
 
 class _FakeServer:
+    """Stand-in for mcp.server.Server — supports both the 1.x decorator API
+    and the 2.x constructor-param API (on_list_tools=/on_call_tool=).
+
+    mcp-memory/server.py and mcp-status/server.py (both ported, #1294) use
+    the 2.x constructor kwargs. The 1.x decorator methods below are kept as
+    no-ops for backward compatibility with any stub consumer still using
+    `@server.list_tools()` style registration.
+    """
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -55,6 +67,7 @@ class _FakeServer:
 
 _mcp_server = types.ModuleType("mcp.server")
 _mcp_server.Server = _FakeServer
+_mcp_server.ServerRequestContext = MagicMock
 
 _mcp_server_stdio = types.ModuleType("mcp.server.stdio")
 _mcp_server_stdio.stdio_server = MagicMock
@@ -95,6 +108,46 @@ sys.path.insert(0, str(_repo_root / "scripts"))
 sys.path.insert(0, str(_repo_root))
 os.environ.setdefault("SUPABASE_URL", "https://test.supabase.co")
 os.environ.setdefault("SUPABASE_KEY", "test-key")
+
+
+# ---------------------------------------------------------------------------
+# Persistent-environment pollution guard (#1192)
+# ---------------------------------------------------------------------------
+# Incident 2026-07-15: installer tests ran a real `setx JARVIS_HOME
+# <pytest tmp_path>`, leaving the developer's User-scope JARVIS_HOME pointing
+# at a deleted temp dir. Tests must stub installer._set_env (or pass
+# --skip-env); this guard catches any mechanism that slips through, from any
+# test file in the suite.
+
+
+def _persistent_env_snapshot() -> dict[str, object]:
+    """User-scope JARVIS_HOME (Windows registry) / shell rc bytes (POSIX)."""
+    if os.name == "nt":
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                value = winreg.QueryValueEx(key, "JARVIS_HOME")[0]
+        except OSError:
+            value = None
+        return {"HKCU:Environment:JARVIS_HOME": value}
+    return {
+        str(rc): (rc.read_bytes() if rc.exists() else None)
+        for rc in (Path.home() / ".bashrc", Path.home() / ".zshrc")
+    }
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _no_persistent_env_pollution():
+    """Fail the run if any test mutated the machine's persistent environment."""
+    before = _persistent_env_snapshot()
+    yield
+    after = _persistent_env_snapshot()
+    assert after == before, (
+        f"test run mutated persistent environment: {before!r} -> {after!r}; "
+        "a test reached real setx / shell rc files — stub installer._set_env "
+        "or pass --skip-env (#1192)"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +365,19 @@ def _dependabot_b64(*ecosystems: str) -> dict:
     }
 
 
+def _workflow_b64(text: str) -> dict:
+    """Contents-API envelope for a workflow file body (#1406).
+
+    The auditor reads each workflow's body to observe its ``runs-on:`` labels,
+    so a fixture repo with workflows must register a contents response per
+    workflow path — same base64 envelope shape as ``_dependabot_b64``.
+    """
+    return {
+        "content": base64.b64encode(text.encode()).decode(),
+        "encoding": "base64",
+    }
+
+
 def _jarvis_responses() -> dict:
     return {
         "repos/Osasuwu/jarvis": {
@@ -342,6 +408,17 @@ def _jarvis_responses() -> dict:
         "repos/Osasuwu/jarvis/contents/.github/dependabot.yml": _dependabot_b64(
             "pip", "github-actions"
         ),
+        "repos/Osasuwu/jarvis/contents/.github/workflows/code-review.yml": _workflow_b64(
+            "name: Code Review\njobs:\n  review:\n    runs-on: ubuntu-latest\n"
+        ),
+        "repos/Osasuwu/jarvis/contents/.github/workflows/pytest.yml": _workflow_b64(
+            "name: pytest\njobs:\n  pytest:\n    runs-on: [ubuntu-latest]\n"
+        ),
+        # A directory listing — the auditor only cares that the path resolves
+        # (#1406). jarvis really does have tests/ci, so the fixture says so.
+        "repos/Osasuwu/jarvis/contents/tests/ci": [
+            {"name": "test_schema_drift_guard.py", "type": "file"},
+        ],
     }
 
 
@@ -350,3 +427,32 @@ class _FakeProc:
         self.returncode = returncode
         self.stdout = stdout
         self.stderr = stderr
+
+
+class FakeWriteRunner:
+    """Stand-in for the live write-capable ``gh api -X <method>`` runner
+    (:func:`scripts.repo_baseline.executor.gh_write_runner`).
+
+    Records each call as a ``(method, path, body)`` tuple in ``self.calls``.
+    ``responses`` optionally maps a ``(method, path)`` pair to a canned
+    return value (default ``{}``, matching a real empty-body 2xx response).
+    ``raise_for`` maps a ``(method, path)`` pair to an exception to raise —
+    used to simulate a write failing partway through a repo's write phase
+    (the AC7 fail-fast case).
+    """
+
+    def __init__(
+        self,
+        responses: dict[tuple[str, str], object] | None = None,
+        raise_for: dict[tuple[str, str], BaseException] | None = None,
+    ):
+        self.responses = dict(responses or {})
+        self.raise_for = dict(raise_for or {})
+        self.calls: list[tuple[str, str, dict | None]] = []
+
+    def __call__(self, method: str, path: str, *, body: dict | None = None):
+        self.calls.append((method, path, body))
+        key = (method, path)
+        if key in self.raise_for:
+            raise self.raise_for[key]
+        return self.responses.get(key, {})

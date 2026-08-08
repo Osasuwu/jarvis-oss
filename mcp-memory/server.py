@@ -52,9 +52,16 @@ for _env_path in _env_candidates:
         load_dotenv(_env_path, override=True)
         break
 
-from mcp.server import Server
+from mcp.server import Server, ServerRequestContext
 from mcp.server.stdio import stdio_server
-from mcp.types import CallToolResult, TextContent, Tool
+from mcp.types import (
+    CallToolRequestParams,
+    CallToolResult,
+    ListToolsResult,
+    PaginatedRequestParams,
+    TextContent,
+    Tool,
+)
 
 # Phase 2b classifier — local module, optional at runtime.
 try:
@@ -91,9 +98,12 @@ from embeddings import (  # noqa: F401
 
 # ---------------------------------------------------------------------------
 # MCP Server
+#
+# `Server(...)` is constructed at the bottom of this module — the 2.x
+# constructor-param API (`on_list_tools=`, `on_call_tool=`) needs `list_tools`
+# and `call_tool` already defined, unlike the 1.x decorator API where
+# `server = Server(...)` came first and `@server.list_tools()` attached later.
 # ---------------------------------------------------------------------------
-
-server = Server("jarvis-memory")
 
 VALID_TYPES = ("user", "project", "decision", "feedback", "reference")
 VALID_GOAL_PRIORITIES = ("P0", "P1", "P2")
@@ -135,11 +145,12 @@ async def _compute_write_embeddings(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
+async def list_tools(
+    ctx: ServerRequestContext, params: PaginatedRequestParams | None
+) -> ListToolsResult:
     from tools_schema import tool_definitions
 
-    return tool_definitions()
+    return ListToolsResult(tools=tool_definitions())
 
 
 MAX_RESULT_CHARS = 100_000  # Claude Code default truncates at ~20k; memories can be large
@@ -153,9 +164,9 @@ def _big_result(content: list[TextContent]) -> CallToolResult:
     )
 
 
-# Handler imports come AFTER server / _compute_write_embeddings / _big_result
-# are defined so the `import server` at the top of each handler module
-# resolves correctly during the recursive import chain.
+# Handler imports come AFTER _compute_write_embeddings / _big_result are
+# defined so the `import server` at the top of each handler module resolves
+# correctly during the recursive import chain.
 
 from handlers.goal import (  # noqa: E402, F401
     GOAL_FIELDS,
@@ -243,79 +254,92 @@ from handlers.decision import (  # noqa: E402, F401
     _looks_like_uuid,
     _resolve_memory_refs,
     _handle_record_decision,
+    _handle_decision_list,
 )
 
 
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent] | CallToolResult:
+async def call_tool(ctx: ServerRequestContext, params: CallToolRequestParams) -> CallToolResult:
+    name = params.name
+    arguments = params.arguments or {}
     try:
         # Goal tools
         if name == "goal_set":
-            return await _handle_goal_set(arguments)
+            result = await _handle_goal_set(arguments)
         elif name == "goal_list":
-            return _big_result(await _handle_goal_list(arguments))
+            result = _big_result(await _handle_goal_list(arguments))
         elif name == "goal_get":
-            return _big_result(await _handle_goal_get(arguments))
+            result = _big_result(await _handle_goal_get(arguments))
         elif name == "goal_update":
-            return await _handle_goal_update(arguments)
+            result = await _handle_goal_update(arguments)
         # Memory tools
         elif name == "memory_store":
-            return await _handle_store(arguments)
+            result = await _handle_store(arguments)
         elif name == "memory_recall":
-            return _big_result(await _handle_recall(arguments))
+            result = _big_result(await _handle_recall(arguments))
         elif name == "memory_get":
-            return _big_result(await _handle_get(arguments))
+            result = _big_result(await _handle_get(arguments))
         elif name == "memory_list":
-            return _big_result(await _handle_list(arguments))
+            result = _big_result(await _handle_list(arguments))
         elif name == "memory_delete":
-            return await _handle_delete(arguments)
+            result = await _handle_delete(arguments)
         elif name == "memory_restore":
-            return await _handle_restore(arguments)
+            result = await _handle_restore(arguments)
         elif name == "memory_mark_stale":
-            return await _handle_memory_mark_stale(arguments)
+            result = await _handle_memory_mark_stale(arguments)
         elif name == "memory_unmark_stale":
-            return await _handle_memory_unmark_stale(arguments)
+            result = await _handle_memory_unmark_stale(arguments)
         # Graph tools
         elif name == "memory_graph":
-            return _big_result(await _handle_graph(arguments))
+            result = _big_result(await _handle_graph(arguments))
         # Outcome tracking tools (Pillar 3)
         elif name == "outcome_record":
-            return await _handle_outcome_record(arguments)
+            result = await _handle_outcome_record(arguments)
         elif name == "record_decision":
-            return await _handle_record_decision(arguments)
+            result = await _handle_record_decision(arguments)
+        elif name == "decision_list":
+            result = _big_result(await _handle_decision_list(arguments))
         elif name == "outcome_update":
-            return await _handle_outcome_update(arguments)
+            result = await _handle_outcome_update(arguments)
         elif name == "outcome_list":
-            return _big_result(await _handle_outcome_list(arguments))
+            result = _big_result(await _handle_outcome_list(arguments))
         elif name == "memory_calibration_summary":
-            return _big_result(await _handle_memory_calibration_summary(arguments))
+            result = _big_result(await _handle_memory_calibration_summary(arguments))
         elif name == "fok_calibration_summary":
-            return _big_result(await _handle_fok_calibration_summary(arguments))
+            result = _big_result(await _handle_fok_calibration_summary(arguments))
         # Credential registry tools (Pillar 9)
         elif name == "credential_list":
-            return _big_result(await _handle_credential_list(arguments))
+            result = _big_result(await _handle_credential_list(arguments))
         elif name == "credential_add":
-            return await _handle_credential_add(arguments)
+            result = await _handle_credential_add(arguments)
         elif name == "credential_check_expiry":
-            return _big_result(await _handle_credential_check_expiry(arguments))
+            result = _big_result(await _handle_credential_check_expiry(arguments))
         # Event tools
         elif name == "events_list":
-            return _big_result(await _handle_events_list(arguments))
+            result = _big_result(await _handle_events_list(arguments))
         elif name == "events_mark_processed":
-            return await _handle_events_mark_processed(arguments)
+            result = await _handle_events_mark_processed(arguments)
         # Event queue FSM tools (#739)
         elif name == "event_claim_next":
-            return await _handle_event_claim_next(arguments)
+            result = await _handle_event_claim_next(arguments)
         elif name == "event_mark_processed_fsm":
-            return await _handle_event_mark_processed(arguments)
+            result = await _handle_event_mark_processed(arguments)
         elif name == "event_park":
-            return await _handle_event_park(arguments)
+            result = await _handle_event_park(arguments)
         elif name == "event_requeue":
-            return await _handle_event_requeue(arguments)
+            result = await _handle_event_requeue(arguments)
         else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            result = [TextContent(type="text", text=f"Unknown tool: {name}")]
     except Exception as exc:
-        return [TextContent(type="text", text=f"Error: {exc}")]
+        result = [TextContent(type="text", text=f"Error: {exc}")]
+    if isinstance(result, CallToolResult):
+        return result
+    return CallToolResult(content=result)
+
+
+# `Server(...)` constructed here (not near the top, per 1.x convention) because
+# the 2.x constructor-param API needs `list_tools`/`call_tool` already defined —
+# see the "MCP Server" comment above.
+server = Server("jarvis-memory", on_list_tools=list_tools, on_call_tool=call_tool)
 
 
 # ---------------------------------------------------------------------------

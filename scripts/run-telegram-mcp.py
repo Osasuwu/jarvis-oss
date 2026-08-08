@@ -4,9 +4,11 @@ Same pattern as run-memory-server.py.
 """
 import os
 import sys
-import subprocess
 
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(root, "scripts", "lib"))
+from mcp_bootstrap import run_server_tracked  # noqa: E402
+
 server = os.path.join(root, "scripts", "telegram-mcp-server.py")
 
 candidates = [
@@ -16,7 +18,7 @@ candidates = [
 
 for python in candidates:
     if os.path.isfile(python):
-        sys.exit(subprocess.call([python, server]))
+        sys.exit(run_server_tracked("telegram", python, server, root))
 
 print("ERROR: no venv found at .venv/", file=sys.stderr)
 sys.exit(1)

@@ -1,7 +1,8 @@
 ---
 name: status-record
-model: claude-haiku-4-5
+model: haiku
 description: "Periodic state snapshot to memory: per-repo git/CI/PR/issue/milestone state, written as a structured event under tag `status-snapshot`. Type 1 (cron-triggered). Records only — no decisions, no actions. Owner reads back inline via `memory_recall(query=\"status-snapshot\", type=reference)`."
+disable-model-invocation: true
 ---
 
 # Status Record

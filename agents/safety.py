@@ -114,6 +114,16 @@ _TIER2_TOOL_NAME_SUBSTRINGS: tuple[str, ...] = (
 # Areas that are wholesale Tier 2 until explicitly re-tiered.
 _TIER2_AREAS: frozenset[str] = frozenset({"messaging"})
 
+# Narrow carve-out inside the blanket "messaging" block: paging the owner on
+# an ESCALATE route is the one messaging action the model memory
+# (`action_agent_safety_gate_model_v1`) actually names as blocked-outright —
+# "sending messages impersonating owner" — not a ping *to* the owner. Every
+# other messaging action (posting to third parties, arbitrary sends) stays
+# Tier 2. Owner escalation is Tier 0, not Tier 1: paging is itself the
+# review step for a critical event, so queuing it for owner approval would
+# be circular.
+_TIER0_MESSAGING_ACTIONS: frozenset[str] = frozenset({"notify_owner_escalation"})
+
 # Single-repo scope for Sprint 2. Extend only when we have audit proof it
 # works (per model memory).
 DEFAULT_ALLOWED_REPO = os.environ.get("GITHUB_REPO", "your-username/your-repo")
@@ -162,7 +172,7 @@ def _is_blocked(
     area: str | None,
     allowed_repo: str,
 ) -> bool:
-    if area in _TIER2_AREAS:
+    if area in _TIER2_AREAS and not (area == "messaging" and action in _TIER0_MESSAGING_ACTIONS):
         return True
     if action in _TIER2_ACTIONS:
         return True
@@ -205,6 +215,8 @@ def _is_tier0(
         tagset = set(tags or ())
         if tagset & _TIER0_MEMORY_TAGS:
             return True
+    if area == "messaging" and action in _TIER0_MESSAGING_ACTIONS:
+        return True
     return False
 
 

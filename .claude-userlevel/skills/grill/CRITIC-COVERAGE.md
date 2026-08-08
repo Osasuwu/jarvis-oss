@@ -15,7 +15,7 @@ Decision basis:
 
 Both of the following must hold, on top of the existing CRITIC.md triggers (AC-lock gate OR hard/irreversible record_decision):
 
-1. **>=2 grill-checkbox yes** — the SOUL.md `/grill` trigger checkbox (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked. Single-axis touch (e.g. pure refactor with tests) does not justify the cost.
+1. **>=2 grill-checkbox yes** — the grill trigger checkbox (`~/.claude/reference/engineering-principles.md`) (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked. Single-axis touch (e.g. pure refactor with tests) does not justify the cost.
 2. **Milestone-level** — the design under critique is a milestone PRD or equivalent (multiple slices grouped under a capability), not an individual slice. Per CLAUDE.md milestone-vs-slice hygiene.
 
 For lone slices or low-surface designs, ONLY `CRITIC.md` runs. This is intentional: coverage costs N subagents + dedup, justified only when the surface is large enough to make sampling unreliable.

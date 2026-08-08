@@ -8,9 +8,20 @@ Model memory: `action_agent_safety_gate_model_v1`.
 
 | Tier | Meaning | Examples |
 |------|---------|----------|
-| `0 AUTO` | Fires without principal involvement. | `priority:{high,medium,low}`, `area:*`, `needs-research`, `needs-triage`, `status:ready` labels. Insert into `events` / `audit_log`. `goals.progress` append. Memory store with tag `auto-generated`. |
+| `0 AUTO` | Fires without principal involvement. | `priority:{high,medium,low}`, `area:*`, `needs-research`, `needs-triage`, `status:ready` labels. Insert into `events` / `audit_log`. `goals.progress` append. Memory store with tag `auto-generated`. `messaging` action `notify_owner_escalation` — the ESCALATE-route Telegram ping to the owner (#1385 follow-up; see carve-out below). |
 | `1 OWNER_QUEUE` | Default. Gate refuses to fire and flags `queued=True`. | New issue comments, closing issues, merging PRs, `priority:critical`, `pillar:*` labels, any write to a table not on the Sprint-1 whitelist. |
-| `2 BLOCKED` | Never runs. `gate()` raises `GateError`. | `.env*`, `.claude/*`, destructive verbs (`delete`, `drop`, `force_push`), impersonation / `send_as_owner`, cross-repo writes, the whole `messaging` area. |
+| `2 BLOCKED` | Never runs. `gate()` raises `GateError`. | `.env*`, `.claude/*`, destructive verbs (`delete`, `drop`, `force_push`), impersonation / `send_as_owner`, cross-repo writes, every `messaging` action except the `notify_owner_escalation` carve-out. |
+
+**`messaging` carve-out.** The area is Tier 2 wholesale because the model
+memory's actual concern is impersonation — "sending messages *as* the
+owner" (`no_sending_from_owner_name`) — not messages sent *to* the owner.
+`orchestrator.dispatch()`'s `Route.ESCALATE` branch pages the owner over
+Telegram on a critical event; that single action
+(`area="messaging", action="notify_owner_escalation"`) is carved out to
+Tier 0 in `agents/safety.py`'s `_TIER0_MESSAGING_ACTIONS`. It is Tier 0,
+not Tier 1, because the page itself *is* the review step for a critical
+event — queuing it for owner approval would be circular. Every other
+messaging action (posting to third parties, arbitrary sends) stays Tier 2.
 
 Tier 2 wins over Tier 0 when both match — safety bias is deny-first.
 
@@ -20,7 +31,7 @@ Tier 2 wins over Tier 0 when both match — safety bias is deny-first.
 from agents import safety
 
 outcome = safety.gate(
-    agent_id="langgraph-dispatcher",
+    agent_id="reactive-core-executor",
     tool_name="gh_labels",
     action="add_label",
     target="priority:high",
@@ -52,7 +63,7 @@ omit `fn`:
 
 ```python
 outcome = safety.gate(
-    agent_id="langgraph-dispatcher",
+    agent_id="reactive-core-executor",
     tool_name="gh_labels",
     action="add_label",
     target="priority:high",
@@ -80,7 +91,7 @@ double-count.
 2. If Tier 0 / Tier 2, update both `agents/safety.py` **and**
    `action_agent_safety_gate_model_v1` memory in the same change — the
    two must stay in lockstep.
-3. Add a unit test in `tests/test_agents_safety.py` covering the new
+3. Add a unit test in `tests/reactive_core/test_agents_safety.py` covering the new
    match. Every tier-boundary assertion is the spec.
 
 ## Changing tiers

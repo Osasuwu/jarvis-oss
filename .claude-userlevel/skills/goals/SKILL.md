@@ -1,6 +1,8 @@
 ---
 name: goals
 description: "Manage strategic goals — view, set, update, review, close. Goals drive Jarvis's priorities and autonomous decisions."
+model: sonnet
+effort: low
 ---
 
 # Goals

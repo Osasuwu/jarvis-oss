@@ -13,7 +13,11 @@ collide with the stable-PR-author contract for dependabot[bot].
 Predicates mirrored here:
   autobase_skip  = event == pull_request AND actor == 'jarvis-ci[bot]'
   review_runs    = NOT autobase_skip AND (workflow_dispatch OR has_code)
-  verdict_runs   = NOT autobase_skip AND (pull_request OR workflow_dispatch)
+  verdict_runs   = pull_request OR workflow_dispatch  (#1134: the verdict step
+                   now RUNS on the autobase push too — it re-enforces the last
+                   real review verdict against the last-non-bot head anchor
+                   instead of skipping, which let #1131 auto-merge past a live
+                   CRITICAL — and branches on autobase_skip INTERNALLY.)
 """
 
 from __future__ import annotations
@@ -22,12 +26,7 @@ from pathlib import Path
 
 import yaml
 
-WORKFLOW_PATH = (
-    Path(__file__).resolve().parents[2]
-    / ".github"
-    / "workflows"
-    / "code-review.yml"
-)
+WORKFLOW_PATH = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "code-review.yml"
 
 AUTOBASE_BOT = "jarvis-ci[bot]"
 AUTOBASE_STEP_ID = "autobase"
@@ -49,8 +48,13 @@ def _review_should_run(
 
 
 def _verdict_should_run(*, event_name: str, actor: str) -> bool:
-    if _is_autobase_push(event_name=event_name, actor=actor):
-        return False
+    # #1134: the verdict step now RUNS on the autobase push. It no longer
+    # short-circuits on the jarvis-ci[bot] actor — instead it runs and, on that
+    # push, anchors freshness on the last non-bot head (see the run body). The
+    # bug it fixes: skipping here left the `review` check green with nothing
+    # evaluated, so native auto-merge shipped #1131 past a live CRITICAL. `actor`
+    # is retained for call-site symmetry with `_review_should_run`.
+    del actor
     return event_name in ("pull_request", "workflow_dispatch")
 
 
@@ -58,25 +62,23 @@ def _verdict_should_run(*, event_name: str, actor: str) -> bool:
 
 
 def test_autobase_bot_synchronize_skips_review():
-    assert not _review_should_run(
-        event_name="pull_request", actor=AUTOBASE_BOT, has_code=True
-    )
+    assert not _review_should_run(event_name="pull_request", actor=AUTOBASE_BOT, has_code=True)
 
 
-def test_autobase_bot_synchronize_skips_verdict():
-    assert not _verdict_should_run(event_name="pull_request", actor=AUTOBASE_BOT)
+def test_autobase_bot_synchronize_runs_verdict():
+    # #1134: the verdict step now RUNS on the autobase push so it can re-enforce
+    # the last real review verdict against the last-non-bot head anchor. It used
+    # to skip — leaving `review` green with nothing evaluated → #1131 auto-merged
+    # past a live CRITICAL.
+    assert _verdict_should_run(event_name="pull_request", actor=AUTOBASE_BOT)
 
 
 def test_human_push_with_code_runs_review():
-    assert _review_should_run(
-        event_name="pull_request", actor="your-username", has_code=True
-    )
+    assert _review_should_run(event_name="pull_request", actor="your-username", has_code=True)
 
 
 def test_human_push_no_code_skips_review():
-    assert not _review_should_run(
-        event_name="pull_request", actor="your-username", has_code=False
-    )
+    assert not _review_should_run(event_name="pull_request", actor="your-username", has_code=False)
 
 
 def test_workflow_dispatch_always_runs_review():
@@ -87,17 +89,13 @@ def test_workflow_dispatch_always_runs_review():
 
 
 def test_workflow_dispatch_always_runs_verdict():
-    assert _verdict_should_run(
-        event_name="workflow_dispatch", actor="github-actions[bot]"
-    )
+    assert _verdict_should_run(event_name="workflow_dispatch", actor="github-actions[bot]")
 
 
 def test_jarvis_agent_push_runs_review():
     # Real rework commits come from "Jarvis Agent" (git author), but the
-    # github.actor on the push is "your-username" or a PAT — never jarvis-ci[bot].
-    assert _review_should_run(
-        event_name="pull_request", actor="your-username", has_code=True
-    )
+    # github.actor on the push is the owner or a PAT — never the CI bot.
+    assert _review_should_run(event_name="pull_request", actor="your-username", has_code=True)
 
 
 # --- Config dimension: pin the YAML structure ---
@@ -155,13 +153,25 @@ def test_review_step_gated_on_autobase():
     )
 
 
-def test_verdict_step_gated_on_autobase():
+def test_verdict_step_runs_on_autobase_but_branches_internally():
+    # #1134: the verdict step's if: must NOT gate on steps.autobase.outputs.skip
+    # (so it RUNS on the autobase push), but the flag must still reach the step
+    # (env or run body) so it can branch the freshness anchor internally.
     steps = _load_steps()
     step = _step_by_name(steps, "Verify review verdict")
     assert step is not None, "Verify review verdict step not found"
     condition = str(step.get("if", ""))
-    assert "steps.autobase.outputs.skip" in condition, (
-        "Verify review verdict step must gate on steps.autobase.outputs.skip != 'true'"
+    assert "steps.autobase.outputs.skip" not in condition, (
+        "Verify review verdict must RUN on the autobase push — drop the "
+        "steps.autobase.outputs.skip gate from its if: (#1134). Skipping there "
+        "let #1131 auto-merge past a CRITICAL (`review` green, nothing evaluated)."
+    )
+    env = step.get("env", {}) or {}
+    in_env = any("steps.autobase.outputs.skip" in str(v) for v in env.values())
+    in_run = "steps.autobase.outputs.skip" in str(step.get("run", ""))
+    assert in_env or in_run, (
+        "Verdict step must still reference steps.autobase.outputs.skip (via env "
+        "or run body) to branch the freshness anchor on the autobase path."
     )
 
 

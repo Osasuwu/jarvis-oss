@@ -104,7 +104,7 @@
     # Registers Sandcastle-Jarvis daily at 18:00, soft-stop 01:00.
 
 .EXAMPLE
-    .\Register-SandcastleTask.ps1 -Repo redrobot -RepoRoot D:\Github\redrobot\redrobot
+    .\Register-SandcastleTask.ps1 -Repo redrobot -RepoRoot C:\repos\redrobot\redrobot
     # Registers Sandcastle-Redrobot daily at 01:00, soft-stop 08:00 (non-overlapping).
 
 .EXAMPLE
@@ -413,7 +413,7 @@ if ($Repo -eq 'redrobot') {
     $userEnv    = [System.Environment]::GetEnvironmentVariable('REDROBOT_REPO_ROOT', 'User')
     $envVal     = if ($machineEnv) { $machineEnv } elseif ($userEnv) { $userEnv } else { $null }
     if (-not $envVal) {
-        Write-Warning "REDROBOT_REPO_ROOT machine env var not set. The scheduled task will fail at runtime. Set it once:  setx /M REDROBOT_REPO_ROOT D:\Github\redrobot"
+        Write-Warning "REDROBOT_REPO_ROOT machine env var not set. The scheduled task will fail at runtime. Set it once:  setx /M REDROBOT_REPO_ROOT C:\repos\redrobot"
     } elseif (-not (Test-Path $envVal)) {
         Write-Warning "REDROBOT_REPO_ROOT='$envVal' does not exist on disk. Fix before 02:00."
     } else {

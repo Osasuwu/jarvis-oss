@@ -17,8 +17,14 @@ Matched tools and query derivation
 - ``Task`` (agent launch) → ``"delegation " + description``
 - ``Write`` / ``Edit`` / ``NotebookEdit`` on ``*.md`` → ``"state in docs " + filename-stem``
 - ``mcp__memory__memory_store`` → ``"duplicate " + memory-name + " " + type``
-- ``mcp__memory__record_decision`` → first sentence of the ``decision`` text
 - ``Bash`` running ``gh issue create`` / ``gh pr create`` → ``"issue conventions milestone epic"``
+
+Note: ``mcp__memory__record_decision`` is deliberately NOT matched here — as
+of #1421 that matcher is owned exclusively by ``scripts/record-decision-gate.py``,
+which folds the equivalent recall query into its own combined
+``hookSpecificOutput`` to avoid racing with that script's session_id stamp
+(#1269). Registering this hook on that matcher too caused the stamp to be
+silently lost.
 
 Budget
 ------
@@ -77,6 +83,17 @@ try:
 except ImportError:
     pass
 
+# Per-session (id, mode, generation) dedup state, shared with the
+# UserPromptSubmit recall hook (#1276). A memory already shown mid-turn this
+# generation is not re-shown via a different tool query.
+if str(_ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "scripts"))
+from lib.recall_dedup import (  # noqa: E402
+    MODE_PRETOOLUSE,
+    filter_emittable,
+    record_emitted,
+)
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -90,7 +107,8 @@ ALLOWED_TYPES = {"feedback", "decision", "reference"}
 
 # Stats file for per-session fire-rate audit (#434). Best-effort, never blocks.
 # Keys: fired (total invocations that ran the RPC), emitted (yielded ≥1 row),
-# deduped (skipped via cache). Reset by `--reset-stats` flag or manual delete.
+# deduped (skipped via cache), deduped_ids ((id, mode) generation dedup, #1276).
+# Reset by `--reset-stats` flag or manual delete.
 STATS_FILE = None  # set lazily, depends on _CLAUDE_HOME below
 
 # Projects Jarvis tracks — cwd basename must match to scope recall.
@@ -123,7 +141,7 @@ CACHE_FILE = CACHE_DIR / "pretooluse-recall-dedup.json"
 STATS_FILE = CACHE_DIR / "pretooluse-recall-stats.json"
 
 
-def _bump_stat(key: str) -> None:
+def _bump_stat(key: str, delta: int = 1) -> None:
     """Increment a counter in the stats file. Best-effort; never raises."""
     try:
         CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -136,7 +154,7 @@ def _bump_stat(key: str) -> None:
                 data = {}
         else:
             data = {}
-        data[key] = int(data.get(key, 0)) + 1
+        data[key] = int(data.get(key, 0)) + delta
         # session_started_at is set on first write so /reflect can compute rate
         data.setdefault("session_started_at", time.time())
         tmp = STATS_FILE.with_suffix(".json.tmp")
@@ -207,12 +225,6 @@ def _derive_query(tool_name: str, tool_input: dict) -> str | None:
         if not name:
             return None
         return f"duplicate memory {name} {mtype}".strip()
-
-    if tool_name == "mcp__memory__record_decision":
-        decision = _first_sentence(tool_input.get("decision") or "")
-        if not decision:
-            return None
-        return f"decision {decision}"
 
     if tool_name == "Bash":
         command = tool_input.get("command") or ""
@@ -291,13 +303,21 @@ def record_query(query: str, project: str | None, now: float | None = None) -> N
 
 
 def detect_project(cwd: str | None) -> str | None:
+    """Return the known project a path belongs to, scanning all components.
+
+    Worktree cwds (`<repo>/.claude/worktrees/<name>`) and subdirectories
+    resolve to the containing repo; rightmost match wins.
+    """
     if not cwd:
         return None
     try:
-        name = Path(cwd).name.lower()
+        parts = Path(cwd).parts
     except (OSError, ValueError):
         return None
-    return name if name in KNOWN_PROJECTS else None
+    for part in reversed(parts):
+        if part.lower() in KNOWN_PROJECTS:
+            return part.lower()
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -346,6 +366,10 @@ def main() -> None:
     tool_input = data.get("tool_input") or {}
     if not tool_name:
         silent_exit()
+
+    # session_id keys the per-session compaction generation + dedup state.
+    # Missing → dedup disabled (filter_emittable/record_emitted no-op).
+    session_id = data.get("session_id") or data.get("sessionId") or ""
 
     query = _derive_query(tool_name, tool_input)
     if not query or len(query) < MIN_QUERY_CHARS:
@@ -396,11 +420,24 @@ def main() -> None:
     rows = resp.data or []
     rows = [r for r in rows if r.get("type") in ALLOWED_TYPES]
     rows = [r for r in rows if (r.get("rank") or 0) >= MIN_MATCH_SCORE]
+    # (id, mode) generation dedup (#1276): a memory already injected mid-turn
+    # in this compaction generation is not re-shown via a different query. The
+    # query-hash dedup above only catches identical queries; this catches the
+    # same memory surfacing from different tool triggers.
+    kept = filter_emittable(session_id, rows, MODE_PRETOOLUSE)
+    if len(kept) < len(rows):
+        _bump_stat("deduped_ids", delta=len(rows) - len(kept))
+    rows = kept
     rows = rows[:MAX_BRIEF_ENTRIES]
     if not rows:
         silent_exit()
 
     _bump_stat("emitted")
+    record_emitted(
+        session_id,
+        [r.get("id") or r.get("name") for r in rows],
+        MODE_PRETOOLUSE,
+    )
 
     header = (
         f"# Mid-turn recall for {tool_name}"

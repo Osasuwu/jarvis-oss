@@ -320,6 +320,44 @@ def requeue_running(
     return bool(result.data)
 
 
+def get_status(
+    task_id: str,
+    *,
+    client: Client | None = None,
+) -> str | None:
+    """Look up one task's current FSM status, or ``None`` if the row is absent.
+
+    Single-row status check for the #1390 AC6 worktree sweep — each on-disk
+    ``.reactive/worktrees/<task_id>`` is keyed by ``task_id``, and the sweep
+    needs to know whether that row is absent, terminal, or still active.
+    """
+    cli = client or get_client()
+    rows = (
+        cli.table("task_queue").select("status").eq("id", task_id).limit(1).execute()
+    ).data or []
+    return rows[0]["status"] if rows else None
+
+
+def get_statuses(
+    task_ids: list[str],
+    *,
+    client: Client | None = None,
+) -> dict[str, str]:
+    """Look up several tasks' current FSM status in one round-trip.
+
+    Batch counterpart to :func:`get_status` (#1475 review, MEDIUM — the M2
+    finding deferred by PR #964 until the production poller adapter shipped).
+    A task id with no matching row is simply absent from the returned dict,
+    same "absent means unknown" contract as the single-row lookup. Empty
+    input short-circuits without a network call.
+    """
+    if not task_ids:
+        return {}
+    cli = client or get_client()
+    rows = (cli.table("task_queue").select("id, status").in_("id", task_ids).execute()).data or []
+    return {row["id"]: row["status"] for row in rows}
+
+
 def list_active(
     *,
     client: Client | None = None,
@@ -336,9 +374,7 @@ def list_active(
     rows: list[dict[str, Any]] = []
     for status in ("claimed", "running"):
         rows.extend(
-            (
-                cli.table("task_queue").select("id, goal, status").eq("status", status).execute()
-            ).data
+            (cli.table("task_queue").select("id, goal, status").eq("status", status).execute()).data
             or []
         )
     return rows

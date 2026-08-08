@@ -1,0 +1,31 @@
+-- Start-clean: archive the dead events backlog before wake_driver goes live
+-- under production supervision. Part of #1384 (launcher + start-clean).
+--
+-- events processing has been dead since 2026-05-26 (the day the old NSSM
+-- jarvis-scheduler / autonomous-loop cron was retired). 8,726 rows piled up
+-- pending since then. Breakdown at time of writing:
+--
+--   ci_success/low        4,280  -> _NOOP_EVENT_TYPES, harmless either way
+--   memory_recall/info    3,949  -> unmatched -> orchestrator fail-safe ESCALATE
+--   pr_merged/info          206  -> _NOOP_EVENT_TYPES, harmless either way
+--   ci_failure/high         133  -> EMIT_TASK (would spawn tasks replaying
+--                                   months-old CI failures)
+--   review_negative/medium   74  -> EMIT_TASK "/rework" (same replay concern)
+--   review_debt_collected/info 66 -> unmatched -> ESCALATE
+--   consolidation_run/high    7  -> unmatched -> ESCALATE
+--   evolve_run/medium         6  -> unmatched -> ESCALATE
+--   fok_run/info               2  -> unmatched -> ESCALATE
+--   consolidation_run/info     2  -> unmatched -> ESCALATE
+--   evolve_run/info             1  -> unmatched -> ESCALATE
+--
+-- ~4,033 rows would fire the orchestrator's fail-safe escalate_to_human on
+-- first drain once real routing is wired in (#1385); the ci_failure/
+-- review_negative rows would spawn claude -p workers reacting to CI/review
+-- state that is stale by months. Same disposition as the 2026-05-21
+-- precedent in 20260521130515_extend_events_queue.sql Section 3 (which
+-- archived the then-existing ~2,674-row backlog the same way): bulk-mark
+-- processed rather than a per-type filtered drain or park, so wake_driver —
+-- today under the stub orchestrator, and later under real routing (#1385) —
+-- starts on an empty pending queue instead of replaying dead noise.
+
+UPDATE events SET state = 'processed' WHERE state = 'pending';

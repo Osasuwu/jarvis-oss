@@ -325,9 +325,11 @@ jobs:
           fi
 
           # Two-gate model (#988/#992): emit review_negative ONLY on a real
-          # merge-blocking finding — an all-caps CRITICAL/MAJOR/BLOCKING
+          # merge-blocking finding — an all-caps CRITICAL/MAJOR/BLOCKING/MEDIUM
           # severity heading (case-SENSITIVE), the SAME predicate the MERGE
-          # gate blocks on in code-review.yml. This replaces the old
+          # gate blocks on in code-review.yml. MEDIUM was promoted into the
+          # blocking set (#1385 follow-up) — a MEDIUM finding can genuinely
+          # corrupt state in the moment. This replaces the old
           # "^Found N issues:" trigger, which (a) false-fired rework on
           # minor-only advisory comments — a PASS under the two-gate model,
           # re-introducing the churn #988 removed — and (b) missed severity-
@@ -335,11 +337,11 @@ jobs:
           # ### 🔴 BLOCKING — #954/#956). Heading shape mirrors code-review.yml
           # byte-for-byte: 1-6 #'s, decoration tolerated between the #'s and the
           # word (emoji/space), suffix optional. grep -qE (not -qiE) → all-caps
-          # only, so title-case prose "### Blocking issues — None" (#962) is NOT
-          # a block. MINOR excluded — minors never block (swept in-context by
-          # /rework, not a gate).
-          if ! grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING)\b' <<<"$COMMENT_BODY"; then
-            echo "No blocking severity heading (CRITICAL/MAJOR/BLOCKING); not emitting review_negative (two-gate model)"
+          # only, so title-case prose "### Blocking issues — None" (#962) or a
+          # title-case "### Medium" advisory is NOT a block. MINOR excluded —
+          # minors never block (swept in-context by /rework, not a gate).
+          if ! grep -qE '^#{1,6}[^[:alnum:]]*(CRITICAL|MAJOR|BLOCKING|MEDIUM)\b' <<<"$COMMENT_BODY"; then
+            echo "No blocking severity heading (CRITICAL/MAJOR/BLOCKING/MEDIUM); not emitting review_negative (two-gate model)"
             exit 0
           fi
 

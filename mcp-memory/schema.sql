@@ -179,7 +179,6 @@ create table if not exists events (
   payload jsonb default '{}',        -- structured event data (PR number, workflow name, alert details)
 
   -- Processing
-  processed boolean not null default false,
   processed_at timestamptz,
   processed_by text,                 -- 'autonomous-loop', 'risk-radar', 'manual'
   action_taken text,                 -- what was done in response
@@ -197,7 +196,6 @@ create table if not exists events (
 );
 
 -- Indexes
-create index if not exists idx_events_unprocessed on events(processed, severity) where not processed;
 create index if not exists idx_events_repo on events(repo);
 create index if not exists idx_events_type on events(event_type);
 create index if not exists idx_events_created on events(created_at desc);
@@ -289,7 +287,6 @@ as $$
 begin
   update events
   set state = 'processed',
-      processed = true,
       processed_at = now(),
       processed_by = processor,
       action_taken = mark_processed.action_taken
@@ -377,6 +374,24 @@ create policy "Allow all for anon" on memory_links
 -- source so consumers never see stale memories in a cluster. Legacy
 -- `%_archived` types are also excluded defensively (0 rows as of 2026-04-19,
 -- left in place so a stray row from old logic cannot poison consolidation).
+--
+-- Rewritten #1187: the prior O(N^2) self-join (`live a join live b on
+-- a.id < b.id and a.type = b.type`) timed out (57014) once live-memory
+-- volume grew (2054 rows -> 2M+ pair comparisons). Replaced with:
+--   1. Strict (type, project_key) partitioning (was type-only — cross-project
+--      memories of the same type could cluster together).
+--   2. A bare HNSW LATERAL probe (limit 40, zero predicates inside the
+--      LATERAL — all filters applied outside) so the planner reliably uses
+--      idx_memories_embedding_hnsw instead of falling back to a seq scan.
+--   3. Disjoint connected components via label propagation / union-find
+--      over a temp edge table, replacing the old overlapping anchor-star
+--      clustering (a memory could appear in multiple clusters if it was
+--      similar to two different anchors).
+-- `analyze live_tmp` after populating it is required — without it the
+-- planner uses default cardinality stats for the fresh temp table and
+-- picks a catastrophic join plan for the edge-generation insert (verified
+-- empirically: identical query times out at 2min without ANALYZE, ~2.9s
+-- with it, against 2054 live rows / ~51k qualifying edges).
 create or replace function find_consolidation_clusters(
   min_cluster_size int default 3,
   sim_threshold float default 0.80
@@ -390,60 +405,131 @@ returns table (
   similarity float,
   updated_at timestamptz
 )
-language sql stable
+language plpgsql
 as $$
-  with live as (
-    select id, name, type, content, embedding, updated_at
-    from memories
-    where embedding is not null
-      and expired_at is null
-      and superseded_by is null
-      and deleted_at is null
-      and (valid_to is null or valid_to > now())
-      and type not like '%\_archived' escape '\'
-  ),
-  pairs as (
-    select
-      a.id as id_a, b.id as id_b,
-      a.name as name_a, b.name as name_b,
-      a.type as type_a,
-      a.content as content_a, b.content as content_b,
-      a.updated_at as updated_a, b.updated_at as updated_b,
-      1 - (a.embedding <=> b.embedding) as sim
-    from live a
-    join live b on a.id < b.id
-      and a.type = b.type
-    where 1 - (a.embedding <=> b.embedding) >= sim_threshold
-  ),
-  -- Group connected pairs into clusters via the oldest memory as anchor
-  anchors as (
-    select id_a as anchor, id_a as member, name_a as name, type_a as type,
-           content_a as content, sim, updated_a as updated_at from pairs
+declare
+  i int := 0;
+begin
+  set local hnsw.ef_search = 80;
+
+  create temp table if not exists live_tmp (
+    id uuid primary key,
+    name text,
+    type text,
+    project_key text,
+    content text,
+    updated_at timestamptz,
+    embedding vector,
+    label uuid
+  ) on commit drop;
+  truncate live_tmp;
+
+  create temp table if not exists cc_edges (
+    id_a uuid,
+    id_b uuid,
+    sim float
+  ) on commit drop;
+  truncate cc_edges;
+
+  insert into live_tmp (id, name, type, project_key, content, updated_at, embedding, label)
+  select m.id, m.name, m.type, m.project_key, m.content, m.updated_at, m.embedding, m.id
+  from memories m
+  where m.embedding is not null
+    and m.expired_at is null
+    and m.superseded_by is null
+    and m.deleted_at is null
+    and (m.valid_to is null or m.valid_to > now())
+    and m.type not like '%\_archived' escape '\';
+
+  analyze live_tmp;
+
+  -- Bare HNSW probe: no predicates inside the LATERAL so the planner uses
+  -- idx_memories_embedding_hnsw; type/project_key/similarity filters applied
+  -- outside against the pre-filtered live_tmp set.
+  insert into cc_edges (id_a, id_b, sim)
+  select a.id, nb.neighbor_id, nb.sim
+  from live_tmp a
+  cross join lateral (
+    select b.id as neighbor_id, 1 - (b.embedding <=> a.embedding) as sim
+    from memories b
+    order by b.embedding <=> a.embedding
+    limit 40
+  ) nb
+  join live_tmp b2 on b2.id = nb.neighbor_id
+  where nb.neighbor_id <> a.id
+    and b2.type = a.type
+    and b2.project_key = a.project_key
+    and nb.sim >= sim_threshold;
+
+  analyze cc_edges;
+
+  -- Label propagation to disjoint connected components. uuid has no min()
+  -- aggregate, so the running-minimum label is resolved via a text cast.
+  loop
+    i := i + 1;
+    with prop as (
+      select e.id_a as id, least(la.label, lb.label) as new_label
+      from cc_edges e
+      join live_tmp la on la.id = e.id_a
+      join live_tmp lb on lb.id = e.id_b
+      where la.label <> lb.label
+      union all
+      select e.id_b as id, least(la.label, lb.label) as new_label
+      from cc_edges e
+      join live_tmp la on la.id = e.id_a
+      join live_tmp lb on lb.id = e.id_b
+      where la.label <> lb.label
+    ),
+    agg as (
+      select id, min(new_label::text)::uuid as new_label from prop group by id
+    )
+    update live_tmp lt
+    set label = agg.new_label
+    from agg
+    where agg.id = lt.id and agg.new_label < lt.label;
+
+    exit when not found;
+    if i > 1000 then
+      raise exception 'find_consolidation_clusters: label propagation did not converge after % iterations', i;
+    end if;
+  end loop;
+
+  return query
+  with sims as (
+    select id_a as id, max(sim) as best_sim from cc_edges group by id_a
     union all
-    select id_a as anchor, id_b as member, name_b as name, type_a as type,
-           content_b as content, sim, updated_b as updated_at from pairs
+    select id_b as id, max(sim) as best_sim from cc_edges group by id_b
   ),
-  clusters as (
-    select
-      dense_rank() over (order by anchor) as cid,
-      member, name, type, content, sim, updated_at
-    from anchors
+  best as (
+    select id, max(best_sim) as similarity from sims group by id
   ),
-  sized as (
-    select *, count(*) over (partition by cid) as cluster_size
-    from clusters
+  comp_sizes as (
+    select label, count(*) as comp_size from live_tmp group by label
+  ),
+  qualifying as (
+    select lt.id, lt.name, lt.type, lt.content, lt.updated_at, lt.label,
+           coalesce(b.similarity, 0) as similarity,
+           row_number() over (partition by lt.label order by lt.updated_at desc, lt.id) as rn
+    from live_tmp lt
+    join comp_sizes cs on cs.label = lt.label
+    left join best b on b.id = lt.id
+    where cs.comp_size >= min_cluster_size
+  ),
+  -- Cap components >10 members to the 10 most recently updated (#1187 AC).
+  capped as (
+    select * from qualifying where rn <= 10
   )
   select
-    cid::int as cluster_id,
-    member as memory_id,
-    name as memory_name,
-    type as memory_type,
-    content,
-    sim as similarity,
-    updated_at
-  from sized
-  where cluster_size >= min_cluster_size
-  order by cid, updated_at desc;
+    dense_rank() over (order by capped.label)::int as cluster_id,
+    capped.id as memory_id,
+    capped.name as memory_name,
+    capped.type as memory_type,
+    capped.content as content,
+    capped.similarity as similarity,
+    capped.updated_at as updated_at
+  from capped
+  order by 1, capped.updated_at desc;
+end;
 $$;
 
 -- Archive superseded memories (Phase 5.1c): set `expired_at` instead of
@@ -501,6 +587,14 @@ create table if not exists task_outcomes (
   -- Learning
   lessons text,
   pattern_tags text[] default '{}',
+
+  -- Which memory most informed this outcome's decision (Phase 5
+  -- Metacognition / Confidence Calibration, #251). FK to memories(id) —
+  -- NOT record_decision's returned episode UUID (episodes.id); see #660.
+  -- Nullable — outcomes recorded before calibration work won't have it,
+  -- and some outcomes (e.g. pure research tasks) don't trace to a single
+  -- memory.
+  memory_id uuid references memories(id) on delete set null,
 
   -- Verification
   verified_at timestamptz,  -- when outcome was verified (e.g. PR merged check)
@@ -1046,6 +1140,22 @@ create index if not exists idx_episodes_actor on episodes(actor);
 
 -- Chronological audit.
 create index if not exists idx_episodes_created on episodes(created_at desc);
+
+-- #1269: decision_list recovery query — partial expression index over the
+-- session id stamped into decision_made payloads by the PreToolUse gate.
+-- session_id lives in payload jsonb (not a column) so the C17 dual-write
+-- to events_canonical carries it without schema changes there.
+create index if not exists idx_episodes_payload_session_id
+  on episodes ((payload->>'session_id'))
+  where (payload->>'session_id') is not null;
+
+-- #1423: session_id is demoted to forensic grouping metadata — the
+-- decision_list recovery key is (project, cwd, since), because a
+-- resume/compaction always mints a new session_id. Mirrors the index above
+-- for the field that now carries the recovery-query load.
+create index if not exists idx_episodes_payload_cwd
+  on episodes ((payload->>'cwd'))
+  where (payload->>'cwd') is not null;
 
 alter table episodes enable row level security;
 
@@ -2181,11 +2291,11 @@ CREATE POLICY "Allow all for anon" ON known_unknowns
 -- =========================================================================
 
 -- Link column: which memory most informed this outcome's decision.
--- Nullable — outcomes recorded before calibration work won't have it,
--- and some outcomes (e.g. pure research tasks) don't trace to a single
--- memory.
-alter table task_outcomes
-  add column if not exists memory_id uuid references memories(id) on delete set null;
+-- Moved inline into the canonical `create table task_outcomes` block
+-- above (#660 doc reconciliation) — this ALTER TABLE only mattered for
+-- databases that ran this file before the column existed; retained here
+-- as a no-op comment so the migration history stays legible rather than
+-- silently vanishing. Do not reintroduce the ALTER TABLE statement.
 
 create index if not exists idx_task_outcomes_memory_id
   on task_outcomes(memory_id) where memory_id is not null;
@@ -2194,7 +2304,8 @@ create index if not exists idx_task_outcomes_memory_id
 -- Only includes memories with at least one resolved outcome (success or
 -- failure). Partial/unknown/pending outcomes are excluded — they would
 -- bias the Brier score either way.
-create or replace view memory_calibration as
+create or replace view memory_calibration
+  with (security_invoker = on) as
 select
   m.id as memory_id,
   m.type as memory_type,
@@ -3230,3 +3341,122 @@ drop policy if exists "Allow all for authenticated" on global_task_sources;
 drop policy if exists "Anon select only" on global_task_sources;
 create policy "Anon select only" on global_task_sources
   for select to anon using (true);
+
+-- ===========================================================================
+-- credential_registry (Pillar 9): metadata inventory of credentials — service,
+-- env-var NAME, storage location, rotation/expiry. NEVER secret values (see
+-- mcp-memory/handlers/credential.py). Applied to remote as migrations
+-- 20260415082814 (create) + 20260708044124 (RLS); documented here per #326.
+-- ===========================================================================
+create table if not exists credential_registry (
+  id uuid primary key default gen_random_uuid(),
+  service text not null,
+  env_var text not null unique,
+  stored_in text not null default '.env',
+  scope text not null default 'jarvis',
+  created_at timestamptz default now(),
+  expires_at timestamptz,
+  last_rotated_at timestamptz,
+  rotation_notes text,
+  notes text,
+  -- Defence-in-depth: reject rows whose metadata columns look like a raw secret.
+  check (
+    env_var !~ '^(eyJ|sk-|ghp_|ghs_|AKIA|xox[bpras]-)'
+    and (rotation_notes is null or rotation_notes !~ '(eyJ|sk-|ghp_|ghs_|AKIA)')
+    and (notes is null or notes !~ '(eyJ|sk-|ghp_|ghs_|AKIA)')
+  )
+);
+
+-- RLS: allow-all convention (service_role bypasses). Enabled to clear the
+-- Supabase rls_disabled_in_public ERROR; access is unchanged (app-layer trust).
+alter table credential_registry enable row level security;
+drop policy if exists "Allow all for authenticated" on credential_registry;
+drop policy if exists "Allow all for anon" on credential_registry;
+create policy "Allow all for authenticated" on credential_registry
+  for all using (true) with check (true);
+create policy "Allow all for anon" on credential_registry
+  for all to anon using (true) with check (true);
+
+-- ===========================================================================
+-- audit_log: fire-and-forget trail of MCP tool invocations. Applied to remote
+-- as migrations 20260415113317 (create) + 20260708044124 (RLS); documented
+-- here per #326.
+-- ===========================================================================
+create table if not exists audit_log (
+  id uuid primary key default gen_random_uuid(),
+  "timestamp" timestamptz default now(),
+  agent_id text,
+  tool_name text not null,
+  action text not null,
+  target text,
+  details jsonb default '{}'::jsonb,
+  outcome text default 'success'
+);
+
+create index if not exists idx_audit_log_timestamp on audit_log ("timestamp" desc);
+create index if not exists idx_audit_log_tool_name on audit_log (tool_name);
+
+alter table audit_log enable row level security;
+drop policy if exists "Allow all for authenticated" on audit_log;
+drop policy if exists "Allow all for anon" on audit_log;
+create policy "Allow all for authenticated" on audit_log
+  for all using (true) with check (true);
+create policy "Allow all for anon" on audit_log
+  for all to anon using (true) with check (true);
+
+-- ===========================================================================
+-- review_debt: sub-MAJOR code-review findings, collected + clustered (#1211).
+-- Applied to remote as migration 20260721120000_create_review_debt.sql;
+-- documented here per #326 (schema.sql is aspirational; the migration executes).
+-- The review-debt collector persists MEDIUM/INFO findings that never block a
+-- merge, dedups by (module_area + rule + file), clusters by module_area, and
+-- auto-files one review-debt-cluster issue at threshold.
+-- ===========================================================================
+create table if not exists review_debt (
+  id            uuid primary key default gen_random_uuid(),
+  dedup_key     text not null unique,   -- module_area + rule + file (no desc/line)
+  module_area   text not null,          -- parent dir; the clustering bucket
+  severity      text not null,          -- MEDIUM | INFO
+  weight        numeric not null default 0.5,   -- per-severity contribution
+  rule          text not null default '',
+  file          text not null default '',
+  seen_count    integer not null default 1,     -- raw occurrences (incremented)
+  first_seen_at timestamptz not null default now(),
+  last_seen_at  timestamptz not null default now(),
+  issued_state  text not null default 'open_debt',  -- open_debt | clustered
+  cluster_issue integer,                -- issue number once clustered
+  source_pr     text
+);
+
+create index if not exists idx_review_debt_module_area on review_debt (module_area);
+create index if not exists idx_review_debt_issued_state on review_debt (issued_state);
+create index if not exists idx_review_debt_last_seen on review_debt (last_seen_at desc);
+
+-- Upsert RPC increments seen_count on a repeat finding (merge-duplicates can't).
+create or replace function review_debt_upsert(
+  p_dedup_key text, p_module_area text, p_severity text, p_weight numeric,
+  p_rule text, p_file text, p_source_pr text, p_seen_at timestamptz default now()
+) returns review_debt language plpgsql security invoker set search_path = public as $$
+declare result review_debt;
+begin
+  insert into review_debt as rd (
+    dedup_key, module_area, severity, weight, rule, file,
+    source_pr, first_seen_at, last_seen_at)
+  values (p_dedup_key, p_module_area, p_severity, p_weight, p_rule, p_file,
+    p_source_pr, p_seen_at, p_seen_at)
+  on conflict (dedup_key) do update
+    set seen_count = rd.seen_count + 1, last_seen_at = excluded.last_seen_at,
+        source_pr = excluded.source_pr,
+        issued_state = case when rd.issued_state = 'clustered' then 'clustered'
+                            else 'open_debt' end
+  returning rd.* into result;
+  return result;
+end; $$;
+
+alter table review_debt enable row level security;
+drop policy if exists "Allow all for authenticated" on review_debt;
+drop policy if exists "Allow all for anon" on review_debt;
+create policy "Allow all for authenticated" on review_debt
+  for all using (true) with check (true);
+create policy "Allow all for anon" on review_debt
+  for all to anon using (true) with check (true);

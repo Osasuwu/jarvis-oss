@@ -1,7 +1,7 @@
 """Claude Max usage probe for Pillar 7 Sprint 2 (issue #297, S2-2).
 
-Dispatcher (S2-3, #298) calls :func:`read_usage` before dispatching a task.
-If ``reading.near_exhaustion`` is True, the dispatch is paused (the task
+Callers gate dispatch on :func:`read_usage` (S2-3, #298) before spawning a
+task. If ``reading.near_exhaustion`` is True, the dispatch is paused (the task
 stays in ``task_queue`` for the next tick). Every probe failure is
 *conservative false-safe* — we return a reading with ``near_exhaustion=True``
 rather than raising, so a broken probe never causes a flood of dispatches.
@@ -30,9 +30,10 @@ Cache
 =====
 
 :class:`CachedProbe` memoizes the reading for ``ttl_seconds`` in process
-memory. Dispatcher runs in a single long-lived APScheduler process, so
-cross-process cache (Supabase) adds complexity without benefit. A restart
-invalidates the cache; the first tick after restart re-probes.
+memory — enough to serve repeated reads within a single reactive-core wake.
+A cross-process cache (Supabase) would add complexity for little benefit at
+current dispatch volumes. A restart (or cold boot) invalidates the cache; the
+first probe after start re-reads.
 """
 
 from __future__ import annotations

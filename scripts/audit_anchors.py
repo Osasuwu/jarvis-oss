@@ -168,6 +168,22 @@ def find_line_number_annotations(corpus: dict[Path, str]) -> list[tuple[Path, in
     return found
 
 
+#: Path prefixes excluded from the audit corpus. Research drafts are verbatim
+#: captures of external material (scraped docs, vendor pages) — their anchors
+#: point at the *source* document's structure, not at this repo's, so auditing
+#: them yields only noise. Matched against the repo-relative posix path.
+EXCLUDED_PREFIXES: tuple[str, ...] = ("docs/research/",)
+
+
+def is_excluded(rel_posix: str) -> bool:
+    """True iff a repo-relative posix path is outside the audit corpus.
+
+    Must take the *relative* path: an absolute path may legitimately contain a
+    segment named ``research`` somewhere above the repo root.
+    """
+    return any(rel_posix.startswith(p) for p in EXCLUDED_PREFIXES)
+
+
 def get_corpus() -> dict[Path, str]:
     """Get the audit corpus: all tracked *.md files except docs/research/.
 
@@ -187,7 +203,7 @@ def get_corpus() -> dict[Path, str]:
         result_files = sorted(ROOT.glob("**/*.md"))
         corpus = {}
         for f in result_files:
-            if "docs/research" in f.parts or ".research" in str(f):
+            if is_excluded(f.relative_to(ROOT).as_posix()):
                 continue
             try:
                 corpus[f] = f.read_text(encoding="utf-8", errors="replace")
@@ -199,10 +215,10 @@ def get_corpus() -> dict[Path, str]:
     for line in result.stdout.strip().splitlines():
         if not line:
             continue
-        f = ROOT / line
-        # Skip docs/research/
-        if "docs/research" in f.parts or ".research" in str(f):
+        # `git ls-files` already emits repo-relative posix paths.
+        if is_excluded(line):
             continue
+        f = ROOT / line
         try:
             corpus[f] = f.read_text(encoding="utf-8", errors="replace")
         except Exception:

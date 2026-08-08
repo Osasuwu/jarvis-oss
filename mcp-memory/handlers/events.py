@@ -8,13 +8,10 @@ Part of #360 server.py split. Calls utilities (`_get_client`,
 the `server` module so test monkeypatches on those names
 propagate at call time.
 
-Schema-evolution safety: the `state` FSM column and its RPCs
-(`claim_next`, `mark_processed`, `park_event`, `requeue_event`) are
-introduced by `supabase/migrations/20260521130515_extend_events_queue.sql`.
-While that migration is pending deployment on a given environment, the
-handlers below detect the missing column / RPC at runtime and fall back
-to the legacy `processed` boolean filter (or return a user-friendly
-error for FSM-only operations).
+The `state` FSM column (pending|claimed|processed|parked) and its RPCs
+(`claim_next`, `mark_processed`, `park_event`, `requeue_event`) have been
+the authoritative event lifecycle tracker since #739. The legacy
+`processed` boolean and its compat fallback were decommissioned in #1391.
 """
 
 from __future__ import annotations
@@ -27,22 +24,11 @@ from mcp.types import TextContent  # noqa: F401
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 
-# Cached probe of whether the live events table has the FSM `state` column.
-# None = not yet probed, True/False = detected. Set by `_handle_events_list`
-# after its first successful round-trip so subsequent calls skip the retry.
-_STATE_COLUMN_AVAILABLE: bool | None = None
-
 
 def _get_client():
     """Lazy import to avoid circular import (server imports this module)."""
     import server  # noqa: F401
     return server._get_client()
-
-
-def _is_missing_state_column(err: Exception) -> bool:
-    """PostgREST/PG signature for the pre-migration `events.state` column."""
-    msg = str(err)
-    return "42703" in msg or "events.state" in msg
 
 
 def _is_missing_rpc(err: Exception) -> bool:
@@ -62,43 +48,25 @@ def _missing_fsm_error_text(rpc_name: str) -> str:
 
 
 async def _handle_events_list(args: dict) -> list[TextContent]:
-    global _STATE_COLUMN_AVAILABLE
     client = _get_client()
 
-    def _build_query(use_state_filter: bool):
-        q = client.table("events").select("*")
+    q = client.table("events").select("*")
 
-        if not args.get("include_processed", False):
-            if use_state_filter:
-                q = q.or_("state.eq.pending,state.eq.claimed,state.eq.parked")
-            else:
-                q = q.eq("processed", False)
+    if not args.get("include_processed", False):
+        q = q.or_("state.eq.pending,state.eq.claimed,state.eq.parked")
 
-        if args.get("repo"):
-            q = q.eq("repo", args["repo"])
-        if args.get("event_type"):
-            q = q.eq("event_type", args["event_type"])
+    if args.get("repo"):
+        q = q.eq("repo", args["repo"])
+    if args.get("event_type"):
+        q = q.eq("event_type", args["event_type"])
 
-        min_severity = args.get("severity")
-        if min_severity and min_severity in SEVERITY_ORDER:
-            allowed = [s for s, v in SEVERITY_ORDER.items() if v <= SEVERITY_ORDER[min_severity]]
-            q = q.in_("severity", allowed)
+    min_severity = args.get("severity")
+    if min_severity and min_severity in SEVERITY_ORDER:
+        allowed = [s for s, v in SEVERITY_ORDER.items() if v <= SEVERITY_ORDER[min_severity]]
+        q = q.in_("severity", allowed)
 
-        limit = args.get("limit", 20)
-        return q.order("created_at", desc=True).limit(limit)
-
-    # Use cached result if we've already probed; otherwise optimistically
-    # assume the FSM migration is applied and downgrade on first 42703.
-    use_state = True if _STATE_COLUMN_AVAILABLE is None else _STATE_COLUMN_AVAILABLE
-    try:
-        result = _build_query(use_state_filter=use_state).execute()
-        _STATE_COLUMN_AVAILABLE = use_state
-    except Exception as e:
-        if use_state and _is_missing_state_column(e):
-            _STATE_COLUMN_AVAILABLE = False
-            result = _build_query(use_state_filter=False).execute()
-        else:
-            raise
+    limit = args.get("limit", 20)
+    result = q.order("created_at", desc=True).limit(limit).execute()
 
     if not result.data:
         return [TextContent(type="text", text="No events found.")]
@@ -140,42 +108,19 @@ async def _handle_events_mark_processed(args: dict) -> list[TextContent]:
     processed_by = args["processed_by"]
     action_taken = args.get("action_taken", "")
 
-    now = datetime.now(timezone.utc).isoformat()
-
-    updated = 0
-    for eid in event_ids:
-        rpc_data = None
-        try:
-            rpc_result = client.rpc("mark_processed", {
-                "event_id": eid,
-                "processor": processed_by,
-                "action_taken": action_taken,
-            }).execute()
-            rpc_data = rpc_result.data
-        except Exception as e:
-            # Pre-FSM-migration DB: function doesn't exist. Fall through to legacy.
-            if not _is_missing_rpc(e):
-                raise
-
-        if rpc_data:
-            updated += 1
-        else:
-            # Legacy fallback: direct update for rows without state FSM
-            result = (
-                client.table("events")
-                .update(
-                    {
-                        "processed": True,
-                        "processed_at": now,
-                        "processed_by": processed_by,
-                        "action_taken": action_taken,
-                    }
-                )
-                .eq("id", eid)
-                .execute()
-            )
-            if result.data:
-                updated += 1
+    try:
+        updated = sum(
+            1
+            for eid in event_ids
+            if client.rpc(
+                "mark_processed",
+                {"event_id": eid, "processor": processed_by, "action_taken": action_taken},
+            ).execute().data
+        )
+    except Exception as e:
+        if _is_missing_rpc(e):
+            return [TextContent(type="text", text=_missing_fsm_error_text("mark_processed"))]
+        raise
 
     return [
         TextContent(type="text", text=f"Marked {updated}/{len(event_ids)} events as processed.")

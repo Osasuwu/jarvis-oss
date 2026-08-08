@@ -5,7 +5,7 @@ Modules: `agents/perception_*.py` (one per source). Federation & Delegation Spri
 #388 (GitHub), #389 (self-perception via morning_check). Telegram (#387)
 deferred — see "Future sources" below.
 
-The dispatcher (S2-3, [`dispatcher.md`](dispatcher.md)) consumes
+The task-dispatch path (S2-3, [`agents/task_dispatch.py`](../../agents/task_dispatch.py) — the reactive-core successor to the retired dispatcher) consumes
 `task_queue` rows. Sprint 1–3 wired the **consume** side. Sprint 4 wires
 the **produce** side: external signals → rows → dispatcher's existing FSM.
 
@@ -92,9 +92,10 @@ comment on the source issue with the PR link. (Implementation note for
 #388: hook on `task_queue` UPDATE where status=done and approved_by
 prefix=`github:issue:`.)
 
-Caveat: as of Sprint 4, the dispatcher is fire-and-forget — it sets
-`dispatched_at` and never flips status to `done` itself ([dispatcher.md
-"Fire-and-forget semantics"](dispatcher.md)). The done-watcher in #388
+Caveat: as of Sprint 4, dispatch is fire-and-forget — it sets
+`dispatched_at` and never flips status to `done` itself (the fire-and-forget
+spawn now lives in [`agents/executor.py`](../../agents/executor.py), salvaged
+from the retired dispatcher). The done-watcher in #388
 will idle until a result-collection path lands (future sprint) or until
 the principal flips status manually via `/verify`. Implementers: write the
 watcher, but expect zero firings until that upstream change.
@@ -286,7 +287,7 @@ When writing `agents/perception_<source>.py`, hit every one:
 
 ## Cross-references
 
-- [`dispatcher.md`](dispatcher.md) — what consumes the rows perception produces
+- [`agents/task_dispatch.py`](../../agents/task_dispatch.py) — what consumes the rows perception produces (reactive-core successor to the retired dispatcher)
 - [`safety.md`](safety.md) — `safety.Tier` (the *other* tier vocabulary) and the gate model
 - [`escalation.md`](escalation.md) — what fires after perception INSERTs and dispatcher picks up
 - [`mcp-memory/schema.sql`](../../mcp-memory/schema.sql) + [`supabase/migrations/20260422134442_create_task_queue.sql`](../../supabase/migrations/20260422134442_create_task_queue.sql) — `task_queue` columns and FSM check constraint
@@ -357,7 +358,7 @@ Notes:
   session creds. Spawned `claude -p` exits silently
   (`stdout`/`stderr` are `DEVNULL` per dispatcher fire-and-forget).
   Workaround for now: dispatch from a user-context shell. Long-term
-  fix: change service `ObjectName` to `.\PC4_v` (requires logon-as-
+  fix: change service `ObjectName` to `.\<your-user>` (requires logon-as-
   service right) or migrate to Task Scheduler with "run only when user
   is logged on". Tracked separately.
 - **Back-to-back spawn flake.** Both iter-2 and iter-3 first attempts

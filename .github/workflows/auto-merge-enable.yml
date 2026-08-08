@@ -29,13 +29,36 @@
 #   explicit close (pr-merged.yml), not native auto-close. The App still needs
 #   Contents + Pull requests write to enable auto-merge; pr-merged.yml does the
 #   close with its own job-scoped issues:write GITHUB_TOKEN.
+#
+# App permissions required by this workflow (#1234) — as labelled in the GitHub
+# App UI: Contents: Read and write, Pull requests: Read and write, Workflows:
+# Read and write. (Issues: Read and write is granted on the shared 'jarvis-ci'
+# App for other consumers, but is deliberately NOT requested by this workflow's
+# token — see the Mint step's down-scoping.)
+#
+# Why Workflows: Write (#1234): GitHub refuses enablePullRequestAutoMerge for a
+# GitHub App on any PR whose diff touches .github/workflows/ —
+#   "refusing to allow a GitHub App to create or update workflow
+#    .github/workflows/code-review.yml without `workflows` permission"
+# so every CI-editing PR silently degraded to manual merge and this check went
+# red on the whole class. Note the error names the APP-side permission; there is
+# no `workflows` key in a workflow `permissions:` block (the GITHUB_TOKEN
+# analogue is `actions: write`). App permissions are installation-wide, so the
+# grant is down-scoped per-token below rather than left to inherit.
 name: auto-merge-enable
 
 on:
   pull_request:
     # reopened: a closed-then-reopened PR (e.g. a temporarily-closed sandcastle)
     # must get auto-merge re-enabled, else it silently never merges on its own.
-    types: [opened, ready_for_review, reopened]
+    #
+    # synchronize: required by the #1234 carve-out. The carve-out class includes
+    # branches merely STALE on code-review.yml, which merge-train fixes by calling
+    # update-branch. Without re-evaluation on push, such a PR would stay withheld
+    # forever after it stopped being carve-out. Re-arming on push is safe: the
+    # idempotency check below no-ops when auto-merge is already enabled, and the
+    # owner's holds (draft, status:owner-queue) are unaffected.
+    types: [opened, ready_for_review, reopened, synchronize]
 
 # The merge is performed with the App token below, not GITHUB_TOKEN, so this
 # job's *default* token needs no write scope. NOTE: this block scopes ONLY the
@@ -77,7 +100,8 @@ jobs:
             echo "::error::auto-merge-enable requires the 'jarvis-ci' GitHub App, but APP_ID and/or APP_PRIVATE_KEY repo secrets are unset."
             echo "Why: auto-merge enabled with the default GITHUB_TOKEN suppresses native linked-issue auto-close (GitHub recursion prevention), so merged PRs leave their Closes #N issues open. A GitHub App installation token is required (#1005)."
             echo "Setup (one-time per repo):"
-            echo "  1. Create/extend the 'jarvis-ci' GitHub App with these permissions (as labelled in the GitHub App UI): Contents: Read and write, Pull requests: Read and write, Issues: Read and write."
+            echo "  1. Create/extend the 'jarvis-ci' GitHub App with these permissions (as labelled in the GitHub App UI): Contents: Read and write, Pull requests: Read and write, Issues: Read and write, Workflows: Read and write."
+            echo "     Workflows: Read and write is required (#1234) or GitHub refuses enablePullRequestAutoMerge on any PR touching .github/workflows/. Granting it on the App is a manual UI action; this workflow then down-scopes the minted token to Contents + Pull requests + Workflows."
             echo "  2. Install the App on this repository."
             echo "  3. Add repo secrets: APP_ID (the App's numeric id) and APP_PRIVATE_KEY (the .pem private key)."
             echo "Until then auto-merge cannot be enabled on this repo."
@@ -108,15 +132,32 @@ jobs:
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           # Least-privilege: scope to THIS repo only (REPO_NAME is set on all
-          # triggers, see step above) so the added Issues:write scope never leaks
-          # to other repos the App is installed on (CLAUDE.md: App is shared).
+          # triggers, see step above) so the App's scopes never leak to other
+          # repos the App is installed on (CLAUDE.md: App is shared).
           repositories: ${{ env.REPO_NAME }}
+          # Down-scope the INSTALLATION's permissions to just what this workflow
+          # needs (#1234). App permissions are installation-wide; a token is not.
+          # Supplying any permission-* input REPLACES inheritance with exactly
+          # this set, so every scope in use must be listed — dropping
+          # permission-pull-requests here would silently break `gh pr merge
+          # --auto` rather than fail at mint time. Notably Issues is NOT listed:
+          # this workflow never touches issues (pr-merged.yml closes linked
+          # issues with its own GITHUB_TOKEN), so the token can't act on them.
+          #
+          # Input names verified against actions/create-github-app-token@bcd2ba49
+          # (v3.2.0) action.yml — `permission-workflows` is the App-side scope the
+          # GraphQL refusal names.
+          permission-contents: write
+          permission-pull-requests: write
+          permission-workflows: write
 
       - name: Enable squash auto-merge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.repository.default_branch }}
         run: |
           set -euo pipefail
           # Token-presence guard (#1006 review, MAJOR): the Mint step is skipped
@@ -160,11 +201,108 @@ jobs:
             echo "::notice::PR #$PR is $state (not OPEN) — nothing to enable."
             exit 0
           fi
+
+          # ---- carve-out: PRs /code-review cannot actually review (#1234) ------
+          # claude-code-action validates its OWN calling workflow file against the
+          # default branch and bails with "Skipping action due to workflow
+          # validation" when the content differs, leaving execution_file empty. The
+          # `Verify review verdict` ladder then falls through its no-comment branch
+          # to "plugin legitimately skipped — treating as pass", so the REQUIRED
+          # `review` context goes green having reviewed nothing (verified live on
+          # PR #1231, run 29992799097 — green in 1m7s, zero review comments).
+          #
+          # Until #1234 the App's missing workflows permission was the accidental
+          # last line of defense for this class: auto-merge simply could not be
+          # armed. Granting the permission removes that defense, so withhold here
+          # explicitly instead.
+          #
+          # STOPGAP — remove this whole block once #1236 lands. The real fix is in
+          # the required `Verify review verdict` gate, which must stop treating a
+          # workflow-validation skip as a legitimate skip-pass. Until then the only
+          # place that knows the review was vacuous is here.
+          #
+          # The predicate is a two-dot CONTENT comparison — the blob SHA at this
+          # PR's head vs the blob SHA on the default branch — NOT a merge-base diff
+          # or a changed-files list. The action's validation is content-based, so it
+          # also fires on a branch that merely went STALE on code-review.yml after a
+          # change landed on the default branch: a strictly wider class than "this
+          # PR edits the file".
+          CR_PATH=".github/workflows/code-review.yml"
+          CARVE_OUT_LABEL="automerge-withheld:review-blind"
+          blob_at() {
+            local ref="$1" out rc
+            out=$(gh api "repos/$REPO/contents/$CR_PATH?ref=$ref" -q '.sha' 2>&1) && rc=0 || rc=$?
+            if [ "${rc}" -eq 0 ]; then
+              printf '%s' "$out"
+              return 0
+            fi
+            # A 404 is a legitimate "file absent at this ref" answer. Anything else
+            # is an outage — fail loud rather than let a transient API error decide
+            # a security carve-out (an outage on BOTH refs would otherwise read as
+            # "identical" and arm auto-merge on an unreviewable PR).
+            if printf '%s' "$out" | grep -qi "not found"; then
+              printf 'absent'
+              return 0
+            fi
+            return 1
+          }
+          if ! head_blob=$(blob_at "$HEAD_SHA"); then
+            echo "::error::Could not read $CR_PATH at head $HEAD_SHA (not a 404) — refusing to evaluate the #1234 carve-out on degraded API output."
+            exit 1
+          fi
+          if ! base_blob=$(blob_at "$BASE_REF"); then
+            echo "::error::Could not read $CR_PATH at $BASE_REF (not a 404) — refusing to evaluate the #1234 carve-out on degraded API output."
+            exit 1
+          fi
+
+          if [ "$head_blob" != "$base_blob" ]; then
+            gh label create "$CARVE_OUT_LABEL" --repo "$REPO" --color D93F0B \
+              --description "Auto-merge withheld: /code-review cannot run on this PR (#1234)" >/dev/null 2>&1 || true
+            already_labelled=$(
+              gh pr view "$PR" --repo "$REPO" --json labels \
+                --jq "[.labels[].name] | index(\"$CARVE_OUT_LABEL\") != null"
+            )
+            if [ "$already_labelled" != "true" ]; then
+              gh pr edit "$PR" --repo "$REPO" --add-label "$CARVE_OUT_LABEL" >/dev/null
+              gh pr comment "$PR" --repo "$REPO" --body \
+                "🛑 **Auto-merge withheld.** This PR's \`$CR_PATH\` differs from \`$BASE_REF\`, so \`claude-code-action\` skips on workflow validation and the required \`review\` check goes green **without reviewing anything**. Merging on that signal would ship an un-reviewed PR, so auto-merge is not being armed — **manual review and manual merge are required here**. The branch is still kept fresh by merge-train. (Carve-out from #1234; removable once #1236 fixes the \`Verify review verdict\` gate.)"
+            fi
+            if [ "$am" = "set" ]; then
+              # A PR armed BEFORE a code-review.yml change landed on the default
+              # branch becomes retroactively carve-out. Declining to arm is not
+              # enough — disarm it.
+              gh pr merge "$PR" --repo "$REPO" --disable-auto
+              echo "::notice::PR #$PR became carve-out after auto-merge was armed — auto-merge DISABLED; manual review + merge required (#1234)."
+            else
+              echo "::notice::PR #$PR is a #1234 carve-out ($CR_PATH differs from $BASE_REF) — auto-merge withheld; manual review + merge required."
+            fi
+            exit 0
+          fi
+
+          # No longer carve-out (e.g. merge-train refreshed a stale branch) but
+          # still carrying the label → clear it, then fall through and arm.
+          if gh pr view "$PR" --repo "$REPO" --json labels \
+               --jq "[.labels[].name] | index(\"$CARVE_OUT_LABEL\") != null" | grep -qx true; then
+            gh pr edit "$PR" --repo "$REPO" --remove-label "$CARVE_OUT_LABEL" >/dev/null 2>&1 || true
+            echo "::notice::PR #$PR no longer diverges on $CR_PATH — cleared stale $CARVE_OUT_LABEL."
+          fi
+          # ---- end carve-out ---------------------------------------------------
+
           if [ "$am" = "null" ]; then
             # TOCTOU: the PR can merge externally between the state check above and
             # this call. A "not open" failure here is benign (auto-merge's job is
             # already done), so swallow it after confirming the PR really closed.
-            if ! gh pr merge "$PR" --repo "$REPO" --auto --squash; then
+            if ! merge_err=$(gh pr merge "$PR" --repo "$REPO" --auto --squash 2>&1); then
+              echo "$merge_err"
+              # AC6 (#1234): the undifferentiated "Failed to enable auto-merge"
+              # error cost a full debugging cycle before anyone traced it to a
+              # missing App permission. When the refusal IS that, say so — the
+              # remediation is a manual GitHub App settings change, not anything
+              # a rerun can fix.
+              if printf '%s' "$merge_err" | grep -qi "without \`workflows\` permission"; then
+                echo "::error::auto-merge could not be armed on #$PR because the 'jarvis-ci' GitHub App installation lacks the Workflows permission, and this PR touches .github/workflows/. Fix: grant the App 'Workflows: Read and write' in its GitHub App settings (manual UI action), then re-run this workflow. Note this is the APP-side permission — there is no \`workflows\` key in a workflow \`permissions:\` block (#1234)."
+                exit 1
+              fi
               # Re-check state to tell a benign TOCTOU race from a real failure.
               # Keep the empty-state case DISTINCT from "still OPEN" (#1006 review,
               # MAJOR): an empty re-check is an unknown, not a confirmed-open PR, so

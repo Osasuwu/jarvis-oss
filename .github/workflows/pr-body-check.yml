@@ -52,11 +52,17 @@ jobs:
               return;
             }
 
-            const issueMatches = [...body.matchAll(/(?:closes|fixes|resolves)\s+#(\d+)/gi)];
+            // Linkage keywords: closing keywords (closes/fixes/resolves) auto-close on
+            // merge; refs/references LINK WITHOUT closing (#1136 AC-GATE). A partial-work
+            // PR uses `Refs #N` to satisfy this gate while leaving the issue open — the
+            // executor lane's Closes-mandate escape (agents/task_dispatch.py) mirrors this.
+            // pr-merged.yml is deliberately unchanged: auto-close stays closingIssuesReferences-
+            // driven, so `Refs` links-without-closing by construction.
+            const issueMatches = [...body.matchAll(/(?:closes|fixes|resolves|refs?|references?)\s+#(\d+)/gi)];
             const issueNumbers = [...new Set(issueMatches.map(m => parseInt(m[1], 10)))];
 
             if (issueNumbers.length === 0) {
-              core.setFailed('PR body must include a linked issue reference (e.g. "Closes #123"), the [no-issue] marker for trivial fix-inline drive-bys (#428), or the priority:critical label for hotfixes.');
+              core.setFailed('PR body must include a linked issue reference (e.g. "Closes #123" to auto-close, or "Refs #123" to link a partial-work PR without closing), the [no-issue] marker for trivial fix-inline drive-bys (#428), or the priority:critical label for hotfixes.');
               return;
             }
 

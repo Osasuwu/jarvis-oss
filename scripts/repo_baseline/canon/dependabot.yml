@@ -3,6 +3,13 @@
 # the Renderer emits only inline YAML arrays, not the per-ecosystem block sequences
 # this file needs. Repos whose ecosystems diverge (e.g. an npm package) opt the file
 # into the REPO_CUSTOM escape hatch (manifest.custom_files) and ship their own copy.
+#
+# target-branch IS axis-rendered, from an *observed* axis read off the live audit
+# rather than declared in a manifest (#1406). Hardcoding `main` here aimed every
+# dependabot PR for redrobot (default branch `master`) at a branch that does not
+# exist. The axis is named in the `target-branch:` lines below and deliberately
+# not written out here: a placeholder inside a comment renders too, which would
+# turn this explanation into a repo-specific sentence in every synced repo.
 version: 2
 updates:
   # Python dependencies (root)
@@ -11,7 +18,7 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    target-branch: main
+    target-branch: {{ default_branch }}
 
   # GitHub Actions
   - package-ecosystem: github-actions
@@ -19,4 +26,4 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    target-branch: main
+    target-branch: {{ default_branch }}

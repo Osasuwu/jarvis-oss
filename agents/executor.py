@@ -63,13 +63,38 @@ _SENSITIVE_ENV_KEYS: frozenset[str] = frozenset(
 #   to run a script, agent can invoke Edit + commit; CI tests for us.
 # - Replaced: Bash(gh:*) with scoped read/create verbs only. Removed:
 #   destructive verbs (merge --admin, repo delete, api DELETE).
+# - Replaced: Bash(git:*) with scoped subcommands (#1390 AC7). A per-task
+#   worktree isolates the *working tree*, not the repository — `git gc`,
+#   `git config`, `git worktree`, `git branch -D`, and `git reset --hard`
+#   all remain repo-global and reach every sibling worktree, so none of
+#   those subcommands appear here at all (not even a read-only slice of
+#   them).
+# - Included: Bash(git checkout:*) and Bash(git fetch:*) (PR #1450 review,
+#   MEDIUM). Both are worktree-local/read-only-remote, unlike the repo-global
+#   subcommands above: `checkout` only ever changes what's checked out in
+#   *this* worktree (git refuses to check out a branch already checked out
+#   elsewhere, so it can't steal a sibling's branch), and `fetch` only updates
+#   remote-tracking refs, never local branches. A rework-shape worker's
+#   worktree is NOT its task branch — `task_dispatch._augment_branch_directive`
+#   never attaches a `(branch=...)` directive to a `/rework #N` goal, so the
+#   worker starts on a fresh `task/<task_id>` branch with no path to the PR
+#   under rework unless it can `checkout`/`fetch` to reach it.
 _SPAWN_PERMISSION_MODE = "acceptEdits"
 _SPAWN_ALLOWED_TOOLS = (
     "Read",
     "Glob",
     "Grep",
     "TodoWrite",
-    "Bash(git:*)",
+    "Bash(git status:*)",
+    "Bash(git diff:*)",
+    "Bash(git log:*)",
+    "Bash(git show:*)",
+    "Bash(git rev-parse:*)",
+    "Bash(git checkout:*)",
+    "Bash(git fetch:*)",
+    "Bash(git add:*)",
+    "Bash(git commit:*)",
+    "Bash(git push:*)",
     "Bash(gh pr view:*)",
     "Bash(gh pr create:*)",
     "Bash(gh pr list:*)",
@@ -93,6 +118,12 @@ _CLAUDE_DEFAULT_WINDOWS_PATHS: tuple[str, ...] = (
     r"{USERPROFILE}\.local\bin\claude.exe",
     r"{APPDATA}\npm\claude.exe",
 )
+
+# Main checkout root — this module lives at ``<repo_root>/agents/executor.py``.
+# Used (#1390 AC2) to locate the main checkout's ``.venv/Scripts`` and
+# ``node_modules/.bin`` so a worker spawned inside a fresh per-task worktree
+# (which lacks both — they're gitignored) can still find ``pytest``/``npm``.
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Default stderr/stdout log directory for spawned subprocesses. Per
 # ``fire_and_forget_subprocess_capture_stderr``: fire-and-forget subprocesses
@@ -195,6 +226,7 @@ def spawn(
     task_text: str,
     *,
     task_id: str | None = None,
+    cwd: str | None = None,
     stderr_log_dir: str | None = None,
     popen: Any = None,  # noqa: ANN401 — injectable for tests
     probe: UsageProbe | None = None,
@@ -205,6 +237,12 @@ def spawn(
     near-exhaustion, the spawn is refused and the caller receives a
     :class:`SpawnResult` with ``throttled=True`` — distinguishable from a
     launch failure.
+
+    ``cwd`` is the worker's working directory (#1390 — a per-task git
+    worktree created upstream in ``task_dispatch``). No code path here
+    relies on inheriting the driver's own cwd; when ``cwd`` is ``None`` the
+    subprocess inherits the caller's cwd, same as before this parameter
+    existed.
 
     Returns a :class:`SpawnResult`. When ``result.proc`` is not ``None``,
     the caller does not wait; the child session writes its own outcomes.
@@ -238,6 +276,14 @@ def spawn(
         )
 
     env = _sanitize_env()
+    # #1390 AC2 — a worker's cwd may be a per-task worktree, which lacks the
+    # gitignored .venv/node_modules; prepend the MAIN checkout's copies so
+    # Bash(pytest:*) / Bash(npm:*) (already spawn-allowed) resolve.
+    venv_scripts = os.path.join(_REPO_ROOT, ".venv", "Scripts")
+    node_modules_bin = os.path.join(_REPO_ROOT, "node_modules", ".bin")
+    inherited_path = env.get("PATH", "")
+    env["PATH"] = os.pathsep.join([venv_scripts, node_modules_bin, inherited_path])
+
     argv = [
         _resolve_claude_binary(),
         "-p",
@@ -276,6 +322,7 @@ def spawn(
         proc = spawn_fn(
             argv,
             env=env,
+            cwd=cwd,
             stdout=stdout_target,
             stderr=stderr_file,
             close_fds=True,

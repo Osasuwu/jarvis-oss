@@ -1,5 +1,26 @@
-mcp>=1.28.1
-supabase>=2.31.0
-voyageai>=0.4.1
-httpx>=0.28.1
-python-dotenv>=1.2.2
+# Every range below carries an explicit upper bound (next major, or <1 while
+# still pre-1.0) — #1296. This file is the actual install manifest for the
+# live memory server (see SETUP.md), so it was exposed to the identical
+# unbounded-mcp risk that turned every jarvis CI run red on 2026-07-28
+# (#1292/#1294) — that fix touched pyproject.toml's `mcp` extra only and
+# missed this sibling manifest. Bounds are lifted by Dependabot's weekly
+# constraint-bump PRs (.github/dependabot.yml already targets /mcp-memory)
+# once that PR's own CI proves the new major resolves cleanly.
+# tests/ci/test_dependency_bounds_guard.py fails closed if a bare `>=`-only
+# spec is reintroduced here.
+#
+# mcp: floor raised to 2.0 in #1294 (server.py ported to the v2 API).
+# Upper-bounded <3 per #1296 — lift once this file's ported server is
+# re-verified against the v3 API when it ships.
+mcp>=2.0.0,<3
+supabase>=2.31.0,<3
+voyageai>=0.5.0,<1
+httpx>=0.28.1,<1
+python-dotenv>=1.2.2,<2
+# nest-asyncio, python-json-logger, telethon: imported by
+# scripts/telegram-mcp-server.py but absent from this manifest until #1312 —
+# the exact silent-drift bug class this file's env_sync check() now guards
+# against (see scripts/lib/env_sync.py REGISTRY probe_modules).
+nest-asyncio>=1.6.0,<2
+python-json-logger>=4.1.0,<5
+telethon>=1.44.0,<2

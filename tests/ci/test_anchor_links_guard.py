@@ -384,6 +384,39 @@ def test_l3_finds_annotations_in_corpus():
 # -- Pathlib portability tests -----------------------------------------------
 
 
+# -- Corpus exclusion tests --------------------------------------------------
+
+
+def test_is_excluded_matches_research_prefix():
+    """docs/research/ is outside the audit corpus (research drafts, #1286)."""
+    from scripts.audit_anchors import is_excluded
+    assert is_excluded("docs/research/some-topic-2026-07-28.md")
+    assert is_excluded("docs/research/nested/deep.md")
+
+
+def test_is_excluded_does_not_match_siblings():
+    """Exclusion is prefix-anchored — sibling doc trees stay in the corpus."""
+    from scripts.audit_anchors import is_excluded
+    assert not is_excluded("docs/design/jarvis-v2-redesign.md")
+    assert not is_excluded("docs/research-notes.md")  # not the directory
+    assert not is_excluded("CONTEXT.md")
+
+
+def test_corpus_excludes_research_dir():
+    """Live: no docs/research/ file leaks into the corpus.
+
+    Regression for the original filter, which tested ``"docs/research" in
+    f.parts`` — parts holds single segments ("docs", "research"), so the joined
+    string never matched and the exclusion was a silent no-op.
+    """
+    from scripts.audit_anchors import get_corpus
+    leaked = [
+        f for f in get_corpus()
+        if f.relative_to(REPO_ROOT).as_posix().startswith("docs/research/")
+    ]
+    assert not leaked, f"docs/research/ leaked into corpus: {leaked[:5]}"
+
+
 def test_pathlib_path_used_in_corpus():
     """Test fixtures use pathlib.Path, not string literals."""
     from scripts.audit_anchors import get_corpus

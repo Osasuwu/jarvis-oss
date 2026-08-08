@@ -4,7 +4,8 @@
   "private": true,
   "description": "Personal AI agent built on Claude Code + MCP. Node toolchain is dev-only — sandcastle orchestration for AFK coding agents.",
   "scripts": {
-    "sandcastle": "tsx --env-file-if-exists=.sandcastle/.env .sandcastle/main.mts"
+    "sandcastle": "tsx --env-file-if-exists=.sandcastle/.env .sandcastle/main.mts",
+    "sandcastle:check": "node --experimental-strip-types .sandcastle/check-result-contract.mts"
   },
   "repository": {
     "type": "git",
@@ -13,7 +14,7 @@
   "license": "MIT",
   "type": "module",
   "devDependencies": {
-    "@ai-hero/sandcastle": "^0.5.7",
+    "@ai-hero/sandcastle": "0.12.0",
     "tsx": "^4.21.0"
   }
 }

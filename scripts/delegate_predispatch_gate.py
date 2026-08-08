@@ -1,4 +1,4 @@
-"""Pre-dispatch gate for /delegate (issues #642, #931).
+"""Pre-dispatch gate for /delegate (issues #642, #931, #1099).
 
 Refuses to dispatch a sandcastle subagent unless the target GitHub issue
 satisfies four readiness conditions:
@@ -6,7 +6,9 @@ satisfies four readiness conditions:
   1. has the `sandcastle` label
   2. has no `needs-*` label
   3. body contains a `## Acceptance criteria` heading (case-insensitive)
-  4. body cites at least one decision UUID
+  4. body cites at least one decision UUID, OR carries the explicit
+     `[no-decision]` marker for slices that legitimately have none (#1099 —
+     pure-mechanical slices should not be forced to cite a synthetic UUID)
 
 and additionally SKIPs an issue that already has in-flight work
 (dispatch-dedup, #931): an open PR referencing it via a closing keyword or a
@@ -48,6 +50,7 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _AC_HEADING_RE = re.compile(r"(?m)^##\s+acceptance\s+criteria\b", re.IGNORECASE)
+_NO_DECISION_MARKER_RE = re.compile(r"\[no-decision\]", re.IGNORECASE)
 _NEEDS_PREFIX = "needs-"
 _REQUIRED_LABEL = "sandcastle"
 
@@ -143,8 +146,10 @@ def check_issue(issue: dict) -> GateResult:
     if not _AC_HEADING_RE.search(body):
         failures.append("missing `## Acceptance criteria` section in body")
 
-    if not _UUID_RE.search(body):
-        failures.append("missing decision UUID reference in body")
+    if not _UUID_RE.search(body) and not _NO_DECISION_MARKER_RE.search(body):
+        failures.append(
+            "missing decision UUID reference in body (or `[no-decision]` marker)"
+        )
 
     return GateResult(failures=tuple(failures))
 

@@ -44,9 +44,9 @@ a crash.
 
 ## Cache semantics
 
-`CachedProbe` memoizes the reading in process memory for the TTL. The
-dispatcher runs as one long-lived APScheduler process, so cross-process
-cache (Supabase) would add complexity without benefit:
+`CachedProbe` memoizes the reading in process memory for the TTL. The probe
+runs within a single reactive-core wake, so a cross-process cache (Supabase)
+would add complexity for little benefit at current volumes:
 
 - First tick after process start → fresh probe.
 - Subsequent ticks within TTL → cached reading.
@@ -107,5 +107,5 @@ assert reading.used == 90
 assert reading.near_exhaustion is True  # 10% headroom <= 15% threshold
 ```
 
-Full unit suite (`tests/test_agents_usage_probe.py`) uses a hand-rolled
+Full unit suite (`tests/reactive_core/test_agents_usage_probe.py`) uses a hand-rolled
 stub client and fake clock — no live DB or real time passing required.

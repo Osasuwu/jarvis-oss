@@ -1,9 +1,10 @@
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
-Handles three tool types:
+Handles four tool types:
 - GitHub MCP write tools: scans body/title/content fields
 - Bash tool: scans command string for secrets and dangerous exfiltration patterns
 - Memory MCP tools: scans content/description fields for secrets
+- File writes (Edit/Write/NotebookEdit): scans the text being written to disk
 
 Reads tool_input from stdin (JSON). Exits 2 to block if secrets detected.
 Does NOT scan for personal data — only credentials that grant access.
@@ -112,6 +113,48 @@ def extract_memory_text(tool_input: dict) -> str:
     return "\n".join(parts)
 
 
+# Fields that carry text destined for disk, per file-write tool:
+#   Write        -> content
+#   Edit         -> new_string
+#   NotebookEdit -> new_source
+# Only the *incoming* text is scanned. old_string is deliberately excluded:
+# it is text already on disk, and blocking there would make an existing
+# secret unremovable by the one tool that could remove it.
+FILE_WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
+_FILE_WRITE_KEYS = ("content", "new_string", "new_source")
+
+# This scanner's own test files exist to hold secret-SHAPED fixtures; scanning
+# them blocks the one file that must contain them. Exempt by basename only —
+# deliberately not a `tests/` prefix, because a test directory is exactly where
+# a real leaked key would otherwise hide.
+SELF_TEST_BASENAMES = ("test_secret_scanner.py", "test_secret_scrubber.py")
+
+
+def is_self_test_fixture(tool_input: dict) -> bool:
+    """True when the write targets this scanner's own fixture files."""
+    path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
+    if not isinstance(path, str):
+        return False
+    basename = path.replace("\\", "/").rsplit("/", 1)[-1]
+    return basename in SELF_TEST_BASENAMES
+
+
+def extract_file_write_text(tool_input: dict) -> str:
+    """Pull the text a file-write tool is about to put on disk."""
+    parts = []
+    for key in _FILE_WRITE_KEYS:
+        val = tool_input.get(key)
+        if isinstance(val, str):
+            parts.append(val)
+    # MultiEdit-style batches: list of {old_string, new_string}
+    edits = tool_input.get("edits")
+    if isinstance(edits, list):
+        for e in edits:
+            if isinstance(e, dict) and isinstance(e.get("new_string"), str):
+                parts.append(e["new_string"])
+    return "\n".join(parts)
+
+
 # Regex to match heredoc bodies: <<'EOF'...EOF or <<EOF...EOF (multiline)
 _HEREDOC_RE = re.compile(
     r"<<-?\s*'?(\w+)'?\s*\n.*?\n\s*\1\s*(?:\)|$)",
@@ -202,6 +245,14 @@ def main():
     elif "memory" in tool_name:
         # Memory MCP tools (memory_store)
         text = extract_memory_text(tool_input)
+        if not text:
+            sys.exit(0)
+        findings.extend(scan_secrets(text))
+    elif tool_name in FILE_WRITE_TOOLS:
+        # File writes — the path a secret actually takes to reach git
+        if is_self_test_fixture(tool_input):
+            sys.exit(0)
+        text = extract_file_write_text(tool_input)
         if not text:
             sys.exit(0)
         findings.extend(scan_secrets(text))

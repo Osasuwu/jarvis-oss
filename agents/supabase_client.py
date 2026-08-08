@@ -1,15 +1,14 @@
-"""Supabase bridge for LangGraph agents.
+"""Supabase bridge for reactive-core agents.
 
-LangGraph agents call Supabase directly via ``supabase-py`` — MCP is
-Claude Code's protocol and isn't available inside graph nodes. The
+Reactive-core agents call Supabase directly via ``supabase-py`` — MCP is
+Claude Code's protocol and isn't available outside a Claude session. The
 read/write helpers here mirror a subset of ``mcp-memory/server.py`` so
 data written by an agent shows up in Claude Code's ``memory_recall`` /
 ``events_list`` / ``goal_list`` and vice versa.
 
 Scope (Sprint 1, issue #173):
   * Reads — ``list_memories``, ``list_events``, ``list_goals``
-  * Writes — ``store_event``, ``mark_event_processed``,
-    ``update_goal_progress``, ``audit``
+  * Writes — ``store_event``, ``update_goal_progress``, ``audit``
 
 Anything more (memory_store, task_outcomes, consolidation, …) stays in
 Claude Code for now. Agents are consumers of the event inbox, not full
@@ -83,7 +82,7 @@ def list_memories(
 
 def list_events(
     *,
-    processed: bool | None = False,
+    include_processed: bool = False,
     repo: str | None = None,
     event_type: str | None = None,
     limit: int = 20,
@@ -92,19 +91,14 @@ def list_events(
 ) -> list[dict[str, Any]]:
     """Return event rows.
 
-    ``processed=False`` (default) returns the unprocessed inbox, matching
-    the MCP ``events_list`` default. Pass ``processed=None`` to include
-    both.
+    ``include_processed=False`` (default) returns only pending/claimed/parked
+    rows, matching the MCP ``events_list`` default. Pass
+    ``include_processed=True`` to include processed rows too.
     """
     cli = client or get_client(config)
     q = cli.table("events").select("*").order("created_at", desc=True).limit(limit)
-    if processed is not None:
-        q = q.eq("processed", processed)
-        # FSM (#739): claim_next sets state='claimed' but leaves processed=false
-        # until mark_processed runs. Filtering on the flag alone surfaces in-
-        # flight rows; pin the "unprocessed inbox" to truly pending rows.
-        if processed is False:
-            q = q.eq("state", "pending")
+    if not include_processed:
+        q = q.or_("state.eq.pending,state.eq.claimed,state.eq.parked")
     if repo is not None:
         q = q.eq("repo", repo)
     if event_type is not None:
@@ -152,7 +146,7 @@ def store_event(
     title: str,
     severity: str = "info",
     payload: dict[str, Any] | None = None,
-    source: str = "langgraph-agent",
+    source: str = "reactive-core",
     dedup_key: str | None = None,
     client: Client | None = None,
     config: AgentConfig | None = None,
@@ -193,34 +187,6 @@ def store_event(
     if not data:
         raise RuntimeError(f"Supabase returned no row after {verb} event: {row!r}")
     return data[0]
-
-
-def mark_event_processed(
-    event_id: str,
-    *,
-    processed_by: str,
-    action_taken: str | None = None,
-    client: Client | None = None,
-    config: AgentConfig | None = None,
-) -> None:
-    """Close an event — mirrors the MCP ``events_mark_processed`` tool.
-
-    Raises ``RuntimeError`` if ``event_id`` matched no row. A silent no-op
-    would let the caller think the event was closed when nothing actually
-    changed — typically a sign of a stale id or wrong-environment lookup.
-    """
-    cli = client or get_client(config)
-    update: dict[str, Any] = {
-        "processed": True,
-        "processed_at": datetime.now(timezone.utc).isoformat(),
-        "processed_by": processed_by,
-    }
-    if action_taken is not None:
-        update["action_taken"] = action_taken
-    result = cli.table("events").update(update).eq("id", event_id).execute()
-    rows = result.data or []
-    if not rows:
-        raise RuntimeError(f"Event not found or not updated: event_id={event_id!r}")
 
 
 def _parse_progress(raw: Any) -> list[Any]:
@@ -313,7 +279,7 @@ def audit(
     """Best-effort audit entry — never raises.
 
     The ``agent_id`` column on ``audit_log`` is how agents identify
-    themselves (e.g. ``"langgraph-monitor"``). Matches the server.py
+    themselves (e.g. ``"reactive-core"``). Matches the server.py
     ``_audit_log()`` convention, with ``agent_id`` filled in — MCP writes
     leave it NULL, so the column doubles as the actor differentiator.
     """

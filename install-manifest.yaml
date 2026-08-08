@@ -33,8 +33,9 @@ groups:
     enabled: true
     files:
       # Canonical source stays at jarvis/config/SOUL.md (git-versioned,
-      # PR-reviewed). Installer copies to ~/.claude/SOUL.md so the
-      # user-level SessionStart hook reads it regardless of CWD.
+      # PR-reviewed). Installer copies to ~/.claude/SOUL.md, which is
+      # loaded into every session via a bare `@SOUL.md` import in
+      # ~/.claude/CLAUDE.md, not a SessionStart hook step (#1328).
       # Edit flow: edit jarvis/config/SOUL.md -> PR review -> merge ->
       # `git pull && install.ps1` on each device propagates.
       - source: "config/SOUL.md"
@@ -55,6 +56,36 @@ groups:
       - source: ".claude-userlevel/CLAUDE.md"
         dest: "CLAUDE.md"
         template: false
+
+  - id: doctrine
+    description: "DOCTRINE.md — shared cross-repo norms, delivered via @import from CLAUDE.md (#1315)"
+    enabled: true
+    files:
+      # Canonical source at .claude-userlevel/DOCTRINE.md (git-versioned,
+      # PR-reviewed). Installer copies to ~/.claude/DOCTRINE.md; user-level
+      # CLAUDE.md pulls it in with a bare @DOCTRINE.md import line.
+      - source: ".claude-userlevel/DOCTRINE.md"
+        dest: "DOCTRINE.md"
+        template: false
+
+  - id: reference
+    description: "Pull-only reference docs — carrier 5, read on demand, never @import'ed (#1418)"
+    enabled: true
+    directories:
+      # Destination of content evicted from the always-loaded surfaces (SOUL.md,
+      # user-level CLAUDE.md, DOCTRINE.md). These files cost ZERO tokens per
+      # session: nothing imports them, they are Read only when a decision turns
+      # on their contents. The pointers in SOUL.md/CLAUDE.md name the *installed*
+      # path (~/.claude/reference/...), not a repo-relative one — user-level
+      # surfaces load in every repo, so a repo-relative pointer resolves to the
+      # wrong document outside jarvis.
+      - source: ".claude-userlevel/reference"
+        dest: "reference"
+        template: false
+        include:
+          - "baseline-carriers.md"
+          - "engineering-principles.md"
+          - "merge-gates.md"
 
   - id: hooks_settings
     description: "settings.json — hooks pointing at JARVIS_HOME scripts (M3 #338)"
@@ -99,9 +130,9 @@ groups:
           # Shared reference material consumed by other skills (e.g. _shared/tdd/
           # is read by /implement and /delegate in TDD-mode). Not a skill itself.
           - "_shared"
-          - "autonomous-loop"
           - "delegate"
           - "end"
+          - "file-issue"
           - "goals"
           - "implement"
           - "last-work-report"
@@ -121,10 +152,13 @@ groups:
           - "diagnose"
           - "grill"
           - "improve-codebase-architecture"
+          - "prototype"
           - "reason"
-          - "to-issues"
-          - "to-prd"
+          - "to-spec"
+          - "to-tickets"
           - "triage"
+          - "wayfinder"
+          - "wizard"
           - "write-a-skill"
           - "zoom-out"
 

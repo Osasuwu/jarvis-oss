@@ -1,21 +1,22 @@
 # User-level CLAUDE.md
 
-Process and protocol rules that apply across every project. Loaded into every Claude Code session as user-level memory.
+Process and protocol rules that apply across every project, loaded into every Claude Code session. Project-specific rules live in `<repo>/CLAUDE.md`; SOUL.md holds identity, this file holds process.
 
-**Source of truth:** `<jarvis-repo>/.claude-userlevel/CLAUDE.md`. The live file at `~/.claude/CLAUDE.md` is a mirror — `install.ps1 -Apply` propagates from source. Never edit the mirror; edits drift on next install.
+**Edit the source, never the mirror** — `<jarvis-repo>/.claude-userlevel/CLAUDE.md` is canonical, `install.ps1 -Apply` propagates it to `~/.claude/CLAUDE.md`.
 
-Project-specific rules live in `<repo>/CLAUDE.md`. SOUL.md (`~/.claude/SOUL.md`) holds identity/personality; this file holds process.
+The two imports below are what actually load identity and shared doctrine. Keep them **bare and on their own line** — that is the only form with evidence of resolving. Both files sat referenced mid-prose for months and silently never loaded, while a substring-matching guard stayed green (#1426).
+
+@SOUL.md
+
+@DOCTRINE.md
+
+`SOUL.md` is identity, installed alongside this file from `<jarvis-repo>/config/SOUL.md`; no SessionStart hook step delivers it (#1328). `DOCTRINE.md` carries shared cross-repo norms — merge gates, protocol-layer model, owner-queue semantics, the sanctioned admin-merge cases. This file carries jarvis's own process on top of that shared floor — every project-repo CLAUDE.md, including jarvis's own, is a repo like any other and points *up* to this file and DOCTRINE.md, never the reverse.
 
 ## Memory & decision protocol
 
 Skills consume this section instead of restating it. Three load-bearing rules: **recall before deciding**, **brief-mode UUIDs**, and the **`record_decision` contract**.
 
-This is the **Tier 1** layer (soft prompt rule). Backstops:
-
-- **Tier 2 — hooks.** Mechanical enforcement that can't be skipped (e.g. `PreToolUse` on `record_decision` blocks calls with empty `memories_used`).
-- **Tier 3 — skill-specific gates.** Things that genuinely belong to one skill (e.g. `/grill`'s completeness gate, `/implement`'s already-done audit). Stay in the skill file.
-
-If the empty-`memories_used` rate rises after centralising here, the relevant rule escalates Tier 1 → Tier 2 (issue #532 tracks this).
+This is the **Tier 1** layer (soft prompt rule); Tier 2 hooks and Tier 3 skill gates back it up — DOCTRINE.md → *Protocol layers*. If the empty-`memories_used` rate rises after centralising here, the relevant rule escalates Tier 1 → Tier 2 (jarvis `CONTEXT.md` → *Protocol layers (ADR-0002)*, #532).
 
 ### 1. Recall before deciding
 
@@ -76,55 +77,39 @@ Memory records can be wrong:
 
 ### Decisions belong in memory, not in issue/PR bodies
 
-Architectural resolutions go to `record_decision`. Issue bodies, PR bodies, PRD prose all decay; the queryable decision log doesn't. Skills that produce issues (`/to-prd`, `/to-issues`) reference `decision_uuids[]` rather than restating the *why* — see each skill for the section template.
+Architectural resolutions go to `record_decision`. Issue bodies, PR bodies, PRD prose all decay; the queryable decision log doesn't. Skills that produce issues (`/to-spec`, `/to-tickets`) reference `decision_uuids[]` rather than restating the *why* — see each skill for the section template.
 
 ## Repo policy — auto-merge & merge gates
 
-Applies to every owned repo (`your-username/your-repo`, `your-username/your-second-repo`, and any future personal project). Foreign-owner repos are exempt — they have their own protection rules.
+Merging in an owned repo is gated by four required CI checks on the default branch — `review`
+(the code-review verdict), `owner-queue-guard`, `require-linked-issue`, and the repo's own test
+gates. They are branch-protection-enforced, so they need no cooperation from you: gate-by-gate
+semantics, the per-repo files that implement them, and the repo-baseline settings that apply
+them live in `~/.claude/reference/merge-gates.md`. Read it when changing a gate, onboarding a
+repo, or diagnosing a stuck PR. What you must act on without reading anything:
 
-> **Caveat — auto-merge needs a paid GitHub plan on private repos.** `allow_auto_merge` / `gh pr merge --auto` is rejected (`Auto merge is not allowed for this repository`) on **private repos on the Free plan**. `your-username/your-second-repo` is private+Free, so it has **no auto-merge**: the four gates below still apply, but the final merge is **manual when CI is green** (`gh pr merge <N> --squash --delete-branch`, or poll-then-merge). Don't retry `--auto` there. The AFK Path A loop is fully automatic only on repos with a paid plan (or public repos).
+- **Drafts are the manual hold.** A PR stays in draft while your attention is owed (design
+  feedback pending, intentional batching); drafts never auto-merge. Once flipped to ready, the
+  four gates are the merge gate. Use `status:owner-queue` only for the rarer case:
+  content-complete, so it can pass review, but you still want to eyeball it. Don't reach for
+  the label when draft already covers it.
+- **Private+Free repos have no auto-merge.** `gh pr merge --auto` is rejected on a
+  private repo under a Free-plan account. The gates still apply; the final merge is manual when CI is green
+  (`gh pr merge <N> --squash --delete-branch`). Don't retry `--auto`.
+- **Never normalize a bypass.** A gate that cannot run is not a gate that passed. The two
+  sanctioned admin-merge cases and the freeze rule are in DOCTRINE.md → *Review-blind
+  carve-out*, *Sanctioned stop-gap merge*, *Merge-freeze doctrine*.
 
-**Goal:** AFK Path A loop closes by itself — `open → CI → review → automerge → rework → escalate`. Subagent opens a PR, Jarvis flips it to ready, GitHub merges when every gate is green. No human in the merge step *unless* a gate fires.
+## Filing issues — route through the right skill
 
-### The four gates
+Do **not** open issues with a raw `gh issue create` / `mcp github issue_write` mid-session. Raw creation bypasses the project's issue schema, so the issue lands missing type/milestone/required-field metadata and rots off milestone-scoped triage — the exact leak `/file-issue`'s hygiene gate exists to catch.
 
-Every owned repo enforces the same set via **branch protection on the default branch** + repo-level `allow_auto_merge=true`:
+| What you have | Skill |
+|---|---|
+| One follow-up / finding / tech-debt / drive-by bug | **`/file-issue`** |
+| A plan/PRD to break into multiple end-to-end slices | **`/to-tickets`** |
 
-1. **`review` (Claude code-review plugin)** — the workflow runs `/code-review`, posts findings as a structured comment, **and a post-step (`Verify review verdict`) fails the job ONLY on a merge-blocking finding — an all-caps `CRITICAL`/`MAJOR`/`BLOCKING` severity heading — and fails closed on an unparseable review comment** (jarvis#957 false-passed when the bot used a deviant comment format the old parser didn't select). This is **Gate 1 of the two-gate model** (jarvis#988/#989): MINOR/NITPICK/LOW/INFO/MEDIUM headings and a bare `Found N issues:` line do NOT block — they pass. The merge gate is deliberately aligned with the `/rework` convergence target (`scripts/rework_policy.py`: `n_critical==0 AND n_major==0`) so a PR clean of real bugs but carrying minor nits no longer ping-pongs between "rework thinks it's done" and "merge gate rejects it" (jarvis#976 — PRs were taking 3-5 rework rounds). Without the post-step the check signals "bot ran" not "PR is clean" — auto-merge would happily ship PRs with CRITICAL findings. Plugin already drops findings below 80-confidence per its rubric, so any surfaced finding is real. Case-SENSITIVE all-caps is the discriminator (jarvis#976): title-case prose like `### Blocking issues — None` (#962) must not false-block.
-2. **`owner-queue-guard`** — fails the job when the PR carries the `status:owner-queue` label. That label is the manual "park this for me" signal; the guard turns it into a hard merge block instead of a hope-Jarvis-honors-it convention. Triggered on `opened / synchronize / labeled / unlabeled` so the gate is re-evaluated whenever label state changes.
-3. **`require-linked-issue`** — PR body must reference `Closes #NNN`, OR carry the `priority:critical` label (hotfix bypass), OR contain the `[no-issue]` marker (drive-by fix-inline per jarvis#428), OR use a `refactor:` / `refactor(scope):` title prefix.
-4. **Project-specific test gates** — `pytest`, `meta-tests`, `Detect secrets with gitleaks` in jarvis; the equivalents in any other repo. These come from the repo's own CI surface.
-
-### Drafts are the manual hold
-
-A PR stays in **draft** while your attention is owed (waiting on design feedback, intentional batching, etc.). Drafts never auto-merge — that's GitHub's default and it's the right one. Once flipped to ready, the four gates above are the merge gate.
-
-Use `status:owner-queue` for the rarer case: PR is content-complete (so it can pass review) but you still want to eyeball it before it ships. The label keeps it ready-but-blocked. Don't reach for the label when draft already covers the case.
-
-### Required files per repo
-
-- `.github/workflows/code-review.yml` — final step `Verify review verdict` selects the latest comment with a code-review title heading (any level, optional "Claude" prefix, case-insensitive — not just literal `### Code review`; jarvis#957), then under the **two-gate model** (jarvis#988/#989) exits **1 only on an all-caps merge-blocking severity heading** (`CRITICAL/MAJOR/BLOCKING` after 1-6 `#`'s — decoration like emoji tolerated, `findings`/`issues` suffix optional; observed deviants: `### MAJOR findings` #957, bare `### MAJOR` #956, `### 🔴 BLOCKING` #954). The block grep is **case-SENSITIVE** (`grep -qE`, not `-qiE`) so title-case prose like `### Blocking issues — None` (#962, #976) is not a false-block. Passes (exit 0): a line starting `No issues found.`; a `blocking issues … none` line (case-insensitive, #976); a bare `Found N issues:` line (now a NON-blocking pass — minor/advisory findings must not gate, was a block before #989); an all-caps non-blocking severity heading (`MINOR/NITPICK/LOW/INFO/MEDIUM`). **Exit 1 on an unrecognized verdict format (fail-closed)**; exit 0 only when no review-titled comment exists (plugin skipped). The block check runs first, before any pass check. Contract pinned by `tests/ci/test_code_review_verdict_guard.py` in jarvis. The merge gate is intentionally aligned with `scripts/rework_policy.py`'s convergence target (`n_critical==0 AND n_major==0`) — same blocking set on both sides closes the #976 rework ping-pong.
-- `.github/workflows/owner-queue-guard.yml` — single job named `owner-queue-guard`, triggers on `opened, synchronize, labeled, unlabeled`, fails on the label.
-
-The check name `owner-queue-guard` is what branch protection references — rename in lockstep with the protection rule or the gate silently disappears (cf. jarvis#326 meta-test rule: path-filtered guards need a fixture test pinning the canonical name).
-
-### Repo-settings checklist (one-time per repo)
-
-```
-gh api -X PATCH /repos/<owner>/<repo> -F allow_auto_merge=true -F delete_branch_on_merge=true
-gh api -X PUT /repos/<owner>/<repo>/branches/<default>/protection -F required_status_checks='{"strict":true,"contexts":["review","owner-queue-guard","require-linked-issue", ...repo-specific...]}' -F enforce_admins=false -F required_pull_request_reviews=null -F restrictions=null
-```
-
-`enforce_admins=false` keeps escape-hatch open for you (admin-merge for the two structural cases below — not for routinely working around a misfiring gate). `required_pull_request_reviews=null` because the `review` check already encodes the AI review verdict — adding a required human review would defeat AFK Path A.
-
-### When to break the rules
-
-Two structural cases where a gate *cannot* run, and admin-merge is the only path — not a convenience:
-
-- **A PR modifies `code-review.yml` itself**: `anthropics/claude-code-action@v1` refuses to run on self-modifying PRs ("Workflow validation failed" — documented behavior). The `review` check fails as expected; admin-merge.
-- **Self-hosted runner is down (redrobot)**: review/CI can't run. Verify locally, admin-merge per `redrobot_billing_blocked_manual_merge_protocol` precedent.
-
-**A flaky or false-failing gate is NOT on this list.** A gate that fails when it shouldn't (e.g. the `review` check going red because the bot posted no parseable verdict comment) is a **bug to fix, not a bypass to normalize**. Knowing a gate is broken and routinely admin-merging around it silently disables the protection for every future PR. If a gate misfires: file an issue, fix the root cause, and only admin-merge the *one* blocked PR as a stop-gap **with that tracking issue linked in the merge comment**. If you find yourself admin-merging the same gate twice, stop and fix the gate first.
+Both skills read the project's label/field vocabulary from its CLAUDE.md and issue templates — they do not hardcode it. A project may ship a concrete `/file-issue` override under `.claude/skills/` that bakes in its repo slug and required fields; that shadows this generic one within that repo. This is the adoption pair for the skill: the capability is only used if the routing points at it (per `capability_needs_adoption_slice`).
 
 ## Tooling — MCP servers
 
@@ -133,6 +118,8 @@ User-scope MCP servers (registered by the installer from `.claude-userlevel/.mcp
 ### context7 — use it, don't forget it
 
 `context7` provides **live, version-current library docs** (via `resolve-library-id` → `query-docs`). Reach for it BEFORE answering from memory whenever a task touches a library, framework, SDK, API, CLI, or cloud service — even ones you "know" (React/Three.js/FastAPI/mujoco/etc.). Training data lags; context7 doesn't. Prefer it over web search for library docs. Triggers: API syntax, config, version-migration, library-specific debugging, setup/CLI usage.
+
+**The harness is a library too.** Claude Code itself — hooks, skills, MCP config, slash commands, subagent semantics, settings.json shape — is exactly the kind of fast-moving, version-current surface this rule exists for; treating it as "just how I work" instead of "a library with docs" is the same training-data-lag mistake as guessing a framework's API from memory. Before asserting harness behavior from memory (what a hook receives, what a subagent inherits, what a settings key does), pull context7 (or `claude-code-guide`) first, same as any other library.
 
 Do **not** use it for: refactoring, writing scripts from scratch, debugging business logic, code review, or general programming concepts — that's reasoning, not docs lookup.
 

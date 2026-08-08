@@ -1,5 +1,11 @@
 """Shared Ollama client wrapper.
 
+STAGED-DORMANT: kept intentionally, no live consumer yet. Staged for the
+orchestrator's local-inference tick (cheap on-device classification/summary
+without spending Claude budget). Do NOT retire this in native-first sweeps —
+the dormancy is deliberate, not dead code (decision a0a4ce7b; no tracking
+issue by design).
+
 Centralises the `think=False` default needed for Qwen3 models. Without
 it, Qwen3 puts output in the `thinking` field and leaves `message.content`
 empty — a silent failure mode for any classification agent.

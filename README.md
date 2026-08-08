@@ -71,8 +71,8 @@ User-level Jarvis is seeded from `.claude-userlevel/` in this repo by
 | Component | Description |
 |-----------|-------------|
 | **Cross-device memory** | MCP server syncs memories, goals, events via Supabase. Vector search (Voyage AI) + keyword fallback |
-| **Core skills** | `/status`, `/implement`, `/delegate`, `/verify`, `/reflect`, `/research`, `/self-improve`, `/goals`, `/setup-tasks`, `/end` (`--quick` for fast exit). (`/autonomous-loop` is SUPERSEDED 2026-05-26 — pre-M44 baseline only.) |
-| **SOUL.md personality** | Auto-loaded every session via hook. Opinionated, direct, responds in your language |
+| **Core skills** | `/status`, `/implement`, `/delegate`, `/verify`, `/reflect`, `/research`, `/self-improve`, `/goals`, `/setup-tasks`, `/end` (`--quick` for fast exit). |
+| **SOUL.md personality** | Auto-loaded every session via hook. Opinionated, direct, bilingual (RU/EN) |
 | **Goal-aware decisions** | Jarvis knows priorities and pushes back when a task conflicts with active goals |
 | **Delegation pipeline** | Issue -> branch -> coding agent -> PR, with verification |
 | **Setup script** | `python scripts/setup-device.py` -- interactive, validates everything |
@@ -90,7 +90,6 @@ User-level Jarvis is seeded from `.claude-userlevel/` in this repo by
 | `/self-improve` | "improve yourself" | Gap analysis -> ideation -> research -> implementation |
 | `/goals` | "goals", "priorities" | View, set, update strategic goals in Supabase |
 | `/setup-tasks` | New device bootstrap | Registers all scheduled tasks (idempotent) |
-| ~~`/autonomous-loop`~~ | **SUPERSEDED 2026-05-26** | Pre-M44 catch-up baseline only. No live cron. Do not invoke for new flows. |
 | `/end` | End of session | Behavioral reflection, decision log, memory save, commit. With `--quick`: checkpoint + commit only (~30 sec). |
 
 ## Memory System

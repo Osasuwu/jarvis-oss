@@ -442,6 +442,175 @@ function Add-IssueLabel {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Remove-IssueLabel {
+    [CmdletBinding()]
+    param([int]$Issue, [string]$Label, [string]$RepoSlug)
+    if (-not $Issue -or -not $Label) { return $false }
+    $ghArgs = @('issue', 'edit', "$Issue", '--remove-label', $Label)
+    if ($RepoSlug) { $ghArgs += @('--repo', $RepoSlug) }
+    Invoke-Gh @ghArgs | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Add-IssueComment {
+    [CmdletBinding()]
+    param([int]$Issue, [string]$Body, [string]$RepoSlug)
+    if (-not $Issue -or -not $Body) { return $false }
+    $ghArgs = @('issue', 'comment', "$Issue", '--body', $Body)
+    if ($RepoSlug) { $ghArgs += @('--repo', $RepoSlug) }
+    Invoke-Gh @ghArgs | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+# #1403: single choke point for dropping a stale/abandoned claim. Used by
+# (a) the generalized crash catch around the iteration loop, (b) the
+# pytest-gate failure branch (previously duplicated this by hand), and
+# (c) the startup reconciliation sweep below. Always posts an explanatory
+# comment -- a label silently disappearing is indistinguishable from a bug.
+function Release-StaleClaim {
+    [CmdletBinding()]
+    param([int]$Issue, [string]$RepoSlug, [string]$Reason = 'stale claim released automatically')
+    if (-not $Issue -or -not $RepoSlug) { return $false }
+    $removed = Remove-IssueLabel -Issue $Issue -Label 'status:in-progress' -RepoSlug $RepoSlug
+    Add-IssueComment -Issue $Issue -RepoSlug $RepoSlug `
+        -Body "Sandcastle watchdog: releasing claim ($Reason). This issue is eligible for re-pick." | Out-Null
+    return $removed
+}
+
+function Get-IssueClaimCommentAgeHours {
+    # Age of the most recent "Claimed..." comment on $Issue, in hours. $null
+    # when unknown (no such comment, gh failure, unparseable timestamp) so
+    # callers can fail closed (never reap on missing data).
+    [CmdletBinding()]
+    param([int]$Issue, [string]$RepoSlug)
+    if (-not $Issue -or -not $RepoSlug) { return $null }
+    try {
+        $raw = Invoke-Gh issue view $Issue --repo $RepoSlug --json comments `
+            --jq '[.comments[] | select(.body | test("^Claimed"))] | sort_by(.createdAt) | last | .createdAt'
+        if ($LASTEXITCODE -ne 0 -or -not $raw -or $raw.Trim() -eq 'null' -or -not $raw.Trim()) { return $null }
+        $claimedAt = [datetime]::Parse($raw.Trim(), [System.Globalization.CultureInfo]::InvariantCulture, `
+            [System.Globalization.DateTimeStyles]::RoundtripKind)
+        return ((Get-Date).ToUniversalTime() - $claimedAt.ToUniversalTime()).TotalHours
+    } catch {
+        return $null
+    }
+}
+
+function Test-IssueHasOpenPR {
+    # Whether an open PR's body references "Closes #<Issue>" (the project's
+    # single linked-issue convention -- CLAUDE.md Строгий режим исполнения).
+    # Fails open (returns $true) on any gh error: an unreadable PR list must
+    # never be mistaken for "no PR", or the sweep would release a live claim.
+    [CmdletBinding()]
+    param([int]$Issue, [string]$RepoSlug)
+    if (-not $Issue -or -not $RepoSlug) { return $true }
+    try {
+        # Built as a single-quoted jq expression (not a double-quoted PS string)
+        # because backslash is not an escape character in PowerShell -- `\"`
+        # inside a "..." string does not escape the quote, it terminates the
+        # string early and corrupts the rest of the line.
+        $jqExpr = '[.[] | select(.body | test("[Cc]loses #' + "$Issue" + '\b"))] | length'
+        $raw = Invoke-Gh pr list --repo $RepoSlug --state open --json body --jq $jqExpr
+        if ($LASTEXITCODE -ne 0 -or $null -eq $raw -or -not $raw.Trim()) { return $true }
+        return ([int]$raw.Trim() -gt 0)
+    } catch {
+        return $true
+    }
+}
+
+# #1403 AC2: startup-time reconciliation sweep. Runs before a new issue is
+# picked and finds `sandcastle`-labelled issues still `status:in-progress`
+# with a stale claim comment and no open PR -- the case a script-level
+# try/catch cannot cover (host crash / killed process before any PowerShell
+# cleanup code runs). $StaleHours -lt 0 disables the sweep (dry-run / tests).
+function Invoke-ClaimReconciliationSweep {
+    [CmdletBinding()]
+    param([string]$RepoSlug, [double]$StaleHours = 4)
+    $released = @()
+    if ($StaleHours -lt 0 -or -not $RepoSlug) { return $released }
+    try {
+        $raw = Invoke-Gh issue list --repo $RepoSlug --label 'sandcastle,status:in-progress' `
+            --state open --json number --jq '[.[].number]'
+        if ($LASTEXITCODE -ne 0 -or -not $raw) { return $released }
+        # ConvertFrom-Json emits the parsed array as a single pipeline object
+        # rather than unrolling it -- @() alone yields a 1-element array
+        # *containing* that array, not the issue numbers. ForEach-Object { $_ }
+        # forces the unroll.
+        $issues = @($raw | ConvertFrom-Json | ForEach-Object { $_ })
+    } catch {
+        return $released
+    }
+    foreach ($issueNum in $issues) {
+        if (Test-IssueHasOpenPR -Issue $issueNum -RepoSlug $RepoSlug) { continue }
+        $ageHours = Get-IssueClaimCommentAgeHours -Issue $issueNum -RepoSlug $RepoSlug
+        if ($null -eq $ageHours -or $ageHours -lt $StaleHours) { continue }
+        $reason = "claimed {0:N1}h ago (threshold {1}h), no open PR found" -f $ageHours, $StaleHours
+        if (Release-StaleClaim -Issue $issueNum -RepoSlug $RepoSlug -Reason $reason) {
+            $released += $issueNum
+            Write-Host "[watchdog] reconciliation: released stale claim on #$issueNum ($reason)"
+        }
+    }
+    return $released
+}
+
+# Thin wrapper so tests can mock this instead of the native docker.exe --
+# same rationale as Invoke-Gh: Pester 3.4 cannot intercept native exes.
+function Invoke-Docker {
+    & docker @args 2>$null
+}
+
+function Get-SandcastleExitedContainers {
+    [CmdletBinding()]
+    param([string]$ImageName)
+    if (-not $ImageName) { return @() }
+    try {
+        # Container names are `sandcastle-<random-uuid>` (@ai-hero/sandcastle
+        # dist/sandboxes/docker.js) -- no repo info in the name itself, so this
+        # MUST filter by image ancestor, not a name pattern.
+        $raw = Invoke-Docker ps -a --filter "ancestor=$ImageName" --filter 'status=exited' `
+            --format '{{.Names}}'
+        if (-not $raw) { return @() }
+        return @($raw -split "`r?`n" | Where-Object { $_ })
+    } catch {
+        return @()
+    }
+}
+
+# #1403 AC3: reap exited sandcastle:<repo> containers and crash-preserved
+# worktrees. `docker run` in the library is never passed `--rm`
+# (DockerLifecycle.js startContainer), so a container whose Node parent dies
+# abnormally is left sitting in `docker ps -a` as Exited rather than
+# vanishing on its own -- same root cause class as the orphaned claim.
+function Invoke-ContainerWorktreeReap {
+    [CmdletBinding()]
+    param([string]$RepoRoot, [string]$Repo, [double]$StaleHours = 4)
+    $reaped = @{ containers = @(); worktrees = @() }
+    if ($StaleHours -lt 0) { return $reaped }
+    $imageName = "sandcastle:$Repo"
+    foreach ($name in (Get-SandcastleExitedContainers -ImageName $imageName)) {
+        Invoke-Docker rm -f $name | Out-Null
+        if ($LASTEXITCODE -eq 0) { $reaped.containers += $name }
+    }
+    $worktreeRoot = Join-Path $RepoRoot '.sandcastle/worktrees'
+    if (Test-Path -LiteralPath $worktreeRoot) {
+        $cutoff = (Get-Date).ToUniversalTime().AddHours(-$StaleHours)
+        Get-ChildItem -LiteralPath $worktreeRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.LastWriteTimeUtc -lt $cutoff } |
+            ForEach-Object {
+                try {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction Stop
+                    $reaped.worktrees += $_.Name
+                } catch {
+                    Write-Warning "worktree-reap: failed to remove $($_.FullName): $_"
+                }
+            }
+    }
+    if ($reaped.containers.Count -gt 0 -or $reaped.worktrees.Count -gt 0) {
+        Write-Host "[watchdog] reap: containers=$($reaped.containers.Count) worktrees=$($reaped.worktrees.Count)"
+    }
+    return $reaped
+}
+
 function Resolve-Tier2Config {
     [CmdletBinding()]
     param(
@@ -717,11 +886,23 @@ function Get-RelatedTestFiles {
             $testFiles += $colocated
             continue
         }
-        # Tests mirror: src/module.py -> tests/test_module.py
+        # Tests mirror: src/module.py -> tests/test_module.py (flat root)
         $inTests = Join-Path (Join-Path $RepoRoot 'tests') "test_$name.py"
         if (Test-Path -LiteralPath $inTests -PathType Leaf) {
             $testFiles += $inTests
             continue
+        }
+        # Domain subdirs (#868): tests are grouped under tests/<domain>/. Fall
+        # back to a recursive lookup so src/module.py -> tests/**/test_module.py
+        # still resolves after the flat root was restructured.
+        $testsDir = Join-Path $RepoRoot 'tests'
+        if (Test-Path -LiteralPath $testsDir -PathType Container) {
+            $nested = Get-ChildItem -LiteralPath $testsDir -Recurse -File -Filter "test_$name.py" -ErrorAction SilentlyContinue |
+                Select-Object -First 1
+            if ($nested) {
+                $testFiles += $nested.FullName
+                continue
+            }
         }
     }
     return ($testFiles | Select-Object -Unique)
@@ -834,8 +1015,12 @@ function Stop-AgentPR {
         return $false
     }
     try {
-        # Find the PR for this branch
-        $prNum = Invoke-Gh pr list --repo $RepoSlug --head $Branch --state open --json number --jq '.[0].number'
+        # Find the PR for this branch. `// empty` so an empty result array
+        # emits nothing rather than the literal string "null" (which would
+        # otherwise reach [int] and throw into the catch below — harmless here
+        # but a noisy, fragile idiom; hardened alongside the same fix in
+        # .sandcastle/main.mts, #1118).
+        $prNum = Invoke-Gh pr list --repo $RepoSlug --head $Branch --state open --json number --jq '.[0].number // empty'
         if ($prNum -and [int]$prNum.Trim() -gt 0) {
             Invoke-Gh pr close $prNum --repo $RepoSlug --comment "Closed by sandcastle watchdog -- pytest gate failed." | Out-Null
             return ($LASTEXITCODE -eq 0)
@@ -998,7 +1183,11 @@ function Invoke-Watchdog {
         [ValidateSet('low', 'medium', 'high', 'max')]
         [string]$SubscriptionEffort = 'medium',
         # #572: runtime-dir retention; env var SANDCASTLE_RUNTIME_RETENTION wins.
-        [int]$RuntimeRetention = 30
+        [int]$RuntimeRetention = 30,
+        # #1403: claim reconciliation + container/worktree reap staleness
+        # threshold. Env var wins. Negative disables the sweep (tests/dry-run).
+        [double]$ReconciliationStaleHours = 4,
+        [switch]$NoReconcile
     )
 
     $repoRoot = Get-RepoRoot -Repo $Repo
@@ -1076,6 +1265,30 @@ function Invoke-Watchdog {
         'your-second-repo' { 'your-username/your-second-repo' }
         default    { '' }
     }
+
+    # #1403: startup-time reconciliation. Runs before a new issue is picked so
+    # a claim orphaned by an uncaught exception, a killed process, or a full
+    # host crash on a PRIOR invocation gets released even when that prior run
+    # never reached any PowerShell cleanup code at all. Also reaps exited
+    # sandcastle:<repo> containers and crash-preserved worktrees, which the
+    # @ai-hero/sandcastle library never does on its own (no --rm, dirty
+    # worktrees are deliberately left on disk for post-mortem debugging).
+    $reconcileStaleHours = $ReconciliationStaleHours
+    if ($env:SANDCASTLE_RECONCILE_STALE_HOURS) {
+        $parsedStale = 0.0
+        if ([double]::TryParse($env:SANDCASTLE_RECONCILE_STALE_HOURS, [ref]$parsedStale)) {
+            $reconcileStaleHours = $parsedStale
+        }
+    }
+    if ($NoReconcile) { $reconcileStaleHours = -1 }
+    if ($repoSlug) {
+        $releasedClaims = Invoke-ClaimReconciliationSweep -RepoSlug $repoSlug -StaleHours $reconcileStaleHours
+        if ($releasedClaims.Count -gt 0) {
+            Write-Host "[watchdog] reconciliation: released $($releasedClaims.Count) stale claim(s): $($releasedClaims -join ', ')"
+        }
+    }
+    Invoke-ContainerWorktreeReap -RepoRoot $repoRoot -Repo $Repo -StaleHours $reconcileStaleHours | Out-Null
+
     $tier2Primary = $null
     if ($Tier2AsPrimary -and $Tier2Provider) {
         # -Issue 0 == "no issue picked yet" -- Get-IssueLabels short-circuits to
@@ -1144,6 +1357,14 @@ function Invoke-Watchdog {
     $partialReason = $null
     $queueDrained = $false     # agent emitted the completion signal (queue empty)
     $tierCompleted = $null    # 'subscription' | 'tier0' | 'tier1' | 'tier2:deepseek' | 'tier2:claude'
+    $targetIssue = $null
+
+    # #1403: generalizes the claim-release that used to live only in the
+    # pytest-gate branch below. ANY throw from here on (OOM escalation
+    # pre-flight, invocation failure, etc.) releases the claim before
+    # propagating -- a bare `finally` would fire on the successful-completion
+    # path too, which must NOT release the claim, so this is catch+rethrow.
+    try {
 
     while ($iter -lt $MaxIterations) {
         if (Test-WindowExpired -WindowEnd $windowEndDt) {
@@ -1365,11 +1586,10 @@ function Invoke-Watchdog {
                 Stop-AgentPR -Branch $branch -RepoSlug $repoSlug
             }
 
-            # Label the issue
+            # Label the issue, then release the claim via the shared #1403 helper.
             if ($targetIssue -and $repoSlug) {
                 Add-IssueLabel -Issue $targetIssue -Label $pytestLabel -RepoSlug $repoSlug | Out-Null
-                # Drop status:in-progress
-                Invoke-Gh issue edit $targetIssue --repo $repoSlug --remove-label 'status:in-progress' | Out-Null
+                Release-StaleClaim -Issue $targetIssue -RepoSlug $repoSlug -Reason "pytest gate: $pytestReason" | Out-Null
             }
 
             $summary = "pytest-gate:$pytestReason -- branch=$branch $($pytestResult.summary)"
@@ -1408,6 +1628,19 @@ function Invoke-Watchdog {
     }
     Record 'success' $summary $totalUsage ''
     Write-Host "[watchdog] $summary"
+
+    } catch {
+        # #1403: release the claim on ANY uncaught exception from the iteration
+        # section above -- OOM-escalation pre-flight throws, invocation-failure
+        # throws, etc. If the process itself gets killed before this catch can
+        # run (a true host crash), the claim is instead picked up by
+        # Invoke-ClaimReconciliationSweep on the *next* invocation.
+        if ($targetIssue -and $repoSlug) {
+            Release-StaleClaim -Issue $targetIssue -RepoSlug $repoSlug `
+                -Reason "watchdog iteration crashed: $($_.Exception.Message)" | Out-Null
+        }
+        throw
+    }
 }
 
 # Entry guard: only run when invoked as a script with a -Repo argument.

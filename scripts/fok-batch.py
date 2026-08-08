@@ -353,7 +353,9 @@ def fetch_events(client, limit: int) -> list[dict]:
                 .gte("judged_at", cutoff.isoformat())
                 .execute()
             )
-            judgment_event_ids = set(row.get("recall_event_id") for row in (existing_judgments.data or []))
+            judgment_event_ids = set(
+                row.get("recall_event_id") for row in (existing_judgments.data or [])
+            )
         except Exception:
             judgment_event_ids = set()
 
@@ -380,6 +382,32 @@ def main():
         help="Judge but don't write verdicts or insert unknowns",
     )
     args = parser.parse_args()
+
+    # Fail fast on degenerate config (#649). If the API key is missing or httpx
+    # failed to import, judge_via_haiku returns a sentinel {"verdict":"unknown"}
+    # for *every* event, and write_verdict_to_event would persist that garbage
+    # into fok_judgments (154 missing-key rows recorded 2026-05-05 — a config
+    # error masquerading as a run). Refuse before any DB work. Guard only the
+    # real run; --dry-run keeps its smoke-test role (fetch/format/summary, no
+    # writes). Mirrors telegram-notify-hook.py's not-dry-run + missing-config gate.
+    if not args.dry_run:
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        # Single source of truth for both the guard and the message: whichever
+        # precondition is unmet names itself; None means the config is sound.
+        reason = (
+            "ANTHROPIC_API_KEY not set"
+            if not api_key
+            else "httpx not available"
+            if httpx is None
+            else None
+        )
+        if reason:
+            print(
+                f"Error: {reason} — every FoK verdict would be a degenerate 'unknown'. "
+                "Refusing to persist. (Use --dry-run to preview without writing.)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
     # Supabase client
     try:
@@ -423,12 +451,7 @@ def main():
         if returned_ids:
             top_ids = returned_ids[:5]
             try:
-                result = (
-                    client.table("memories")
-                    .select("id,content")
-                    .in_("id", top_ids)
-                    .execute()
-                )
+                result = client.table("memories").select("id,content").in_("id", top_ids).execute()
                 by_id = {str(m.get("id")): m for m in (result.data or [])}
                 for idx, mid in enumerate(top_ids):
                     mem = by_id.get(str(mid))

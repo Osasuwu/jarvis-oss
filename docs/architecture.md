@@ -41,7 +41,7 @@ Installed to `~/.claude/` by `scripts/install/installer.py` (entry points `insta
 
 | Component | Source in repo | Installed to | Purpose |
 |-----------|----------------|--------------|---------|
-| Identity | `config/SOUL.md` | `~/.claude/SOUL.md` | Personality, tone, behavior rules (loaded by SessionStart) |
+| Identity | `config/SOUL.md` | `~/.claude/SOUL.md` | Personality, tone, behavior rules (loaded via a **bare, line-start** `@SOUL.md` import in CLAUDE.md — #1328 introduced it, #1426 made it actually resolve) |
 | Universal skills | `.claude-userlevel/skills/*/SKILL.md` | `~/.claude/skills/*/SKILL.md` | Core slash commands: `implement`, `delegate`, `verify`, `status`, `reflect`, `end` (with `--quick` flag), `research`, `goals`, `self-improve`, `setup-tasks`. (`autonomous-loop` retained on disk but SUPERSEDED 2026-05-26 — do not invoke for new flows.) |
 | Hooks | `.claude-userlevel/settings.json` | `~/.claude/settings.json` (deep-merged) | SessionStart, PreCompact, PreToolUse secret/dedup/protected-file scans, UserPromptSubmit memory recall |
 | MCP servers | `.claude-userlevel/.mcp.json` | `~/.claude/.mcp.json` (deep-merged) | memory, github, context7, etc. |
@@ -163,7 +163,7 @@ Nightly research runs at 03:00, topics configured in `config/research-topics.yam
 - Human review required before merge
 - Protected-file list — canonical in `docs/security/agent-boundaries.md`; enforced at runtime by `scripts/protected-files.py` (PreToolUse hook for Edit/Write/NotebookEdit)
 - Cost default: Haiku; escalate to Sonnet only when reasoning required
-- Secrets never touched — PreToolUse `scripts/secret-scanner.py` blocks Bash, GitHub writes, and memory_store calls that contain credential values
+- Secrets never touched — PreToolUse `scripts/secret-scanner.py` blocks Bash, GitHub writes, memory_store calls, and file writes (Edit/Write/NotebookEdit) that contain credential values; credential paths themselves are denied by `permissions.deny` globs in `~/.claude/settings.json`
 
 ## 9. Project structure
 

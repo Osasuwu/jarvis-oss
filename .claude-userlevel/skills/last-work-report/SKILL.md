@@ -1,6 +1,9 @@
 ---
 name: last-work-report
 description: "Summarise the most-recently-closed milestone (or one named explicitly) before running `/improve-codebase-architecture`. Type 2 (intent-triggered). SKELETON — body intentionally minimal until `/improve-codebase-architecture` consumes it; triggers on \"last sprint report\", \"what did we ship\", \"milestone closeout\", or \"/last-work-report\"."
+disable-model-invocation: true
+model: sonnet
+effort: low
 ---
 
 # Last Work Report

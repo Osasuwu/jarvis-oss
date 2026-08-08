@@ -1,6 +1,8 @@
 ---
 name: curate
-description: "Owner-invoked weekly memory hygiene. Surfaces stale/inflated/aging memory candidates deterministically, lets the owner mark each as stale (expired_at) or supersede with a named replacement (superseded_by). Use when owner says /curate, 'почисти память', 'memory hygiene', or after 2+ recall-quality complaints."
+description: "Owner-invoked weekly memory hygiene: surfaces stale/inflated/aging memory candidates, owner marks stale or supersedes with a replacement. Triggers: /curate, 'почисти память', 'memory hygiene', or after 2+ recall-quality complaints."
+model: opus
+effort: high
 ---
 
 # Curate
@@ -42,17 +44,27 @@ Three deterministic signals; assemble the union, dedup by memory ID. No model in
 
    If extending `memory_list` with an `always_load` filter + tags-in-output is preferred over raw SQL, that's a separate slice — file a follow-up issue.
 
-2. **Access-inflation** — memories with `last_accessed_at` within the last 14 days **AND** rank in the top-5% of recall-hit-count for their type. After M45 S2 lands, `always_load` rows no longer auto-bump `last_accessed_at`, so a high count here means real recall traffic — but disproportionate traffic relative to type peers is still a signal worth showing the owner.
+2. **Access-inflation** — memories accessed in the last 14 days **but not in the last 2 hours**, most-recent-first. The 2-hour upper guard is load-bearing: the SessionStart loader and the UserPromptSubmit recall hook stamp `last_accessed_at = now()` on whatever the *current* session loads or recalls, at prompt time — seconds before this query runs. Without the guard the top of the list is just "what this `/curate` invocation happened to pull in," not memories with real standing traffic (observed 2026-07-15: 18 of 21 candidates were memory-architecture rows the curate prompt itself recalled). After M45 S2, `always_load` rows no longer auto-bump `last_accessed_at`, so recency that survives the guard is genuine recall traffic.
 
    ```sql
    -- Surface only — owner judges relevance. Don't auto-act on this row.
+   -- Lower bound: accessed within 14 days (recent enough to matter).
+   -- Upper bound (last_accessed_at < now() - 2h): drops THIS session's own
+   -- access bumps from the SessionStart + UserPromptSubmit recall hooks, which
+   -- would otherwise flood the top of the list. Widen the 2h guard if a curate
+   -- session runs longer than that; narrow it to also see today's traffic.
    SELECT id, name, project, type, last_accessed_at, content_updated_at
    FROM memories
    WHERE expired_at IS NULL AND superseded_by IS NULL AND deleted_at IS NULL
      AND last_accessed_at > now() - interval '14 days'
+     AND last_accessed_at < now() - interval '2 hours'
    ORDER BY last_accessed_at DESC
    LIMIT 20;
    ```
+
+   **Two honest limitations of this signal as written** — don't over-read it:
+   - `last_accessed_at` is a single last-write-wins timestamp, not a hit counter. This is a recency *band*, not the "top-5%-of-recall-hit-count-per-type" ranking earlier drafts of this skill claimed — that ranking was never implementable, because there is no per-access event log or `access_count` column (as of 2026-07-15 `events_canonical` logs only `decision_made`). Building real count-ranking is a separate slice that needs schema support; file a follow-up if the recency band proves too noisy.
+   - Because the timestamp is last-write-wins, a genuinely hot memory that *this* session touched is hidden by the 2-hour guard until a later run re-surfaces it. Acceptable for a weekly owner-review surface — it will reappear — but know that same-session pollution and same-session hot rows are indistinguishable here, so the fix trades a few false hides for removing the false floods.
 
 3. **Prior user-flag** — outcomes tagged `user-flagged-stale` whose memory hasn't been marked stale yet.
 

@@ -155,7 +155,7 @@ def fetch_member_details(client, memory_ids: list[str]) -> dict[str, dict]:
     rows = (
         client.table("memories")
         .select(
-            "id, name, type, description, tags, content, "
+            "id, name, type, project, description, tags, content, "
             "expired_at, valid_to, superseded_by, deleted_at, "
             "updated_at, content_updated_at"
         )
@@ -222,6 +222,7 @@ def group_clusters(rpc_rows: list[dict], details_by_id: dict[str, dict]) -> list
             "id": mid,
             "name": r["memory_name"],
             "type": r["memory_type"],
+            "project": details.get("project") or "",
             "similarity": sim,
             "updated_at": r["updated_at"],
             "description": details.get("description") or "",
@@ -239,6 +240,7 @@ def group_clusters(rpc_rows: list[dict], details_by_id: dict[str, dict]) -> list
                 "size": len(members),
                 "max_similarity": round(max_sim, 4),
                 "types": sorted({m["type"] for m in members}),
+                "projects": sorted({m["project"] for m in members}),
                 "members": members,
             }
         )
@@ -498,6 +500,15 @@ def _cluster_type(cluster: dict) -> str:
     return types[0] if types else "project"
 
 
+def _cluster_project(cluster: dict) -> str:
+    """find_consolidation_clusters (#1187) partitions on (type, project_key) —
+    clusters are homogeneous by project too. Falls back to "jarvis" only if
+    every member's project is empty (legacy rows predating the project field).
+    """
+    projects = cluster.get("projects") or []
+    return projects[0] if projects and projects[0] else "jarvis"
+
+
 def build_payload(cluster: dict, plan: dict, source_provenance: str) -> dict:
     """Assemble the jsonb payload stored on every queue entry.
 
@@ -513,7 +524,7 @@ def build_payload(cluster: dict, plan: dict, source_provenance: str) -> dict:
         "member_ids_key": member_ids_key(member_ids),
         "member_names": [m["name"] for m in members],
         "supersede_ids": sorted(plan.get("supersede_ids") or []),
-        "canonical_project": "jarvis",
+        "canonical_project": _cluster_project(cluster),
         "canonical_type": _cluster_type(cluster),
         "canonical_name": plan.get("canonical_name"),
         "canonical_description": plan.get("canonical_description"),

@@ -11,7 +11,7 @@ The store layer is dependency-thin so unit tests can exercise the
 extractor without a live Supabase. The extractor accepts a ``store``
 object with three methods (``get_watermark``, ``set_watermark``,
 ``insert_row``) — the in-memory test double in
-``tests/test_comm_patterns_extractor.py`` implements the same interface.
+``tests/comms/test_comm_patterns_extractor.py`` implements the same interface.
 """
 
 from __future__ import annotations

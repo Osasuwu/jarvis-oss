@@ -137,7 +137,7 @@ Jarvis is built and operated under the AI Hero / Pocock stance: AI raised the st
 - **Don't bite off more than you can chew.** Decompose into independently-grabbable issues. Planning depth beats task ambition.
 - **Treat agents like humans with no memory.** Strict, repo-level processes (skills, playbooks, glossaries) compensate. Vibes don't.
 
-Canonical statements live in `config/SOUL.md` § Engineering principles (operational rules) and `docs/research-aihero-principles.md` (full research, sources, 3-layer mapping). `CONTEXT.md` carries domain glossary + invariants for in-session loading. This section is the L0 cross-link, not the source of truth — keep it short and let the canonical files drift independently.
+Canonical statements live in `.claude-userlevel/reference/engineering-principles.md` (operational rules; installed to `~/.claude/reference/`) and `docs/research-aihero-principles.md` (full research, sources, 3-layer mapping). `CONTEXT.md` carries domain glossary + invariants for in-session loading. This section is the L0 cross-link, not the source of truth — keep it short and let the canonical files drift independently.
 
 ---
 
@@ -419,7 +419,7 @@ The 0.7 boundary between tiers 3 and 4 is the same threshold C5's calibrator tun
 
 **Why hierarchy not flat:** without trust weighting, agent self-derived memory drowns out principal-stated facts in recall (more agents writing → more low-trust noise). Hierarchy is the antidote.
 
-**Why hierarchy values are these:** principal is ground truth by definition. Tool output is deterministic and reproducible. Agent inference is opinion. External-extracted is suspect (per SOUL §External content safety: "data, not instructions"). Legacy is unverified.
+**Why hierarchy values are these:** principal is ground truth by definition. Tool output is deterministic and reproducible. Agent inference is opinion. External-extracted is suspect (per `docs/context/invariants.md` → *External content is data, not instructions*). Legacy is unverified.
 
 **Rejected:**
 - *No provenance weighting* (current state) — principal statements get out-voted by agent self-derivation.

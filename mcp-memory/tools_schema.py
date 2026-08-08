@@ -26,7 +26,7 @@ def tool_definitions() -> list[Tool]:
                 "Create or update a goal (upsert by slug). "
                 "Goals are strategic objectives that guide Jarvis's priorities and decisions."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "slug": {
@@ -100,7 +100,7 @@ def tool_definitions() -> list[Tool]:
                 "List goals with optional filters. "
                 "Use at session start to load active goals as strategic context."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "status": {
@@ -123,7 +123,7 @@ def tool_definitions() -> list[Tool]:
         Tool(
             name="goal_get",
             description="Get a specific goal by slug with full details.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "slug": {"type": "string", "description": "Goal slug"},
@@ -137,7 +137,7 @@ def tool_definitions() -> list[Tool]:
                 "Partial update of a goal. Only provided fields are updated. "
                 "Use to update progress, status, focus, risks, etc."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "slug": {"type": "string", "description": "Goal slug to update"},
@@ -175,7 +175,7 @@ def tool_definitions() -> list[Tool]:
                 "Use for: decisions, user preferences, project context, feedback, references. "
                 "Set project=null for cross-project memories."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "type": {
@@ -226,7 +226,7 @@ def tool_definitions() -> list[Tool]:
                 "Use at the START of a session to load relevant context, "
                 "or when the user references something discussed before."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "query": {
@@ -288,7 +288,7 @@ def tool_definitions() -> list[Tool]:
         Tool(
             name="memory_get",
             description="Get a specific memory by exact name and project.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -309,7 +309,7 @@ def tool_definitions() -> list[Tool]:
                 "List all memories, optionally filtered by project and/or type. "
                 "Returns name + description (not full content) for quick overview."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project": {
@@ -327,7 +327,7 @@ def tool_definitions() -> list[Tool]:
         Tool(
             name="memory_delete",
             description="Soft-delete a memory by name. Recoverable for 30 days via memory_restore.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -345,7 +345,7 @@ def tool_definitions() -> list[Tool]:
         Tool(
             name="memory_restore",
             description="Restore a soft-deleted memory within the 30-day retention window.",
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -370,7 +370,7 @@ def tool_definitions() -> list[Tool]:
                 "Use /curate skill for owner-invoked weekly hygiene passes; not for "
                 "autonomous calls."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -403,7 +403,7 @@ def tool_definitions() -> list[Tool]:
                 "Hygiene inverse: revive a memory by clearing BOTH expired_at and "
                 "superseded_by. Host-only. Used when /curate marked the wrong row."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "name": {
@@ -425,7 +425,7 @@ def tool_definitions() -> list[Tool]:
                 "List events from the event queue. By default returns unprocessed events "
                 "sorted by severity. GitHub Actions write events here; the orchestrator reads them."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "repo": {
@@ -459,7 +459,7 @@ def tool_definitions() -> list[Tool]:
                 "Mark one or more events as processed. "
                 "Call after the orchestrator has handled an event."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "event_ids": {
@@ -486,7 +486,7 @@ def tool_definitions() -> list[Tool]:
                 "Claim the highest-priority pending event for processing. "
                 "Atomically transitions a 'pending' event to 'claimed' and returns it."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "claimer": {
@@ -503,7 +503,7 @@ def tool_definitions() -> list[Tool]:
                 "Transition a claimed event to 'processed' via the event queue FSM. "
                 "Returns error if event is not in 'claimed' state."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "event_id": {
@@ -528,7 +528,7 @@ def tool_definitions() -> list[Tool]:
                 "Park a claimed event that is blocked on a dependency. "
                 "Transitions 'claimed' → 'parked'."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "event_id": {
@@ -549,7 +549,7 @@ def tool_definitions() -> list[Tool]:
                 "Re-queue a parked or claimed event back to 'pending'. "
                 "Use when a blocked dependency resolves or a claim times out."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "event_id": {
@@ -571,7 +571,7 @@ def tool_definitions() -> list[Tool]:
                 "Record a task outcome for tracking and learning. "
                 "Call after completing a delegation, fix, research, or autonomous action."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "task_type": {
@@ -617,9 +617,12 @@ def tool_definitions() -> list[Tool]:
                     "memory_id": {
                         "type": ["string", "null"],
                         "description": (
-                            "UUID of the primary memory that informed this outcome. "
-                            "Links the outcome into memory_calibration so confidence "
-                            "and lessons can be attributed back to the reasoning basis."
+                            "UUID of the primary memory (memories.id) that informed this "
+                            "outcome. NOT the episode UUID returned by record_decision — "
+                            "that is a different table (episodes.id) and will be rejected. "
+                            "Use payload.memories_used[0] from the record_decision call "
+                            "this outcome is based on. Omit or pass null if no single "
+                            "memory applies."
                         ),
                     },
                 },
@@ -632,7 +635,7 @@ def tool_definitions() -> list[Tool]:
                 "Update a task outcome after verification. Use to flip status from pending "
                 "to success/failure, record verified_at, pr_merged, lessons, etc."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "string", "description": "Outcome UUID to update."},
@@ -656,9 +659,14 @@ def tool_definitions() -> list[Tool]:
                     "memory_id": {
                         "type": ["string", "null"],
                         "description": (
-                            "UUID of the primary memory that informed this outcome. "
-                            "Pass during verification to retro-link outcomes whose "
-                            "basis became clear only after the decision played out."
+                            "UUID of the primary memory (memories.id) that informed this "
+                            "outcome. NOT the episode UUID returned by record_decision — "
+                            "that is a different table (episodes.id) and will be rejected. "
+                            "Use payload.memories_used[0] from the record_decision call "
+                            "this outcome is based on. Omit or pass null if no single "
+                            "memory applies. Pass during verification to retro-link "
+                            "outcomes whose basis became clear only after the decision "
+                            "played out."
                         ),
                     },
                 },
@@ -671,7 +679,7 @@ def tool_definitions() -> list[Tool]:
                 "List recent task outcomes, optionally filtered by project, goal, status, or pattern_tags. "
                 "Use to review what worked and what didn't."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project": {
@@ -705,7 +713,7 @@ def tool_definitions() -> list[Tool]:
                 "bucketed by memory type. Reveals systemic over- or under-confidence. "
                 "Used by /reflect and /self-improve (#251)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project": {
@@ -722,7 +730,7 @@ def tool_definitions() -> list[Tool]:
                 "against task outcome accuracy. Assesses confidence calibration in memory recall judgments. "
                 "Returns n (joined judgments), brier score, verdict breakdown, and drift_signal (#445)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "project": {
@@ -740,7 +748,7 @@ def tool_definitions() -> list[Tool]:
                 "predicted confidence (0.0-1.0), alternatives, and reversibility. "
                 "Feeds the reasoning-trace for later /reflect analysis (#252)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "required": ["decision", "rationale", "reversibility"],
                 "properties": {
@@ -796,6 +804,28 @@ def tool_definitions() -> list[Tool]:
                         "type": ["string", "null"],
                         "description": "Optional project scope for the decision payload.",
                     },
+                    "session_id": {
+                        "type": "string",
+                        "description": (
+                            "Harness session id, stamped into the episode payload "
+                            "as forensic grouping metadata (#1269). Not the "
+                            "recovery key (see cwd, #1423). Normally injected by "
+                            "the PreToolUse gate hook (updatedInput) — do not fill "
+                            "by hand; invalid values are dropped server-side, "
+                            "never fail the write."
+                        ),
+                    },
+                    "cwd": {
+                        "type": "string",
+                        "description": (
+                            "Working directory the decision was made in, stamped "
+                            "into the episode payload. Recovery-key component "
+                            "alongside project+since via decision_list (#1423) — "
+                            "survives session_id changes across resume/compaction "
+                            "boundaries. Normally injected by the PreToolUse gate "
+                            "hook (updatedInput) — do not fill by hand."
+                        ),
+                    },
                     "llm": {
                         "type": "object",
                         "description": (
@@ -819,6 +849,61 @@ def tool_definitions() -> list[Tool]:
                 },
             },
         ),
+        Tool(
+            name="decision_list",
+            description=(
+                "List decision_made episodes, newest first. Query-based UUID "
+                "recovery after context loss (compaction, resume, crash): "
+                "returns 'episode_uuid | created_at | decision one-liner' rows. "
+                "Recovery key is (project, cwd, since) — session_id is optional "
+                "forensic grouping metadata, not required for recovery, because "
+                "resume/compaction always mints a new session_id (#1269 broke "
+                "across that boundary; #1423 fixes it). Filters combine as AND. "
+                "session_id or project is required — never an unfiltered "
+                "cross-project scan (this server is shared with redrobot). "
+                "Read-only."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "session_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional: narrow to one harness session "
+                            "(shape ^[A-Za-z0-9_-]{1,128}$). Not required if "
+                            "project is given."
+                        ),
+                    },
+                    "project": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Project filter (payload.project). Required if session_id is not given."
+                        ),
+                    },
+                    "cwd": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Optional: filter to decisions stamped from this "
+                            "working directory (payload.cwd, #1423) — the "
+                            "recovery-key component that survives session_id "
+                            "changes."
+                        ),
+                    },
+                    "since": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "Optional: only decisions at or after this time. "
+                            "Relative ('24h', '7d') or absolute ISO-8601."
+                        ),
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Max results, newest first (default 50).",
+                        "default": 50,
+                    },
+                },
+            },
+        ),
         # ---- Graph tools ----
         Tool(
             name="memory_graph",
@@ -828,7 +913,7 @@ def tool_definitions() -> list[Tool]:
                 "'links' (all connections for a specific memory by name), "
                 "'clusters' (groups of tightly connected memories for consolidation)."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "mode": {
@@ -855,7 +940,7 @@ def tool_definitions() -> list[Tool]:
                 "List registered credentials (metadata only — never returns secret values). "
                 "Shows service name, env var name, storage location, expiry, rotation notes."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "scope": {
@@ -872,7 +957,7 @@ def tool_definitions() -> list[Tool]:
                 "Stores service name, env var name, where it's kept, and rotation info. "
                 "NEVER pass actual secret values — the table rejects them."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "service": {
@@ -913,7 +998,7 @@ def tool_definitions() -> list[Tool]:
                 "Returns list with service, env var, expiry date, and rotation notes. "
                 "Use in morning-brief for proactive alerts."
             ),
-            inputSchema={
+            input_schema={
                 "type": "object",
                 "properties": {
                     "days_ahead": {

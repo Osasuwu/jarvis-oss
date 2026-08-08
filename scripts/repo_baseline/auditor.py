@@ -46,15 +46,21 @@ class GhRunner(Protocol):
     def __call__(self, path: str, *, paginate: bool = False) -> Any: ...
 
 
-def _load_baseline_repos() -> list[str]:
-    """Baseline audit scope — the ``owner/repo`` slugs from ``config/repos.conf``.
+def _load_account_passes() -> dict[str, list[str]]:
+    """Audit scope from ``config/repos.conf``, grouped one pass per owner.
 
-    Falls back to a single ``example-owner/example-repo`` placeholder when the
-    config is missing or carries no real entries yet, so the committed example
-    fixture (and its round-trip test) still resolves on a fresh clone. Add your
-    repos to ``config/repos.conf`` to widen the audit scope.
+    The account pass is the **write** unit of the orchestration, not the read
+    unit: admin-scoped writes (repo settings, branch protection) need each
+    owner's own credential, while audit reads usually succeed under a single
+    token with collaborator access.
+
+    Falls back to a single ``example-owner`` pass over
+    ``example-owner/example-repo`` when the config is missing or carries no
+    real entries yet, so the committed example fixture (and its round-trip
+    test) still resolves on a fresh clone. Add your repos to
+    ``config/repos.conf`` to widen the audit scope.
     """
-    repos: list[str] = []
+    passes: dict[str, list[str]] = {}
     conf = Path(__file__).resolve().parents[2] / "config" / "repos.conf"
     try:
         for raw in conf.read_text(encoding="utf-8").splitlines():
@@ -63,13 +69,19 @@ def _load_baseline_repos() -> list[str]:
                 continue
             slug = line.split()[0]  # "owner/repo" (drop trailing project=N)
             if "/" in slug:
-                repos.append(slug)
+                passes.setdefault(slug.split("/", 1)[0].lower(), []).append(slug)
     except OSError:
         pass
-    return repos or ["example-owner/example-repo"]
+    return passes or {"example-owner": ["example-owner/example-repo"]}
 
 
-BASELINE_REPOS: list[str] = _load_baseline_repos()
+ACCOUNT_PASSES: dict[str, list[str]] = _load_account_passes()
+_pass_lists = list(ACCOUNT_PASSES.values())
+# First-listed owner in config/repos.conf forms the primary account pass; any
+# further owners form the secondary pass (flat list — one extra account is the
+# common case).
+BASELINE_REPOS: list[str] = _pass_lists[0]
+SECONDARY_REPOS: list[str] = [r for lst in _pass_lists[1:] for r in lst]
 
 
 # ── Snapshot value objects ───────────────────────────────────────────
@@ -142,6 +154,26 @@ class RepoSnapshot:
     branch_protection: BranchProtection | None = None
     dependabot_ecosystems: list[str] = field(default_factory=list)
 
+    observed_runners: dict[str, list[list[str]]] = field(default_factory=dict)
+    """Runner classes observed in the repo's own workflows, keyed by workflow path.
+
+    Each value is the *deduped* list of ``runs-on:`` label-lists appearing in
+    that file's jobs, so a file contributes one vote per distinct runner class
+    rather than one per job (a 5-job workflow must not outvote five 1-job ones).
+    Keyed by path — not flattened — so the majority resolution can exclude the
+    repo-baseline-managed files. Added in issue #1406.
+    """
+
+    has_tests_ci: bool | None = None
+    """Whether the repo has a ``tests/ci`` directory — ``None`` when unobserved.
+
+    Tri-state on purpose (#1406). Canon ci-meta.yml runs ``pytest tests/ci/``,
+    which exits 4 on a repo without that directory, so a *positive* observation
+    of absence skips the file. Silence is not absence: a snapshot fixture
+    written before this field existed must keep the pre-#1406 behaviour rather
+    than have ci-meta.yml dropped from every repo at once.
+    """
+
     def to_dict(self) -> dict[str, Any]:
         """Structural dict for JSON serialization (no scrub — see
         :func:`scrub_topology`, applied at fixture-write time).
@@ -175,6 +207,13 @@ class RepoSnapshot:
                 BranchProtection(**_only_fields(BranchProtection, bp)) if bp is not None else None
             ),
             dependabot_ecosystems=list(data.get("dependabot_ecosystems", [])),
+            observed_runners={
+                path: [list(labels) for labels in classes]
+                for path, classes in (data.get("observed_runners") or {}).items()
+            },
+            # ``.get`` with no default, deliberately: a fixture predating the
+            # field restores as ``None`` (unobserved), not ``False`` (absent).
+            has_tests_ci=data.get("has_tests_ci"),
         )
 
 
@@ -186,6 +225,31 @@ def _only_fields(cls: type, data: dict[str, Any]) -> dict[str, Any]:
     """
     valid = {f.name for f in fields(cls)}
     return {k: v for k, v in data.items() if k in valid}
+
+
+def _is_workflow_file(path: str) -> bool:
+    """True for a real ``.github/workflows/*.yml|*.yaml`` repository path (#1406)."""
+    return path.startswith(".github/workflows/") and path.endswith((".yml", ".yaml"))
+
+
+def _runner_classes(workflow: Any) -> list[list[str]]:
+    """Deduped ``runs-on:`` label-lists across a parsed workflow's jobs (#1406).
+
+    A scalar ``runs-on:`` normalises to a single-element list. A class carrying a
+    ``${{ … }}`` expression (matrix fan-out, a repo variable) is *unresolvable*
+    without evaluating the workflow, so it is dropped rather than counted as a
+    literal label — a majority vote must not be swayed by ``${{ matrix.os }}``.
+    """
+    jobs = (workflow or {}).get("jobs") or {}
+    classes: list[list[str]] = []
+    for job in jobs.values():
+        runs_on = (job or {}).get("runs-on")
+        labels = [runs_on] if isinstance(runs_on, str) else list(runs_on or [])
+        if any("${{" in str(label) for label in labels):
+            continue
+        if labels and labels not in classes:
+            classes.append(labels)
+    return classes
 
 
 # ── Auditor ──────────────────────────────────────────────────────────
@@ -225,9 +289,7 @@ class Auditor:
                 # name matches — that workflow's path is the provenance source.
                 # Contexts not produced by any local workflow (e.g. marketplace
                 # app checks like "review") get a null entry.
-                bp.contexts_source = [
-                    wf_name_map.get(ctx) for ctx in bp.contexts
-                ]
+                bp.contexts_source = [wf_name_map.get(ctx) for ctx in bp.contexts]
             return RepoSnapshot(
                 repo=repo,
                 settings=settings,
@@ -235,6 +297,8 @@ class Auditor:
                 workflows=workflows,
                 branch_protection=bp,
                 dependabot_ecosystems=self._read_dependabot_ecosystems(repo),
+                observed_runners=self._read_workflow_runners(repo, workflows),
+                has_tests_ci=self._read_has_tests_ci(repo),
             )
         except Exception as e:  # noqa: BLE001 — boundary: attribute to the repo
             raise RuntimeError(f"Audit failed for {repo!r}: {type(e).__name__}: {e}") from e
@@ -309,6 +373,49 @@ class Auditor:
         name_to_path = {wf["name"]: wf["path"] for wf in wfs}
         return paths, name_to_path
 
+    def _read_workflow_runners(self, repo: str, paths: list[str]) -> dict[str, list[list[str]]]:
+        """Observe each workflow's ``runs-on:`` labels (issue #1406).
+
+        Best-effort by construction: this is an *observation*, not a core
+        endpoint, so a file the API lists but cannot serve must never take the
+        whole repo's audit down with it (``audit`` wraps every escaping
+        exception as a per-repo ``RuntimeError``). Two filters apply:
+
+        * **Shape** — the workflows API also lists synthetic entries whose
+          ``path`` is not a repository file at all (GitHub's own auto-generated
+          workflows report ``dynamic/…``). Those are dropped before any fetch.
+        * **Per-file 404** — a listed workflow whose blob is gone answers 404
+          (a repo's ``_runner-smoke.yml`` can do this).
+          Skipped, not raised.
+        """
+        observed: dict[str, list[list[str]]] = {}
+        for path in paths:
+            if not _is_workflow_file(path):
+                continue
+            try:
+                data = self.runner(f"repos/{repo}/contents/{path}")
+            except GhNotFound:
+                continue
+            raw = base64.b64decode(data["content"]).decode("utf-8")
+            classes = _runner_classes(yaml.safe_load(raw))
+            if classes:
+                observed[path] = classes
+        return observed
+
+    def _read_has_tests_ci(self, repo: str) -> bool | None:
+        """Observe whether the repo has a ``tests/ci`` directory (issue #1406).
+
+        Optional-feature reader: a 404 is the answer (*no such directory*), not
+        a failure. Anything else propagates — an auth or rate-limit error must
+        not be misread as "absent", which would silently drop ci-meta.yml from a
+        repo that actually has the suite.
+        """
+        try:
+            self.runner(f"repos/{repo}/contents/tests/ci")
+        except GhNotFound:
+            return False
+        return True
+
     def _read_branch_protection(self, repo: str, default_branch: str) -> BranchProtection | None:
         try:
             data = self.runner(f"repos/{repo}/branches/{default_branch}/protection")
@@ -361,10 +468,17 @@ def seed_manifest(snapshot: RepoSnapshot) -> dict[str, Any]:
     emitted **explicitly**, including their absences (``auto_merge=False``,
     ``dependabot_ecosystems=[]``). Relying on the ``full`` profile's defaults
     for these would misreport a bare repo as fully baselined. Axes the snapshot
-    does not capture (``runs_on``, ``ci_language``, ``code_review_marketplace``,
+    does not capture (``ci_language``, ``code_review_marketplace``,
     ``test_extras`` — all buried inside workflow YAML bodies the auditor only
     records paths for) are left out so they resolve to the profile default; a
     downstream slice can deepen the audit to populate them.
+
+    ``runs_on`` is deliberately absent from the seed *and* from the manifest
+    schema (#1406): it is a fact about the repo, not a policy for it, so it is
+    read from :attr:`RepoSnapshot.observed_runners` on every pass rather than
+    declared once and left to drift. Seeding it would reintroduce exactly the
+    "owner must verify before the executor runs" manual step that shipped
+    GitHub-hosted workflows into a billing-blocked account.
 
     **Profile is chosen from observed governance posture, not hardcoded.** A bare
     repo (no auto-merge *and* no branch protection) seeds ``profile: "minimal"``
@@ -392,7 +506,7 @@ def seed_manifest(snapshot: RepoSnapshot) -> dict[str, Any]:
 
     Caveat for #939: the profile only governs the *governance* axes
     (auto-merge / branch-protection / managed-file set). The language axes
-    (``ci_language``, ``test_extras``, ``runs_on``) still resolve to the
+    (``ci_language``, ``test_extras``) still resolve to the
     profile default — ``minimal`` does **not** override ``ci_language``, so a
     non-Python bare repo will seed ``ci_language: "python"`` by inheritance.
     The owner must verify those axes before the #939 applier runs; full
@@ -521,8 +635,23 @@ def gh_runner(path: str, *, paginate: bool = False) -> Any:
     # A bounded timeout so a hung gh process (network stall, auth prompt waiting
     # on a tty that will never arrive) fails loudly instead of blocking the whole
     # audit_all batch indefinitely.
+    #
+    # ``encoding="utf-8"`` is load-bearing, not tidiness: GitHub's API is always
+    # UTF-8, but bare ``text=True`` decodes with the *locale* codepage. On a
+    # Russian-locale Windows box that is cp1251, which silently mojibakes every
+    # non-ASCII label description ("Блокировано" -> "Р—Р°Р±Р»РѕРєРёСЂРѕРІР°РЅРѕ")
+    # instead of failing. Two consequences, both bad: corrupted text lands in the
+    # committed fixtures, and a Linux CI re-audit (UTF-8 locale) decodes the same
+    # bytes correctly, so ``--check`` reports permanent phantom drift on the
+    # labels axis. The bug was live from slice 1 and had *already* corrupted the
+    # committed baseline snapshot carried five
+    # mojibaked em-dashes ("вЂ”") in its own label descriptions. It went unnoticed
+    # because near-ASCII labels hide it: a lone punctuation mark expanding
+    # to three bytes reads as noise, not as breakage. Only the first pass over a
+    # repo with genuinely non-ASCII labels (#940) made
+    # it unmissable.
     try:
-        proc = subprocess.run(args, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", timeout=60)
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(f"gh api {path!r} timed out after 60s") from e
     if proc.returncode != 0:

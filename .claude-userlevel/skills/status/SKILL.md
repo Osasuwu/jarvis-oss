@@ -1,7 +1,7 @@
 ---
 name: status
-model: claude-haiku-4-5
-description: "User-facing repo-state read. Calls the status_digest MCP tool and renders it deterministically (0 LLM tokens on the default path) — health line + ranked 'Куда смотреть' + 'Аномалии' across all tracked repos. `--deep` adds the full picture + LLM narration. Anchored routing: only `статус` / `status` / `статус <repo>` fire it."
+model: haiku
+description: "User-facing repo-state read via status_digest MCP tool, rendered deterministically (0 LLM tokens by default) — health line + ranked 'Куда смотреть' + 'Аномалии' per repo. `--deep` adds LLM narration. Anchored routing: only `статус`/`status`/`статус <repo>` fire it."
 ---
 
 # Status

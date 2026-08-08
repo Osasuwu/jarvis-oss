@@ -1,7 +1,7 @@
 ---
 name: grill
-description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
-model: opus
+description: Stress-test a plan against the project's domain model and documented decisions, sharpening terminology and updating CONTEXT.md/ADRs inline as decisions crystallise.
+model: fable
 effort: xhigh
 ---
 
@@ -9,31 +9,55 @@ effort: xhigh
 
 Conduct this grill session in two phases:
 
-### Phase 1: Assumption Verbalization
+### Phase 1: Session-Parameter Gate
 
-Before asking any WHY/HOW questions, calibrate expectations by writing out your assumptions about the user:
+Expertise level and context familiarity are no longer verbalized here — they are sourced from the `owner_competence_profile` memory and not restated at session start. If the principal's behavior deviates from that profile, they flag it unprompted; the skill does not pre-emptively ask.
 
-- **Expertise level**: What's your estimate of the user's experience in this domain?
-- **Time budget**: How much time do you think the user has available for this discussion?
-- **Context familiarity**: How much relevant context do you assume the user already has?
+What genuinely varies session-to-session, and is worth asking up front:
+
+- **Time budget**: How much time does the user have for this discussion right now?
 - **Decision stage**: Are they exploring options, or do they have a preferred direction they want pressure-tested?
-- **Scope constraints**: Are there organizational, technical, or deadline constraints you should assume?
+- **Cadence**: Frontier rounds (default — see Phase 2) unless the branch under discussion is irreversible, in which case single-question cadence is available on request.
 
-Ask the user: **"Are these assumptions right, or should I adjust? Anything I'm off base about?"**
+Only proceed to Phase 2 after getting answers to these three.
 
-Only proceed to Phase 2 after getting feedback.
+### Phase 2: Third-Person Reviewer Grilling — dependency-gated frontier rounds
 
-### Phase 2: Third-Person Reviewer Grilling
-
-Interview the user relentlessly about every aspect of their plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+Interview the user relentlessly about every aspect of their plan until we reach a shared understanding. Walk down each branch of the design tree — but resolve dependencies in **frontier rounds**, not singly (decision `47bfe29d-21db-46af-b665-d9685b2b20b7`, reversing #1148's cadence rule).
 
 **Framing approach**: Instead of "You proposed X, let me ask about Y," use third-person reviewer framing. Example: *"The user proposed X. As a senior engineer reviewing this proposal, what would I push back on? The choice seems to assume Y, but I'm not sure that's warranted because Z."*
 
-Ask the questions one at a time, waiting for feedback on each question before continuing.
+**Frontier rounds.** Every question whose prerequisites are already settled is asked together, in one numbered round — not singly. After each round's answers land, the frontier is recomputed: newly-unblocked questions join the next round. This addresses the context-switching tax of the old one-question-at-a-time cadence; it does not address late interdependence between answers — that is the job of co-presence and the conflict rule below, two distinct mechanisms for two distinct costs.
 
-If a question can be answered by exploring the codebase, explore the codebase instead.
+**Weight tags.** Every question in a round carries a tag: `design-forming` (shapes the design itself) or `refining` (narrows an already-settled shape). Each question still carries a recommended answer, same as before.
+
+**WHY is a prerequisite of HOW, within a branch.** A round never surfaces a mechanism (HOW) question from one design branch beside an unanswered purpose (WHY) question from another branch — HOW waits for its own branch's WHY to settle first. Cross-branch rounds are fine; a HOW/WHY ordering violation within the same branch is not.
+
+**Thin answers vs terse answers.** A thin or ambiguous answer to a `design-forming` question triggers an individual follow-up before the round closes — the round doesn't close on an unresolved design-forming thread. A terse answer to a `refining` question is accepted as-is; refining questions don't need elaboration. Bare agreement with a recommended answer ("yes, that's right", "agreed") is a legitimate response and is never itself a follow-up trigger, regardless of tag.
+
+**No numeric cap.** Rounds are not capped in size. When the frontier is large, order `design-forming` questions first — the questions most likely to reshape everything downstream get resolved before the refining questions that depend on that shape.
+
+**Round summary — display ceiling only.** Each round closes with a summary of at most two lines: settled / next frontier. This is a hard ceiling on the *displayed* summary — `record_decision` emission and inline `CONTEXT.md` capture remain per-resolution and uncapped, per the standing "do not batch capture" rule. The two-line cap constrains what the user reads, not what gets recorded.
+
+**Answer-vs-answer conflict rule.** A later answer that contradicts a settled one explicitly reopens the earlier question — the same reflex already used for glossary conflicts (see "Challenge against the glossary" below) and code contradictions (see "Cross-reference with code" below), extended here to the user's own prior answers.
+
+**Facts vs decisions split.** If a fact is discoverable by exploring the codebase — a file's contents, an existing API's shape, a configuration value — look it up instead of asking; a lookup question put to the user wastes a round slot that a decision question could have used. Decisions belong to the user: put each decision question to them and wait for an answer. Distinguishing the two avoids wasting the user's time on lookup questions while still capturing their judgement where it matters.
+
+**Confirmation gate — per phase, not per round.** Do not proceed to Phase 3 (or exit Phase 2) until the user explicitly confirms that shared understanding has been reached. Ask: "Do we have shared understanding on [topic] before I move on?" This gate fires once per phase, not once per round — rounds close on their two-line summary; only Phase 2 as a whole waits on affirmative confirmation.
 
 **Anti-sycophancy note** (decision 316c5911-9f06-44de-8f99-20fe3e9fa448): This third-person reviewer framing (based on arxiv 2505.23840) reduces agreement-bias in LLM responses to user proposals by ~64% in multi-turn dialogues. The goal is crisp pushback, not reflexive agreement.
+
+### Experiment-discipline checklist
+
+Fires when the plan rests on an empirical run — a measurement campaign, a test matrix, a robot day, a benchmark, anything whose conclusion is drawn from collected cases. Add these three to the Phase 2 question set, carried verbatim into the round.
+
+They are carried **verbatim**. Paraphrasing them into general wording is exactly the failure they exist to prevent — the three absent questions are what produced "измерили трижды" as three independent episodes with no accumulating case set (research #1248 §AC4, revision #1298, decision `ed1f5dc9-8e21-4fed-abe2-ceac735182ba`).
+
+1. **Оси**: какие оси неопределённости у этой задачи, какие из них прогон фиксирует, а какие варьирует?
+2. **Непонятные результаты**: в каких ячейках уже были непонятные результаты и что по ним известно?
+3. **Порог выборки**: какой порог выборки считается достаточным для вывода — и почему именно он?
+
+Question 2 ships with a heuristic: **прогон без единого непонятного результата подозрителен**. A clean sheet is more often a reporting artefact than a clean run — press for what was seen and waved off. The heuristic points one way only, and deliberately so: it says a spotless run is suspicious, and it says nothing about what a count of anomalies implies. Do not extend it into a claim that more of them reported means the work is in better shape.
 
 ### Research-pass gate (precondition to Phase 3)
 
@@ -72,7 +96,7 @@ WHY→HOW and HOW→AC mid-session checkpoints were considered and **rejected as
 
 **Coverage tier (CRITIC-COVERAGE.md) — fires in addition when BOTH hold** (decision 44a72728-b622-42e3-b7b9-3a52b268b4ba):
 
-1. **≥2 grill-checkbox yes** — the SOUL.md `/grill` trigger checkbox (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked.
+1. **≥2 grill-checkbox yes** — the grill trigger checkbox (`~/.claude/reference/engineering-principles.md`) (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked.
 2. **Milestone-level** — the design under critique is a milestone PRD or equivalent grouping of slices, not an individual slice. Per CLAUDE.md milestone-vs-slice hygiene.
 
 Single-axis touch or lone slices ⇒ sampling tier only. Owner may invoke coverage tier explicitly ("coverage critic" / "deep critic") on any AC-lock but MAY NOT skip it when the trigger fires — that's exactly the same-frame rationalization the coverage tier exists to break.
@@ -173,6 +197,10 @@ When the user uses vague or overloaded terms, propose a precise canonical term. 
 ### Discuss concrete scenarios
 
 When domain relationships are being discussed, stress-test them with specific scenarios. Invent scenarios that probe edge cases and force the user to be precise about the boundaries between concepts.
+
+### Субстрат guideword
+
+When the plan resolves into a new standing rule, constraint, or behavior the agent should follow going forward — not a one-off decision — ask **на каком субстрате это будет жить?** before letting it default to prose in CLAUDE.md/SOUL.md or an `always_load` tag. Walk the DOCTRINE.md → *Baseline carrier selection* order (code/CI gate → PreToolUse deny hook → file `@import` → `.claude/rules/` + `paths:` → hook-inject → retrieval → `always_load`) and pick the first carrier that fits the rule's actual violation cost. A rule that "feels important" is not evidence it needs the expensive carriers — importance without a stated violation-cost story is exactly how content ends up on `always_load` by default.
 
 ### Cross-reference with code
 

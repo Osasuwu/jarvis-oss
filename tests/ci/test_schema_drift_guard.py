@@ -11,9 +11,9 @@ response to the failure mode of #289/#310/#311:
 
 Two dimensions covered here; both are required for a guard to be trusted:
 
-1. **Config check** — the `paths:` filter in the workflow YAML must
-   reference the canonical schema path. If someone renames or moves
-   `mcp-memory/schema.sql`, the guard must move with it.
+1. **Config check** — the workflow must reference the canonical schema
+   path, and must NOT carry a `paths:` trigger filter. If someone renames
+   or moves `mcp-memory/schema.sql`, the guard must move with it.
 2. **Logic check** — three scenarios (schema+migration, schema-only,
    unrelated change) asserted against a pure-Python reimplementation
    of the workflow's JS decision rule.
@@ -23,6 +23,15 @@ an import — the workflow runs github-script (JS) on GitHub's runners.
 Drift between `_decide()` and the workflow is still possible, but the
 config check anchors the most load-bearing invariant (watched path =
 canonical path), which is the exact class of bug that motivated #326.
+
+**Why the path check moved out of `paths:` (2026-08-07):** this job is a
+REQUIRED status check on `main`. GitHub treats a required context that
+never reports as pending forever, so the `paths:` filter froze every PR
+that didn't touch schema or migrations — PR #1441 sat `mergeable_state:
+blocked` with all nine other checks green. The filter now lives inside
+the job (which already lists the PR's files and returns early on an
+unrelated diff), so the check always reports. `test_has_no_paths_filter`
+below is what keeps it from creeping back.
 
 Convention for future guards: `.github/workflows/X-guard.yml` =>
 `tests/ci/test_X_guard.py`.
@@ -51,6 +60,19 @@ def _load_workflow() -> dict:
         return yaml.safe_load(f)
 
 
+def _job_script() -> str:
+    """Return the github-script body of the `require-paired-migration` job.
+
+    This is where the path check lives now that `paths:` is gone, so it's
+    where the canonical-path assertions have to look.
+    """
+    wf = _load_workflow()
+    job = wf["jobs"]["require-paired-migration"]
+    return "\n".join(
+        step.get("with", {}).get("script", "") for step in job.get("steps", [])
+    )
+
+
 class TestWorkflowConfigIntegrity:
     """Anchor the most load-bearing invariant: the guard watches the right path.
 
@@ -72,33 +94,55 @@ class TestWorkflowConfigIntegrity:
         assert triggers is not None, "Workflow must declare `on:` triggers"
         assert "pull_request" in triggers, "Guard must run on pull_request events"
 
-    def test_paths_filter_includes_canonical_schema(self):
+    def test_has_no_paths_filter(self):
+        """A REQUIRED check must never be path-filtered.
+
+        GitHub leaves a required context that never reports as pending
+        forever, so `paths:` here freezes every PR with an unrelated diff
+        (observed 2026-08-07 on PR #1441). The path check belongs inside
+        the job, which reports success on an unrelated diff.
+        """
         wf = _load_workflow()
         triggers = wf.get("on") or wf.get(True)
-        pr_filter = triggers["pull_request"]
-        paths = pr_filter.get("paths", [])
-        assert CANONICAL_SCHEMA_PATH in paths, (
-            f"Guard must watch `{CANONICAL_SCHEMA_PATH}` — the canonical schema. "
-            f"Current paths: {paths}. See #289/#310/#311 for why this matters."
+        pr_filter = triggers["pull_request"] or {}
+        assert "paths" not in pr_filter and "paths-ignore" not in pr_filter, (
+            "schema-drift-check must not filter by `paths:` — "
+            "`require-paired-migration` is a required status check, and a "
+            "path-filtered required check never reports on unrelated PRs, "
+            "blocking them forever. Filter inside the job instead."
         )
 
-    def test_paths_filter_includes_migrations_dir(self):
-        """A migration-file change should also trigger the guard (safety net:
-        e.g. reviewer deletes migration without reverting schema)."""
+    def test_job_name_matches_required_context(self):
+        """Branch protection references the job id `require-paired-migration`.
+
+        Renaming the job silently removes the gate — the #326 failure mode.
+        """
         wf = _load_workflow()
-        triggers = wf.get("on") or wf.get(True)
-        paths = triggers["pull_request"].get("paths", [])
-        assert any(p.startswith(MIGRATIONS_PREFIX) for p in paths), (
-            f"Guard must also watch `{MIGRATIONS_PREFIX}**`. Current paths: {paths}"
+        assert "require-paired-migration" in wf["jobs"], (
+            "Job id `require-paired-migration` is the name branch protection "
+            f"requires. Known jobs: {list(wf['jobs'])}"
+        )
+
+    def test_job_checks_canonical_schema(self):
+        script = _job_script()
+        assert CANONICAL_SCHEMA_PATH in script, (
+            f"Guard must check `{CANONICAL_SCHEMA_PATH}` — the canonical schema. "
+            "See #289/#310/#311 for why this matters."
+        )
+
+    def test_job_checks_migrations_dir(self):
+        """A paired migration is what clears the gate — the job must look for
+        one under the canonical migrations directory."""
+        script = _job_script()
+        assert MIGRATIONS_PREFIX in script, (
+            f"Guard must look for a paired migration under `{MIGRATIONS_PREFIX}`."
         )
 
     def test_no_wrong_legacy_path(self):
         """Regression test for the original bug — guard previously watched
         `supabase/schema.sql`, which is not the canonical location."""
-        wf = _load_workflow()
-        triggers = wf.get("on") or wf.get(True)
-        paths = triggers["pull_request"].get("paths", [])
-        assert "supabase/schema.sql" not in paths, (
+        script = _job_script()
+        assert "supabase/schema.sql" not in script, (
             "supabase/schema.sql is NOT the canonical path — "
             "canonical is mcp-memory/schema.sql (#310)."
         )

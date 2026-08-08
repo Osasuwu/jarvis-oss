@@ -1,6 +1,6 @@
 ---
 name: reason
-description: Two-sided fact-grounded discussion when the user has an intuition that something could be better but doesn't know how. Both sides argue from grounded claims, both can update their position. When neither side has facts, dispatches a neutral sub-agent (unaware of the debate) to search without bias. Use when user says "у меня ощущение что", "может быть лучше но не знаю как", "обсудим концепт", or invokes /reason. NOT for stress-testing an existing plan (use /grill — if user can point to a document, diagram, or written design, route there), literature surveys (use /research), or spec-driven exploration of a defined build goal (use Superpowers' /brainstorm if installed — it asymmetrically extracts a spec from "хочу строить X"). Subsumes /research for in-debate factual grounding: do NOT invoke /research mid-debate, use the bundled neutral-researcher sub-agent instead — that's the bias-elimination architecture.
+description: Two-sided fact-grounded debate for a vague intuition ("something could be better, not sure how"). Both sides argue from evidence and can update; if neither has facts, a neutral sub-agent researches without bias. Triggers: "у меня ощущение что", "может быть лучше но не знаю как", "обсудим концепт", /reason. NOT for an existing plan to stress-test (→ /grill), literature surveys (→ /research), or spec-driven build exploration (→ Superpowers /brainstorm). Subsumes /research for in-debate grounding — don't invoke /research mid-debate, use the bundled neutral-researcher instead.
 ---
 
 <what-to-do>
@@ -65,7 +65,7 @@ The bias prevention only holds if you don't tell the subagent which side you're 
 
 ## When to chain into other skills
 
-- Discussion crystallises into a concrete plan → handoff to `/grill` on that plan, then `/to-issues` / `/implement`.
+- Discussion crystallises into a concrete plan → handoff to `/grill` on that plan, then `/to-tickets` / `/implement`.
 - Discussion reveals a code-level question that's bigger than this session → spin out an issue via `/triage` or `mcp__ccd_session__spawn_task`.
 - Domain term gets sharpened mid-discussion → append inline to `CONTEXT.md` (same rule as /grill — don't batch).
 

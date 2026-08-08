@@ -1,6 +1,6 @@
 """analyze_cross_device.py — merge patterns from multiple devices.
 
-Input:  one or more {DEVICE}_patterns.json files (downloaded from GDrive)
+Input:  two or more {DEVICE}_patterns.json files (pulled from devices via scp)
 Output: merged_patterns.json — all patterns with confidence scores, sorted by strength.
 
 Confidence score = weighted_frequency × n_devices_present
@@ -115,7 +115,17 @@ def merge(files: list[Path]) -> dict:
 
 
 def main(input_files: list[str], out_path: str) -> None:
+    out_resolved = Path(out_path).resolve()
     files = [Path(fp) for fp in input_files]
+    # A glob like *_patterns.json happily matches merged_patterns.json left over
+    # from a previous run — merging the output into itself double-counts everything.
+    skipped = [fp for fp in files if fp.resolve() == out_resolved]
+    if skipped:
+        print(f"WARNING: skipping output file found among inputs: {skipped[0]}")
+        files = [fp for fp in files if fp.resolve() != out_resolved]
+    if len(files) < 2:
+        print("ERROR: need at least 2 device patterns files to merge")
+        sys.exit(1)
     missing = [fp for fp in files if not fp.exists()]
     if missing:
         print(f"ERROR: not found: {[str(m) for m in missing]}")
@@ -133,7 +143,9 @@ def main(input_files: list[str], out_path: str) -> None:
     print()
     print("corrective patterns (by confidence):")
     for p in result["corrective_patterns"]:
-        bar = "█" * int(p["confidence_score"] * 2)
+        # ASCII + capped: cp1251 consoles crash on block chars, and a raw
+        # confidence*2 bar can run to hundreds of columns.
+        bar = "#" * min(int(p["confidence_score"] * 2), 40)
         print(f"  {p['category']:<30} conf={p['confidence_score']:.2f} {bar}")
         print(f"  {'':30} freq={p['frequency_pct']}%  "
               f"sessions={p['total_sessions_with_pattern']}  "

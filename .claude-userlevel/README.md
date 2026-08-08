@@ -19,7 +19,15 @@ keeps project-specific bits now (see [`.claude/README.md`](../.claude/README.md)
 
 `SOUL.md` is not in this tree — its canonical location is
 [`config/SOUL.md`](../config/SOUL.md); the installer copies it to
-`~/.claude/SOUL.md` (M4 #339).
+`~/.claude/SOUL.md` (M4 #339). It's loaded into every session via a bare
+`@SOUL.md` import in `CLAUDE.md` — same mechanism as `@DOCTRINE.md` — not a
+SessionStart hook step (#1328).
+
+"Bare" is load-bearing, not stylistic: the import must be a line whose entire
+content is `@SOUL.md`. Both imports shipped mid-prose from #1328/#1315 until
+#1426, resolved as nothing, and delivered neither file to any session for
+months — while a guard asserting the substring `@SOUL.md` stayed green the
+whole time. `tests/ci/test_soul_import_guard.py` now asserts the form.
 
 ## M3: how `settings.json` / `.mcp.json` land at `~/.claude/`
 
@@ -36,6 +44,17 @@ jarvis owns (e.g. their own SessionStart hook, or a user-defined `memory`
 server), it is replaced on apply. Backup preserves it under
 `.claude.backup-<ts>/`. Users wanting extra logic for jarvis-owned events
 should compose downstream (e.g. add logic inside `session-context.py`).
+
+**ceiling: the `.env*` permission deny is a glob, so `.env.example` is denied
+too.** `Read(**/.env.*)` / `Edit(**/.env.*)` in `settings.json` swallow the
+secret-free template along with the real files. Permission rules are evaluated
+deny → ask → allow with first-match-wins and specificity does not reorder them,
+so a deny cannot carry an allowlist exception and there is no negation operator
+to write one with. Accepted deliberately in #1452 — a readable `.env.backup` is
+the worse failure. Upgrade path: narrow the deny only if the permission system
+gains per-rule exceptions; until then consumers take env-var names from
+`README` / `docker-compose*` / `.github/workflows/*`, or ask the user to paste
+the template (it holds no values, so pasting is safe).
 
 Relative paths (`scripts/...`, `config/...`) in the source templates are
 rewritten to absolute paths inside the jarvis repo at install time by

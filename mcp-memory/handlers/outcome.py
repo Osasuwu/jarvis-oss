@@ -15,6 +15,41 @@ from mcp.types import TextContent  # noqa: F401
 
 import server  # noqa: F401  — late-bound for monkeypatch propagation
 import write_scrubber  # #999: Tier-2 write-path secret-scrubber gate
+from handlers.decision import _looks_like_uuid  # #660: reuse, don't reimplement
+
+
+async def _validate_memory_id_ref(client, memory_id: str) -> TextContent | None:
+    """Guard against the #660 confusion: record_decision returns an
+    episodes.id, but task_outcomes.memory_id is a FK to memories(id).
+    Caller checks memory_id is not None before calling this.
+    """
+    if not _looks_like_uuid(memory_id):
+        return TextContent(
+            type="text",
+            text=f"memory_id '{memory_id}' is not a valid UUID.",
+        )
+
+    hit = client.table("memories").select("id").eq("id", memory_id).execute()
+    if hit.data:
+        return None
+
+    hit = client.table("episodes").select("id").eq("id", memory_id).execute()
+    if hit.data:
+        return TextContent(
+            type="text",
+            text=(
+                f"memory_id '{memory_id}' is a decision-episode UUID (episodes.id), "
+                "not a memory UUID (memories.id) — record_decision returns an "
+                "episode id, not a memory id, and this FK rejects it. Use "
+                "payload.memories_used[0] from the record_decision call this "
+                "outcome is based on."
+            ),
+        )
+
+    return TextContent(
+        type="text",
+        text=f"memory_id '{memory_id}' not found in memories or episodes.",
+    )
 
 
 async def _handle_outcome_record(args: dict) -> list[TextContent]:
@@ -33,6 +68,12 @@ async def _handle_outcome_record(args: dict) -> list[TextContent]:
     )
     if block is not None:
         return [TextContent(type="text", text=block)]
+
+    memory_id = args.get("memory_id")
+    if memory_id is not None:
+        err = await _validate_memory_id_ref(client, memory_id)
+        if err is not None:
+            return [err]
 
     row = {
         "task_type": args["task_type"],
@@ -81,6 +122,12 @@ async def _handle_outcome_update(args: dict) -> list[TextContent]:
     )
     if block is not None:
         return [TextContent(type="text", text=block)]
+
+    memory_id = args.get("memory_id")
+    if memory_id is not None:
+        err = await _validate_memory_id_ref(client, memory_id)
+        if err is not None:
+            return [err]
 
     updates: dict = {}
     for key in (

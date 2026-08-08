@@ -7,7 +7,10 @@ on:
   pull_request:
     types: [opened, reopened, synchronize]
   push:
-    branches: [main]
+    # Observed axis, not a constant (#1406): hardcoding `main` meant this
+    # workflow never ran on merges into redrobot, whose default branch is
+    # `master` — the same bug class as dependabot.yml's target-branch.
+    branches: [{{ default_branch }}]
 
 jobs:
   meta-tests:
@@ -28,4 +31,8 @@ jobs:
           pip install pytest pytest-asyncio pyyaml
 
       - name: Run meta-tests
-        run: pytest tests/ci/ -v
+        # ci_meta_pytest_args is empty by default and carries its own leading
+        # space. redrobot sets --confcutdir=tests/ci because pytest loads every
+        # ancestor conftest during collection, and its root one imports numpy —
+        # a dep this job deliberately does not install (#1406).
+        run: pytest tests/ci/ -v{{ ci_meta_pytest_args }}

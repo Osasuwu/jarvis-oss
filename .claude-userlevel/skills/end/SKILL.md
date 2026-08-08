@@ -1,6 +1,8 @@
 ---
 name: end
 description: "Session close. Default: full reconciliation (decision log, CONTEXT gap check, outcome enrichment, memory save, commit, handoff, ~5 min). With --quick: checkpoint + commit only (~30 sec). Triggers: 'end', 'end session', 'end quick', 'быстро закончим'."
+model: sonnet
+effort: low
 ---
 
 # End Session
@@ -31,8 +33,9 @@ That's it. Go.
 Before reconciling or enriching, pull everything durable from Supabase:
 
 1. **Pre-compact snapshot** — **do NOT use `memory_recall` for this**: snapshot rows are tagged `session-snapshot`, which `memory_recall` excludes by design (`EXCLUDE_TAGS_FROM_RECALL`, #417) — the query will never return them.
-   - **Preferred — indexed point lookup.** If you know this session's id, fetch the row directly: `memory_get(name="session_snapshot_<session_id>", project="jarvis")`. The id is the `# Session Snapshot — <session_id>` header in the auto-loaded *Pre-Compact Recovery* block (if no Pre-Compact Recovery block was loaded, the id is unavailable — use the fallback below). The lookup is backed by the `UNIQUE(project, name)` constraint (PostgreSQL creates an implicit B-tree index for unique constraints), so its cost is O(log N) on table size, not O(rows-scanned).
-   - **Fallback — id genuinely unknown.** `memory_list(project="jarvis", type="project")`. Note: the `memory_list` handler has no `limit` parameter — the call returns **all** `type=project` rows (the `project` filter includes `project IS NULL` global rows too). With `type="project"` specified, all returned rows share that type; the handler sorts `type` asc then `updated_at` desc, so with a single type value the `type` sort is a no-op and the effective order is `updated_at` desc. Do **not** drop the type filter: an unfiltered list interleaves types and the "newest-first" property no longer holds. Scan the list newest-first and pick the first entry whose name starts with `session_snapshot_` (ignore any with `test` in the name). If no match found, treat as hook-didn't-fire and proceed with conversation only. Then `memory_get(name=..., project="jarvis")` to load the full content. This is why the exact lookup above is preferred — the fallback fetches unbounded rows.
+   - **Snapshot scope.** The pre-compact hook stores the row under the project detected from cwd — path-component scan over known projects (`jarvis`, `redrobot`), worktree-aware, so a session in `<repo>/.claude/worktrees/<name>` lands under `<repo>`. Rows written by older hook versions (or from an unknown cwd) are global (`project=null`).
+   - **Preferred — indexed point lookup.** If you know this session's id, fetch the row directly: `memory_get(name="session_snapshot_<session_id>", project="<current session's project>")`; on a miss, retry with `project="null"` (legacy global rows). The id is the `# Session Snapshot — <session_id>` header in the auto-loaded *Pre-Compact Recovery* block (if no Pre-Compact Recovery block was loaded, the id is unavailable — use the fallback below). The lookup is backed by the `UNIQUE(project, name)` constraint (PostgreSQL creates an implicit B-tree index for unique constraints), so its cost is O(log N) on table size, not O(rows-scanned).
+   - **Fallback — id genuinely unknown.** `memory_list(project="<current session's project>", type="project")`. Note: the `memory_list` handler has no `limit` parameter — the call returns **all** `type=project` rows (the `project` filter includes `project IS NULL` global rows too). With `type="project"` specified, all returned rows share that type; the handler sorts `type` asc then `updated_at` desc, so with a single type value the `type` sort is a no-op and the effective order is `updated_at` desc. Do **not** drop the type filter: an unfiltered list interleaves types and the "newest-first" property no longer holds. Scan the list newest-first and pick the first entry whose name starts with `session_snapshot_` (ignore any with `test` in the name). If no match found, treat as hook-didn't-fire and proceed with conversation only. Then `memory_get(name=..., project=<the project the matched row is scoped to>)` to load the full content. This is why the exact lookup above is preferred — the fallback fetches unbounded rows.
    - **Freshness check.** An LLM has no reliable session-start timestamp, so don't try to test whether `updated_at` is "from *this* session". **Content consistency is the deciding test; age is only a trigger.** If a snapshot's content is consistent with this session's actual context, trust it regardless of `updated_at` — a legitimately long AFK session must not distrust its own fresh snapshot just because the clock advanced. Use age solely to decide *when* to run the content-mismatch check below: when `updated_at` is **older than 4 hours**, run the check before trusting the snapshot; age alone is never grounds to discard it. Note this 4-hour cutoff is for the **direct `memory_get` fetch path only** — if you took the snapshot straight from the auto-loaded *Pre-Compact Recovery* block, `session-context.py` already gated it at `PRE_COMPACT_FRESHNESS_MINUTES` (30 min), so anything surfacing there is fresher than this cutoff by construction.
    - **Independent compaction signal — read the gen-counter, do NOT infer from snapshot presence.** Whether the session compacted is answered by the per-session counter the PreCompact hook bumps (`scripts/pre-compact-backup.py` → `_bump_compaction_count`), **not** by whether a snapshot row exists. The two are decoupled on purpose: snapshot-missing ≠ never-compacted (that conflation was the bug where `/end` reported "session was not compacted" through a hook outage). Read it:
      - File: `~/.claude/compaction-counts/<session_id>.txt`, where `<session_id>` is sanitized the same way as the writer — keep only `[A-Za-z0-9-_]`, everything else stripped. Content is a single integer `gen` (generations survived). Missing file or unreadable → treat as `gen = 0`.
@@ -44,7 +47,12 @@ Before reconciling or enriching, pull everything durable from Supabase:
      - `gen == 0` BUT a snapshot *is* found → counter file was lost/cleared (e.g. wiped `~/.claude`), not a contradiction worth blocking on. Trust the snapshot; note the counter gap in Step 8.
    - If the freshest snapshot looks like a *different* session's work (content references work unrelated to what you remember from the current context) → flag in Step 8 output and fall back to conversation only.
    - Multiple compacts in one session share a single snapshot (same session_id, upserted on each compaction); the one you pick is the latest state.
-2. **Real-time decisions** — `memory_recall(query="decisions today <date>", project="jarvis", type="decision", limit=20, brief=true)` where `<date>` is today's ISO date. These should already be in place via `record_decision` calls made during the session. Step 1 will verify completeness and enrich with post-hoc markers.
+2. **Real-time decisions** — `decision_list(project="<current session's project>", cwd="<current session's cwd>", since="<window anchor, see below>")`. `record_decision` writes to the `episodes` table, not the `memories` table `memory_recall(type="decision")` searches — that call returns unrelated top-level memories, never this session's decisions. `decision_list` is the tool that actually surfaces `record_decision`-authored episodes. These should already be in place via `record_decision` calls made during the session; Step 1 will verify completeness and enrich with post-hoc markers.
+   - **Recovery key is `(project, cwd, since)`, not `session_id` (#1423).** Resume/compaction always mints a new harness `session_id` (#1269), so a `session_id`-scoped query goes unreachable across that boundary the moment it happens — the exact failure this step used to hit. `session_id` is now forensic grouping metadata only; pass it as an *extra* AND-combined narrowing filter when you happen to know it (e.g. re-querying mid-session, no resume in between), never as the sole key.
+   - **Window anchor — derive it, don't hardcode a constant.** No single fixed window (24h or otherwise) is correct across both a 20-minute session and a multi-day AFK run, so pick `since` from what Step 0 already established, in priority order:
+     1. **Snapshot found** (`gen > 0` and a fresh/trusted `session_snapshot_*` row per Step 0) → use that row's `updated_at` timestamp (minus a few minutes' buffer for clock skew) as an absolute ISO-8601 `since`. It's the last confirmed checkpoint of this session's own activity, so it bounds the query tightly without risking exclusion.
+     2. **No snapshot, `gen == 0`** (never compacted this session) → no durable anchor exists yet; fall back to a relative `since="12h"`, generous enough to cover a normal working session without pulling in prior days' unrelated decisions. Note in Step 8 that the fallback window was used (so a session running longer than 12h without a compaction knows to widen it manually).
+     3. **`gen > 0` but snapshot missing** (hook failure per Step 0) → same relative fallback as (2), and the hook-failure flag already required by Step 0 covers the discrepancy — don't invent a second warning here.
 3. **Recent episodes (optional)** — if you need finer-grained provenance, `events_list` surfaces `tool_call`, `decision`, and `observation` episodes the extractor captured.
 
 Carry the snapshot + decisions into Steps 1-3 as the primary source. The conversation (post-compact) is only a hint overlay for anything that happened *after* the snapshot was written.
@@ -93,7 +101,7 @@ For each `decision_made` episode loaded in Step 0 from this session:
 3. **Create outcome record** — call `outcome_record(outcome_status="pending", ...)` with:
    - `task_description` = first sentence of decision rationale (max 1 line)
    - `task_type` = `"autonomous"` (the `outcome_record` enum is `delegation|research|fix|review|autonomous`; agent-emitted decisions during session work map to `autonomous`)
-   - `project` = extracted from decision payload (or "jarvis" if missing)
+   - `project` = extracted from decision payload (or the current session's project if missing)
    - `pattern_tags` = **union of**:
      - Topic tags already in the decision's `pattern_tags` (if present)
      - `"source:end-enrichment"`
@@ -123,11 +131,94 @@ Skip if the session didn't advance any goal (e.g., pure discussion, research wit
 
 ## Step 5 — Working state (non-negotiable)
 
-Save `working_state_jarvis` (type=project) to Supabase. Always. Content:
+Save `working_state_<current session's project>` (type=project, e.g. `working_state_jarvis`, `working_state_redrobot`) to Supabase. Always. Use **read-modify-write** semantics to prevent parallel sessions from overwriting each other's checkpoints.
+
+### RMW (read-modify-write) pattern
+
+**Before writing**, read the current document:
+```python
+state = memory_get(name=f"working_state_{project}", project=project)
+current_content = state.content if state else ""
+```
+
+If not found (first write for this project), proceed with empty string.
+
+### Merge-doc format
+
+The document is a markdown merge-doc with per-session `### [entry]` blocks. Structure:
+
+```
+# Working state — <project>
+
+### [entry] <branch-or-task-slug> — <YYYY-MM-DD> — <status>
+
 - What was done this session
 - Open items: unfinished work, things to fix, deferred tasks
 - Key context for next session (blockers, decisions pending review)
-- **Suggested next skills** — explicit chain hint for the next session, e.g. `/status → /implement #532 → /verify`. One line, ordered. Omit only if truly nothing pending (rare; usually at least `/status`). Lets the next session skip the "what should I run first" decision; mirrors the one useful idea from Pocock's `/handoff` skill without forking durable storage out of Supabase.
+- **Suggested next skills** — explicit chain hint, e.g. `/status → /implement #532 → /verify`. One line, ordered. Omit only if truly nothing pending (rare; usually at least `/status`).
+
+[... possibly other old entries from previous sessions ...]
+```
+
+**Your session's block:** Replace **only your own** `### [entry]` block (identified by branch/task slug — the slug must match what you used this session). If your block doesn't exist yet, append a new one. Other blocks are copied verbatim.
+
+### Garbage collection (GC)
+
+Before writing, scan all blocks and **delete** a foreign block only if **both** conditions hold:
+
+1. **Status is resolved** — its PR is merged OR its issue is closed, **OR**
+2. **Age >14 days** — `updated_at` older than 14 days ago (conservative: err on keeping)
+
+All other blocks are preserved. GC is conservative by design: a wrong date results in "keep longer", not "delete too soon".
+
+### Size cap & eviction
+
+Total document size must be ≤**1500 characters** of content, and ≤**3 entries**.
+
+If adding your block would exceed either limit:
+1. Identify old blocks (oldest by date first)
+2. Evict them one at a time until both constraints are satisfied
+3. For each evicted block: **leave a tombstone** (see below)
+
+### Tombstone marking
+
+When you evict a foreign block (GC or size cap), replace it with a single-line marker:
+
+```
+### [evicted] <slug> — <date> — <reason>
+```
+
+Where `<reason>` is one of:
+- `GC: PR merged` or `GC: issue closed`
+- `GC: age >14 days`
+- `Size cap: ≤3 entries`
+- `Size cap: ≤1500 chars`
+
+Keep the marker short (≤80 chars total line). Tombstones count toward the 1500-char cap and 3-entry limit, but aid debugging when a session's checkpoint disappears.
+
+### Scoping of gates
+
+If you have code that reads `working_state_<project>` to check for decision UUIDs or issue numbers (e.g., `implement/SKILL.md:42`, `delegate/SKILL.md:178`, `_shared/research-pass-gate.md:42`):
+
+- **Search only within your own `### [entry]` block**, not the entire document
+- Treat all other blocks as foreign history; don't use their content to make decisions
+
+This prevents the merge-doc from becoming monotonically more permissive as entries accumulate.
+
+### Read-after-write verification
+
+After calling `memory_store` with the updated document, **immediately read it back**:
+
+```python
+updated_state = memory_get(name=f"working_state_{project}", project=project)
+# Verify your block is present and matches what you wrote
+if not updated_state or "<your-slug>" not in updated_state.content:
+    # Report loudly in Step 8: "Working state: failed to persist own block"
+```
+
+This catches silent data loss (e.g., due to quota exceeded, permission error, or race condition) and makes it visible rather than discovering it in the next session.
+
+<!-- ceiling: read-modify-write contract is prose, dominant failure mode is LLM skipping the instruction (not timing race). Long-term substrate: mode="merge_section" in memory_store API (#1351) would enforce this at write-time, not via prose. -->
 
 This is the handoff to the next session. If open items exist in Step 8 output, they MUST be in this memory too — output is ephemeral, memory persists.
 
@@ -195,6 +286,10 @@ If stashing (mid-task), report the stash ref and repo in output so next session 
 ### Outcome enrichment (Step 3)
 - <"Outcomes created: N" OR "No deliverable hints detected" — only render when enrichment fired>
 
+### Working state (Step 5)
+- <"Saved — <project> (N entries, Y chars)" if success | "FAILED to persist own block" if read-after-write check failed>
+- <"Evicted: <slug-1>, <slug-2>" if tombstones were created | omit if none>
+
 ### Saved to memory (N)
 - <name> — <one-line>
 
@@ -208,4 +303,4 @@ If stashing (mid-task), report the stash ref and repo in output so next session 
 - <unfinished work, deferred tasks, things for next session>
 ```
 
-Keep it concise. This is a handoff, not a report. Render the CONTEXT.md gap and Outcome enrichment sections only when their respective steps fire (heuristic triggers).
+Keep it concise. This is a handoff, not a report. Render the CONTEXT.md gap, Outcome enrichment, and Working state sections only when their respective steps fire (heuristic triggers).

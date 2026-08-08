@@ -1,6 +1,6 @@
 ---
 name: implement
-description: This skill should be used when the principal asks Jarvis to implement a SINGLE GitHub issue directly in the current session, or says "реализуй #42", "сделай #42", "implement #X". For MULTIPLE issues that can run in parallel use /delegate instead. Do NOT trigger for viewing, triaging, or discussing issues — only for actual implementation requests.
+description: Implement a SINGLE GitHub issue directly in the current session. Triggers: "реализуй #42", "сделай #42", "implement #X". Multiple parallel issues → /delegate. NOT for viewing, triaging, or discussing issues — implementation requests only.
 version: 2.0.0
 ---
 
@@ -25,7 +25,7 @@ Per ADR-0001, skills do not self-trigger mid-task ("Type 3" is rejected). `/impl
 
 **Inputs** (run both before the dispatch table):
 
-1. **SOUL.md `### Grill trigger checkbox`** against the issue body — fetch the body first:
+1. **Grill trigger checkbox** (canonical text: `~/.claude/reference/engineering-principles.md` → *Grill trigger checkbox*; restated verbatim below because this is where it fires) against the issue body — fetch the body first:
 
    ```bash
    gh issue view <N> --repo <owner/repo> --json title,body --jq '.title + "\n\n" + .body'
@@ -40,7 +40,7 @@ Per ADR-0001, skills do not self-trigger mid-task ("Type 3" is rejected). `/impl
 2. **Grill artifact for this issue** — present iff *either* of the following holds:
 
    - **(a) working_state** — `memory_get(name="working_state_<project>", project="<project>")` where `<project>` is the short project slug (`jarvis`, `redrobot`), matching the convention in `scripts/session-context.py`. If the returned record references this issue number alongside one or more decision UUIDs, the artifact is present. The exact key shape inside the record (`decision_uuids[]` keyed by issue, an episodes list, free-form notes) is project-controlled — accept any structure where a decision UUID is reachable from the issue number; if `/grill` populated working_state for this issue, the link will be there. If working_state has no entry for this issue, fall through to (b).
-   - **(b) issue body** — the issue body contains a heading starting with `## Decisions` (prefix match — `## Decisions`, `## Decisions & Alternatives`, etc.) AND that section cites at least one decision UUID. This is the opt-in path for manually-annotated or grill-refined issue bodies (e.g. #593/#594/#595/#596 in the TDD-wiring chain). The automated `/to-issues` template does not yet emit this section — a separate issue tracks adding it; until then `## Decisions` in the body is treated as a deliberate annotation by the author.
+   - **(b) issue body** — the issue body contains a heading starting with `## Decisions` (prefix match — `## Decisions`, `## Decisions & Alternatives`, etc.) AND that section cites at least one decision UUID. This is the opt-in path for manually-annotated or grill-refined issue bodies (e.g. #593/#594/#595/#596 in the TDD-wiring chain). The automated `/to-tickets` template does not yet emit this section — a separate issue tracks adding it; until then `## Decisions` in the body is treated as a deliberate annotation by the author.
 
 **Dispatch table** — pick exactly one branch:
 
@@ -231,9 +231,9 @@ Engaged when the §Contract dispatch table routes here. Replaces §4 — but §4
 **Operating discipline:**
 
 - §4a (already-done audit) still runs first — TDD-mode is no excuse to skip it. Symbols from the issue AC drive the grep; if the behavior already exists with tests, stop and close as `not-planned`.
-- Iterate one acceptance-criterion bullet at a time. Per AC item: write a failing test → confirm RED → write the minimal implementation → confirm GREEN → refactor only what is now under green coverage → next AC item. Do **not** write all tests first then all code (the anti-horizontal-slicing rule in `tdd-loop.md` is binding).
+- Iterate one acceptance-criterion bullet at a time. Per AC item: write a failing test → confirm RED → write the minimal implementation → confirm GREEN → next AC item. The inner loop is strictly red→green — do **not** refactor between AC items. Do **not** write all tests first then all code either (the anti-horizontal-slicing rule in `tdd-loop.md` is binding).
 - Every test must trace back to an AC bullet. If a test does not, the test is either out of scope or evidence the AC is incomplete — in the latter case stop and escalate (re-grill, do not invent AC inline).
-- Refactor permission is scoped to code freshly covered by a passing test in this session. Adjacent untested code is not in refactor scope — either write a characterization test first (then it is in scope) or flag a follow-up issue and leave it.
+- Once every AC item's test is green, run **one** refactor pass over the whole green suite (`tdd-loop.md` §4) before moving to §5. Refactor permission is scoped to code freshly covered by a passing test in this session. Adjacent untested code is not in refactor scope — either write a characterization test first (then it is in scope) or flag a follow-up issue and leave it.
 - §4c (E2E smoke) still applies before marking the outcome `success` when the change touches I/O / schema / hooks / subprocess areas.
 - ADR-0001 compliance: do not invoke `/grill` or any other skill mid-task. The reference docs in `_shared/tdd/` are read as files, not as skill invocations.
 
@@ -360,6 +360,30 @@ Check for:
 - Unrelated changes that crept in
 - Secrets or credentials in any form
 - **Symmetric patterns**: when fixing a class of bug, grep for sibling instances across the file AND other files — not just the one the reviewer flagged (memory `feedback_symmetric_fixes`)
+
+#### Self-review checklist (cheap catch — PR plugin is authoritative)
+
+Quick scan through two lenses before opening the PR:
+
+**Standards** — Fowler's 12 code smells:
+- [ ] **Mysterious Name** — naming clear and self-documenting?
+- [ ] **Duplicated Code** — repeated logic to unify?
+- [ ] **Feature Envy** — method belongs more to another class?
+- [ ] **Data Clumps** — items that travel together → own object?
+- [ ] **Primitive Obsession** — small type where primitives are used?
+- [ ] **Repeated Switches** — same conditional in multiple places?
+- [ ] **Shotgun Surgery** — one change touches many files?
+- [ ] **Divergent Change** — file changes for multiple reasons?
+- [ ] **Speculative Generality** — unused abstraction / dead code?
+- [ ] **Message Chains** — long `.a().b().c()` traversal chains?
+- [ ] **Middle Man** — delegation without added value?
+- [ ] **Refused Bequest** — subclass ignoring inherited members?
+
+**Spec** — faithfulness to the originating issue:
+- [ ] All acceptance criteria addressed?
+- [ ] No scope creep beyond the issue?
+
+This is a **cheap catch**, not a merge gate. The Claude code-review plugin is the authoritative reviewer; missing items will be caught there. The goal is to catch obvious errors before the PR opens, not to replace the review. The same vocabulary (Standards + Spec, Fowler-12) is used by `/rework` so pre-PR and post-review passes share a common language.
 
 If the diff looks wrong, fix it before pushing.
 

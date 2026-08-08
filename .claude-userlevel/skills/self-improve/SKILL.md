@@ -2,6 +2,8 @@
 name: self-improve
 description: "Autonomous self-improvement: health check, gap analysis, ideation, research, implementation. Absorbs ideate, self-review, repo-health."
 version: 2.0.0
+model: opus
+effort: high
 ---
 
 # Self-Improve

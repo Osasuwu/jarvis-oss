@@ -86,40 +86,62 @@ class Planner:
         # ── WRITE_FILE for managed files ──────────────────────────────
         for path in sorted(self.manifest.resolved_managed_files):
             fclass = self.manifest.class_for_file(path)
-            actions.append(Action(
-                kind=ActionKind.WRITE_FILE,
-                path=path,
-                file_class=fclass.value,
-            ))
             seen_paths.add(path)
-
-        # ── WRITE_FILE for LANGUAGE-TEST files ────────────────────────
-        for path in sorted(self.manifest.language_test_files):
-            if path not in seen_paths:
-                actions.append(Action(
+            if fclass == FileClass.REPO_CUSTOM:
+                continue  # custom_files always wins — never overwrite it
+            actions.append(
+                Action(
                     kind=ActionKind.WRITE_FILE,
                     path=path,
-                    file_class=FileClass.LANGUAGE_TEST.value,
-                ))
-                seen_paths.add(path)
+                    file_class=fclass.value,
+                )
+            )
+
+        # ── WRITE_FILE for LANGUAGE-TEST files ────────────────────────
+        for path in sorted(self.manifest.resolved_language_test_files):
+            if path in seen_paths:
+                continue
+            seen_paths.add(path)
+            fclass = self.manifest.class_for_file(path)
+            if fclass == FileClass.REPO_CUSTOM:
+                continue  # custom_files always wins — never overwrite it
+            actions.append(
+                Action(
+                    kind=ActionKind.WRITE_FILE,
+                    path=path,
+                    file_class=fclass.value,
+                )
+            )
 
         # ── DELETE_FILE for files that are in actual but not in any list ──
-        actual_paths = set(actual.files.keys())
-        all_managed = set(self._all_watched_paths())
-        for path in sorted(actual_paths - all_managed):
-            actions.append(Action(
-                kind=ActionKind.DELETE_FILE,
-                path=path,
-            ))
+        # Opt-in via the `prune` axis (default False) — a repo that has never
+        # opted in must never lose a file it didn't expect us to touch.
+        # `dynamic/` paths are excluded even when prune=True: they are
+        # runtime-generated, not baseline-managed, so they are never a
+        # deletion candidate regardless of axis state.
+        if self.manifest.resolve_axis("prune"):
+            actual_paths = set(actual.files.keys())
+            all_managed = set(self._all_watched_paths())
+            for path in sorted(actual_paths - all_managed):
+                if path.startswith("dynamic/"):
+                    continue
+                actions.append(
+                    Action(
+                        kind=ActionKind.DELETE_FILE,
+                        path=path,
+                    )
+                )
 
         # ── SET_CHECK_CONTEXTS ─────────────────────────────────────────
         required = self.manifest.required_check_contexts
         if required:
-            actions.append(Action(
-                kind=ActionKind.SET_CHECK_CONTEXTS,
-                path="<repo-settings>",
-                context_names=list(required),
-            ))
+            actions.append(
+                Action(
+                    kind=ActionKind.SET_CHECK_CONTEXTS,
+                    path="<repo-settings>",
+                    context_names=list(required),
+                )
+            )
 
         return actions
 
@@ -129,7 +151,7 @@ class Planner:
         # list is watched (and thus excluded from DELETE_FILE).
         return (
             self.manifest.resolved_managed_files
-            + self.manifest.language_test_files
+            + self.manifest.resolved_language_test_files
             + list(self.manifest.custom_files)
         )
 
