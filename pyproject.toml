@@ -48,7 +48,7 @@ memory = [
   "supabase>=2.0.0,<3",
   "voyageai>=0.2.3,<1",
   "httpx>=0.27,<1",
-  "pyyaml>=6.0,<7",
+  "pyyaml>=6.0.3,<7",
 ]
 # Pillar 7: reactive-core agents (Ollama + Postgres + Supabase bridge).
 # LangGraph (langgraph / langgraph-checkpoint-postgres / langchain-ollama) was
