@@ -59,7 +59,7 @@ memory = [
 # can't open. psutil is conditional (lazy import in pid_sidecar #952) — used to
 # re-adopt live processes across driver restarts.
 agents = [
-  "psycopg[binary,pool]>=3.1,<4",
+  "psycopg[binary,pool]>=3.3.4,<4",
   # STAGED-DORMANT (do-not-retire): no live consumer yet — staged for the
   # orchestrator local-inference tick (decision a0a4ce7b, no tracking issue by
   # design). See agents/ollama_client.py. Keep through native-first sweeps.
