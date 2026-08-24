@@ -22,5 +22,5 @@ python-dotenv>=1.2.2,<2
 # the exact silent-drift bug class this file's env_sync check() now guards
 # against (see scripts/lib/env_sync.py REGISTRY probe_modules).
 nest-asyncio>=1.6.0,<2
-python-json-logger>=4.1.0,<5
+python-json-logger>=4.2.0,<5
 telethon>=1.44.0,<2
