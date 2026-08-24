@@ -16,7 +16,7 @@ mcp>=2.0.0,<3
 supabase>=2.31.0,<3
 voyageai>=0.5.0,<1
 httpx>=0.28.1,<1
-python-dotenv>=1.2.2,<2
+python-dotenv>=1.2.3,<2
 # nest-asyncio, python-json-logger, telethon: imported by
 # scripts/telegram-mcp-server.py but absent from this manifest until #1312 —
 # the exact silent-drift bug class this file's env_sync check() now guards
