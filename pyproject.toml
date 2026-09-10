@@ -51,7 +51,7 @@ full = [
 dev = [
   "pytest>=9.1.1,<10",
   "pytest-asyncio>=1.4.0,<2",
-  "ruff>=0.16.3,<1",
+  "ruff>=0.16.6,<1",
 ]
 
 [project.urls]
