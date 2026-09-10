@@ -21,7 +21,7 @@ Please include:
 ## Scope
 
 This policy covers:
-- `mcp-memory/server.py` (MCP server handling Supabase connections)
+- `supabase/` (schema and migrations for the Supabase-backed reactive core)
 - `.github/workflows/` (CI/CD pipelines)
 - Any credential or secret exposure
 - Dependency vulnerabilities

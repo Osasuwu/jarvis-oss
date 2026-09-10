@@ -8,6 +8,7 @@ Usage:
 
 Reads repos from config/repos.conf — no hardcoded repo list.
 """
+
 import os
 import sys
 import subprocess
@@ -15,19 +16,17 @@ import subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPOS_CONF = os.path.join(ROOT, "config", "repos.conf")
 
+sys.path.insert(0, ROOT)
+from scripts.repos_conf import parse_repos_conf  # noqa: E402
+
 
 def load_repos():
     """Read repos from config/repos.conf."""
     if not os.path.isfile(REPOS_CONF):
         print(f"Error: {REPOS_CONF} not found")
         sys.exit(1)
-    repos = []
-    with open(REPOS_CONF) as f:
-        for line in f:
-            line = line.strip()
-            if line and not line.startswith("#"):
-                repos.append(line)
-    return repos
+    with open(REPOS_CONF, encoding="utf-8") as f:
+        return parse_repos_conf(f.read())
 
 
 def main():
@@ -54,7 +53,9 @@ def main():
     for repo in repos:
         result = subprocess.run(
             ["gh", "secret", "set", "CLAUDE_CODE_OAUTH_TOKEN", "--repo", repo],
-            input=token, text=True, capture_output=True,
+            input=token,
+            text=True,
+            capture_output=True,
         )
         if result.returncode == 0:
             print(f"[token-refresh] + {repo}")

@@ -18,25 +18,12 @@
 --
 -- Anon SELECT preserved as-is (slice 3 left it open; this slice does not
 -- touch read access).
--- Paired with mcp-memory/schema.sql per #326 schema-drift CI gate.
+-- Paired with supabase/schema.sql per #326 schema-drift CI gate.
+--
+-- memories/episodes blocks retired along with the memory stack (#1801).
 
 -- =========================================================================
--- 1. memories: replace open UPDATE/DELETE with sandcastle-gated.
--- =========================================================================
-DROP POLICY IF EXISTS "Anon update" ON memories;
-DROP POLICY IF EXISTS "Anon delete" ON memories;
-
-CREATE POLICY "Anon sandcastle update" ON memories
-  FOR UPDATE TO anon
-  USING (source_provenance LIKE 'sandcastle:%')
-  WITH CHECK (source_provenance LIKE 'sandcastle:%');
-
-CREATE POLICY "Anon sandcastle delete" ON memories
-  FOR DELETE TO anon
-  USING (source_provenance LIKE 'sandcastle:%');
-
--- =========================================================================
--- 2. task_outcomes: same shape.
+-- 1. task_outcomes: replace open UPDATE/DELETE with sandcastle-gated.
 -- =========================================================================
 DROP POLICY IF EXISTS "Anon update" ON task_outcomes;
 DROP POLICY IF EXISTS "Anon delete" ON task_outcomes;
@@ -51,22 +38,7 @@ CREATE POLICY "Anon sandcastle delete" ON task_outcomes
   USING (source_provenance LIKE 'sandcastle:%');
 
 -- =========================================================================
--- 3. episodes: gated on `actor` (the column already used as provenance).
--- =========================================================================
-DROP POLICY IF EXISTS "Anon update" ON episodes;
-DROP POLICY IF EXISTS "Anon delete" ON episodes;
-
-CREATE POLICY "Anon sandcastle update" ON episodes
-  FOR UPDATE TO anon
-  USING (actor LIKE 'sandcastle:%')
-  WITH CHECK (actor LIKE 'sandcastle:%');
-
-CREATE POLICY "Anon sandcastle delete" ON episodes
-  FOR DELETE TO anon
-  USING (actor LIKE 'sandcastle:%');
-
--- =========================================================================
--- 4. events_canonical: same — gated on `actor`.
+-- 2. events_canonical: same — gated on `actor`.
 -- =========================================================================
 DROP POLICY IF EXISTS "Anon update" ON events_canonical;
 DROP POLICY IF EXISTS "Anon delete" ON events_canonical;

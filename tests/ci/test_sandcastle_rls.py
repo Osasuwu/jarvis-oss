@@ -28,10 +28,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIGRATION_PATH = (
-    REPO_ROOT
-    / "supabase"
-    / "migrations"
-    / "20260508120000_sandcastle_anon_rls_provenance_gate.sql"
+    REPO_ROOT / "supabase" / "migrations" / "20260508120000_sandcastle_anon_rls_provenance_gate.sql"
 )
 UPDATE_DELETE_MIGRATION_PATH = (
     REPO_ROOT
@@ -39,15 +36,14 @@ UPDATE_DELETE_MIGRATION_PATH = (
     / "migrations"
     / "20260508130000_sandcastle_anon_rls_update_delete_gate.sql"
 )
-SCHEMA_PATH = REPO_ROOT / "mcp-memory" / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "supabase" / "schema.sql"
 
-# Per-table provenance column. memories + task_outcomes use source_provenance;
-# episodes + events_canonical use the existing `actor` column (semantic match —
-# `actor` is already the provenance field per their schema comments).
+# Per-table provenance column. task_outcomes uses source_provenance;
+# events_canonical uses the existing `actor` column (semantic match — `actor`
+# is already the provenance field per its schema comment). memories/episodes
+# were retired with the memory stack (#1801).
 PROVENANCE_COLUMN = {
-    "memories": "source_provenance",
     "task_outcomes": "source_provenance",
-    "episodes": "actor",
     "events_canonical": "actor",
 }
 
@@ -422,3 +418,9 @@ class TestUpdateDeletePolicyLogic:
         col = PROVENANCE_COLUMN[table]
         assert not _anon_delete_allowed(table, {col: None})
         assert not _anon_delete_allowed(table, {})
+
+
+# merge_section_into_memory_upsert RPC guards (#1352) were retired along with
+# the memory stack (#1801) — the RPC itself is excluded from supabase/schema.sql,
+# so TestRpcMigrationShape/TestRpcPolicyLogic (and their migration/helpers) are
+# gone rather than repointed.

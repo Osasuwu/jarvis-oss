@@ -9,18 +9,17 @@ every test's identity, only the path prefix changed.
 
 | Subdir | Owns | Source area |
 |---|---|---|
-| `reactive_core/` | Orchestrator, executor, wake_driver, poller, task dispatch/queue, event emission, PID sidecar, escalation, safety, principal | `agents/`, `scripts/` reactive-core |
-| `memory/` | Memory server, recall/store, outcomes, calibration, graph, goals, credentials, events FSM | `mcp-memory/` |
-| `decisions/` | `record_decision` Tier-2 gate + doubles | `scripts/record-decision-gate.py` |
 | `comms/` | Communication-pattern classifier / reflect surface | `scripts/comm_patterns/` |
-| `status/` | `/status` digest + deterministic render | `mcp__status`, `scripts/` status |
 | `infrastructure/` | Installer units, hooks, secret scanner/scrubber, protected files, risk radar, session-context — the cross-cutting **catch-all** | `scripts/`, `src/` |
 | `ci/` | Path-filtered CI-guard meta-tests (#326) — one per guarded workflow | `.github/workflows/` |
-| `install/` | Installer end-to-end integration | `install.ps1` |
+| `evals/` | Evaluation-harness tests | `scripts/`, `config/` |
+| `plan_review/` | Plan-review gate (planner/critic classification, plan-lock grammar) | `agents/` |
+| `skills/` | Skill-contract tests | `.claude/skills/` |
+| `weekly_release/` | Weekly-release skill tests | `.claude/skills/weekly-release/` |
 
 Two files stay at the **root** by design (no domain home, cross-cutting entry
-points): `test_go_gate.py`, `test_menu_renderer.py`. `conftest.py` also stays at
-root — it must sit at the collection root to apply to every subdir.
+points): `test_competence_scoring.py`, `test_repos_conf.py`. `conftest.py` also
+stays at root — it must sit at the collection root to apply to every subdir.
 
 ## Tie-break order (when a test could fit two domains)
 
@@ -29,15 +28,10 @@ precedence (first match wins):
 
 1. `ci/` — if it's a meta-test for a `paths:`-filtered workflow guard, it goes
    here regardless of what the guard watches.
-2. `install/` — if it drives the installer end-to-end.
-3. `reactive_core/` → `memory/` → `decisions/` → `comms/` → `status/` — the
+2. `comms/` → `plan_review/` → `evals/` → `skills/` → `weekly_release/` — the
    named capability domains, in that order.
-4. `infrastructure/` — the catch-all. A test lands here only when it matches no
+3. `infrastructure/` — the catch-all. A test lands here only when it matches no
    named domain above.
-
-Rule of thumb: a test that touches memory *through* the orchestrator is a
-`reactive_core/` test (it asserts orchestrator behaviour); a test that exercises
-the memory server directly is a `memory/` test.
 
 ## Import contract (#978/#980)
 
@@ -47,9 +41,11 @@ the memory server directly is a `memory/` test.
   a test's package-qualified node ID (`subdir.test_x`) stays unique across
   same-named files (e.g. two `test_installer.py`).
 - **Shared helpers live in `tests/_support/`**, on `pythonpath` (see
-  `pyproject.toml`). Import them by their module name, not a `test_` prefix:
-  - `from supabase_stubs import FakeClient` (was `test_utils`)
-  - `from record_decision_doubles import make_client` (was `test_record_decision_helpers`)
+  `pyproject.toml`). Import them by their module name, not a `test_` prefix,
+  e.g. `import notify_transport_double` (used by `reactive_core/test_notify.py`
+  both as a direct import and via dotted-path resolution, as the string
+  `"notify_transport_double:fake_transport"`, exercising the same
+  dotted-path-resolution mechanism production code uses to load a transport).
   The `_support` dir is not collected (leading underscore) and its modules are
   never named `test_*`, so they can't be mistaken for test files.
 
@@ -58,8 +54,11 @@ the memory server directly is a `memory/` test.
 A subdir name must **not** equal an importable top-level source package. Under
 `--import-mode=prepend` + per-subdir `__init__.py`, pytest would bind
 `sys.modules['<name>']` to the empty test `__init__.py` and shadow the real
-package. This is why `agents/` → `reactive_core/` and `comm_patterns/` →
-`comms/`: the source packages `agents` and `scripts/comm_patterns` would
-otherwise be shadowed (the former silently resolving to a stale editable-install
-copy). When adding a subdir, check `python -c "import importlib.util,sys;
+package. This is why `comm_patterns/` → `comms/`: the source package
+`scripts/comm_patterns` would otherwise be shadowed. (A test subdir once named
+`reactive_core/`, renamed from `agents/` for the same reason, was itself
+retired when the reactive-core agent stack it covered was demolished in
+#1802 — `agents/` today is a small, still-live package of plan-review helpers
+with no dedicated test subdir of its own.) When adding a subdir, check
+`python -c "import importlib.util,sys;
 print(importlib.util.find_spec('<name>'))"` returns `None`.

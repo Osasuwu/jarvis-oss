@@ -377,7 +377,12 @@ def test_null_label_is_skipped_but_watermark_advances(tmp_path: Path):
     store = InMemoryStore()
 
     def null_classifier(user_text, prev):
-        return {"primary_label": None, "subtype": None, "confidence": 0.0, "anchor_quote": user_text}
+        return {
+            "primary_label": None,
+            "subtype": None,
+            "confidence": 0.0,
+            "anchor_quote": user_text,
+        }
 
     stats = extract_session(
         device="dev1",
@@ -417,8 +422,12 @@ def test_partial_failure_does_not_skip_failed_turn_on_next_run(tmp_path: Path):
             flaky_calls["n"] += 1
             if flaky_calls["n"] == 1:
                 return None  # first attempt fails
-        return {"primary_label": "affirmation", "subtype": None,
-                "confidence": 0.9, "anchor_quote": user_text}
+        return {
+            "primary_label": "affirmation",
+            "subtype": None,
+            "confidence": 0.9,
+            "anchor_quote": user_text,
+        }
 
     common = dict(
         device="dev1",
@@ -471,8 +480,12 @@ def test_wall_clock_budget_aborts_loop_and_preserves_watermark(tmp_path: Path):
 
     def slow(user_text, prev):
         clock.sleep(0.05)
-        return {"primary_label": "affirmation", "subtype": None,
-                "confidence": 0.9, "anchor_quote": user_text}
+        return {
+            "primary_label": "affirmation",
+            "subtype": None,
+            "confidence": 0.9,
+            "anchor_quote": user_text,
+        }
 
     with patch("comm_patterns.extractor.time.monotonic", clock.monotonic):
         stats = extract_session(
@@ -579,8 +592,12 @@ def test_ollama_unavailable_mid_pass_preserves_completed_turns(tmp_path: Path):
     def flaky(user_text, prev):
         if user_text == "u2":
             raise OllamaUnavailable("connection refused mid-pass")
-        return {"primary_label": "affirmation", "subtype": None,
-                "confidence": 0.9, "anchor_quote": user_text}
+        return {
+            "primary_label": "affirmation",
+            "subtype": None,
+            "confidence": 0.9,
+            "anchor_quote": user_text,
+        }
 
     common = dict(
         device="dev1",
@@ -607,8 +624,12 @@ def test_ollama_unavailable_mid_pass_preserves_completed_turns(tmp_path: Path):
 
     # --- Pass 2: Ollama is back — retry picks up u2 and u3 ---
     def healthy(user_text, prev):
-        return {"primary_label": "affirmation", "subtype": None,
-                "confidence": 0.9, "anchor_quote": user_text}
+        return {
+            "primary_label": "affirmation",
+            "subtype": None,
+            "confidence": 0.9,
+            "anchor_quote": user_text,
+        }
 
     common["classify_fn"] = healthy
     stats2 = extract_session(**common)

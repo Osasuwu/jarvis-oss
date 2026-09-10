@@ -61,6 +61,18 @@ Consequences, each of which has bitten at least once:
   the poisoned one as superseded without merging it. A PR number that ever carried the pattern,
   anywhere in its lifetime (body at any point, or any commit ever pushed to it even if later
   removed), cannot be trusted to report a clean `closingIssuesReferences` again.
+- **Negation and tense don't help — the scanner matches the bare keyword+number adjacency with
+  no grammar awareness.** Writing `does not close #N` or `will close #N` to explain that a PR
+  *isn't* closing an issue still poisons `closingIssuesReferences`: the regex is effectively
+  `(close|closes|closed|closing|fix|fixes|fixed|fixing|resolve|resolves|resolved|resolving) #N`,
+  matched regardless of what comes before it. Hit live drafting PR #1849 (replacing the poisoned
+  #1847, itself an instance of the stickiness bullet above): the explanatory prose said "this PR
+  does not close #1846", and that alone was enough to re-poison the new PR. The only fix is the
+  same one as the literal-substring bullet — avoid keyword+number adjacency entirely, not just
+  avoid the imperative form. Rephrase around the object instead of the keyword: "leaves #1846
+  open rather than terminating it" works, "does not close #1846" does not. Verify with a plain
+  regex grep for the keyword pattern adjacent to `#N` before publishing, not just a read-through
+  for the imperative form.
 - **Squash-merge composes the final commit from every commit on the branch — a clean pre-merge
   `closingIssuesReferences` does not protect against this.** GitHub's default squash-merge
   message concatenates each branch commit's own subject and body into one composed message, and

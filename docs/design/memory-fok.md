@@ -1,6 +1,16 @@
 # Feeling-of-Knowing (Memory Phase 5.3) — Design
 
-**Status:** 5.3-α approved — six decisions ratified via Discussion [#439](https://github.com/Osasuwu/jarvis/discussions/439) (2026-04-27). 5.3-β/γ/δ shipped via milestone #34 (CLOSED 2026-04-29). This doc was the PRD; live behaviour reflects shipped state — the §2 "what's already in the tree" table captured the pre-5.3 baseline (some "shipped" rows describe pre-#444 inline-upsert state, retained as historical context). Inline `Status (#N)` annotations below mark where descriptions changed post-shipment.
+**Status: OBSOLETE (2026-09-10).** The entire substrate this doc designs against —
+`mcp-memory/` (incl. `_emit_recall_event`, `_hybrid_recall`), `scripts/fok-batch.py`,
+`scripts/memory-recall-hook.py`, and the Supabase `events`/`known_unknowns`/memory tables — was
+deleted by the memory-stack demolition (#1801/#1867) and the earlier reactive-core/hook
+demolitions (#1800). There is no `events` or `events_canonical` table, no batch judge, and no
+recall hook left to emit into either. Every decision below (D1–D6) presumes machinery that no
+longer exists; none of it is actionable as written. Kept as historical record of the 5.3
+proposal, not as a live design — a revival would need to restate the problem against whatever
+(if anything) replaces the memory stack, not patch this doc's RPC/table names.
+
+**Prior status (superseded by the above):** 5.3-α approved — six decisions ratified via Discussion [#439](https://github.com/Osasuwu/jarvis/discussions/439) (2026-04-27). 5.3-β/γ/δ shipped via milestone #34 (CLOSED 2026-04-29). This doc was the PRD; live behaviour reflects shipped state — the §2 "what's already in the tree" table captured the pre-5.3 baseline (some "shipped" rows describe pre-#444 inline-upsert state, retained as historical context). Inline `Status (#N)` annotations below mark where descriptions changed post-shipment.
 **Closes:** #420.
 **Parent issue:** #185.
 **Sprint:** Milestone #34 (Pillar 4 Sprint: feeling-of-knowing 2026-04-26).
@@ -30,9 +40,9 @@ What FOK gives:
 
 | Component | Status | File / Object |
 |---|---|---|
-| Recall event emit (fire-and-forget) | shipped | `_emit_recall_event` in `mcp-memory/handlers/memory.py`; payload: `{query, returned_ids, returned_similarities, returned_count, top_sim, threshold, project, type_filter, show_history}` |
-| Events table | shipped | `events` (`mcp-memory/schema.sql`), `event_type='memory_recall'` |
-| Batch judge | shipped | `scripts/fok-batch.py` — Haiku judges last-24h unfudged events, writes verdict back to `events.payload` |
+| Recall event emit (fire-and-forget) | shipped | `_emit_recall_event` in `mcp-memory/handlers/memory.py`; payload: `{query, returned_ids, returned_similarities, returned_count, top_sim, threshold, project, type_filter, show_history}`. **Status (#1493):** rerouted to raw-insert into `events_canonical` (C17 substrate) via `asyncio.to_thread`; no longer writes `events` |
+| Events table | shipped | `events` (`mcp-memory/schema.sql`), `event_type='memory_recall'`. **Status (#1493):** `memory_recall`/`fok_run` producers (this emit + the UserPromptSubmit hook) moved to `events_canonical`; `events` retained for other event types pending #1524 |
+| Batch judge | shipped | `scripts/fok-batch.py` — Haiku judges last-24h unfudged events, writes verdict back to `events.payload`. **Status (#1493):** reads/writes `events_canonical` instead of `events`; `fok_judgments` linkage unaffected |
 | Known-unknowns table | shipped | `known_unknowns` (#249) |
 | Known-unknowns from FOK | shipped (batch) | `try_insert_known_unknown` in `fok-batch.py` — `verdict=insufficient AND confidence<0.7 AND top_sim<0.6` triggers insert |
 | Known-unknowns from recall | shipped (sync) | `_hybrid_recall` itself upserts `known_unknowns` at `top_sim < GAP_THRESHOLD=0.45` (memory.py:374) **and again** at `top_sim < 0.45` hardcoded (memory.py:397) — duplicate path. **Status (#444):** both inline upserts removed in Phase 5.3-γ; gap detection now lives in the batch FOK judge (per D5 plan below) |
@@ -43,7 +53,7 @@ What FOK gives:
 | Judge model is `claude-3-5-haiku-20241022` | Project standard moved to Haiku 4.5 (`claude-haiku-4-5-20251001`); 3.5 Haiku is on retirement track |
 | No scheduled cadence | Script exists but no scheduled-task entry. Ran ad-hoc; events accumulate unjudged |
 | Verdict stored in `events.payload` JSONB | Hard to FK to outcomes for calibration; awkward `WHERE payload->>'fok_verdict'` queries; no model/version columns |
-| UserPromptSubmit hook calls match RPCs directly | `scripts/memory-recall-hook.py` bypasses `_handle_recall`, so its (high-volume) recalls are NOT in `events` and therefore NOT judged |
+| UserPromptSubmit hook calls match RPCs directly | `scripts/memory-recall-hook.py` bypasses `_handle_recall`, so its (high-volume) recalls are NOT in `events` and therefore NOT judged. **Status (#1493):** hook now does its own raw insert into `events_canonical`, so its recalls ARE captured (in the new substrate) and eligible for FOK judging |
 | No calibration of the judge | Verdicts written, never compared to whether the downstream task actually succeeded |
 | Two redundant inline gap-detect paths | `_hybrid_recall` upserts `known_unknowns` twice in the same function call on the same condition. **Status (#444):** removed in Phase 5.3-γ |
 
@@ -73,7 +83,7 @@ What FOK gives:
 - Prioritize the interesting cases — events where `returned_count < 3` OR `top_sim < 0.6` OR `returned_count == 0` jump to the front of the batch queue.
 - **High-volume recalls (UserPromptSubmit hook) emit events too** (D2-bis below) but participate in the same 50/day budget via prioritization, not by being excluded.
 
-**D2-bis — UserPromptSubmit hook should emit:** `scripts/memory-recall-hook.py` calls `match_memories` + `keyword_search_memories` directly, bypassing `_handle_recall`. Result: ~10–50 hook recalls/session/device × 3 devices fire daily without entering FOK. Add a thin emit at the hook level (same payload shape). The volume cap then handles cost.
+**D2-bis — MOOT (2026-09-10):** was "UserPromptSubmit hook should emit" — `scripts/memory-recall-hook.py` calls `match_memories` + `keyword_search_memories` directly, bypassing `_handle_recall`. Both RPCs are retired (migration `20260901000000_retire_memory_stack_tables.sql`, #1801) and the hook file itself is deleted (#1800). There is nothing left to add an emit to, and no `_handle_recall` for it to bypass. Not resurrected by an update — the whole recall-hook-to-FOK pipeline this bullet describes no longer exists (see the doc-level OBSOLETE status note above).
 
 **Why not metadata-only (name + type + description + tags):**
 - The judge's question is "do these answer the query?" — content matters more than canonical form. Phase 5.2 evolution principle (canonical form for embeddings) is about *vector representation*, not Haiku prompt context.

@@ -81,6 +81,7 @@ def test_captured_at_from_garbage_falls_back_to_now():
         assert "None" not in out
         # ISO-shaped fallback parses cleanly.
         from datetime import datetime
+
         datetime.fromisoformat(out)
 
 
@@ -138,6 +139,7 @@ def test_run_uses_shared_confidence_threshold():
     silently changes which historical patterns get re-classified into
     the table."""
     from comm_patterns.extractor import CONFIDENCE_THRESHOLD as live_threshold
+
     # Value check: if the backfill module has a different number, this
     # catches the drift.
     assert _mod.CONFIDENCE_THRESHOLD == live_threshold
@@ -146,6 +148,7 @@ def test_run_uses_shared_confidence_threshold():
     # happen to share the same literal — this guards against a refactor
     # that silently copies the value instead of importing it.
     import inspect
+
     source = inspect.getsource(_mod)
     assert "from comm_patterns.extractor import CONFIDENCE_THRESHOLD" in source, (
         "Backfill must import CONFIDENCE_THRESHOLD from extractor, not hardcode it"
@@ -161,9 +164,7 @@ def test_run_max_examples_caps_processing(tmp_path: Path, monkeypatch):
         "device": "X",
         "date_range": ["2026-04-01", "2026-04-30"],
         "correctives": {
-            "perm": {"examples": [
-                {"trigger": "t", "correction": f"c{i}"} for i in range(10)
-            ]}
+            "perm": {"examples": [{"trigger": "t", "correction": f"c{i}"} for i in range(10)]}
         },
     }
     (sub / "X_patterns.json").write_text(_dumps_json(payload), encoding="utf-8")
@@ -172,8 +173,12 @@ def test_run_max_examples_caps_processing(tmp_path: Path, monkeypatch):
 
     def fake_classify(user_text, prev):
         calls["n"] += 1
-        return {"primary_label": "affirmation", "subtype": None,
-                "confidence": 0.9, "anchor_quote": user_text}
+        return {
+            "primary_label": "affirmation",
+            "subtype": None,
+            "confidence": 0.9,
+            "anchor_quote": user_text,
+        }
 
     monkeypatch.setattr(_mod, "call_ollama", fake_classify)
     stats = _mod.run(dry_run=True, cache_root=cache_root, max_examples=3)
@@ -194,10 +199,12 @@ def test_run_ollama_unavailable_aborts_run_circuit_breaker(tmp_path: Path, monke
         "device": "X",
         "date_range": ["2026-04-01", "2026-04-30"],
         "correctives": {
-            "perm": {"examples": [
-                {"trigger": "t", "correction": "c1"},
-                {"trigger": "t", "correction": "c2"},
-            ]}
+            "perm": {
+                "examples": [
+                    {"trigger": "t", "correction": "c1"},
+                    {"trigger": "t", "correction": "c2"},
+                ]
+            }
         },
     }
     (sub / "X_patterns.json").write_text(_dumps_json(payload), encoding="utf-8")
@@ -249,7 +256,9 @@ def test_run_ollama_unavailable_circuit_breaker_spans_files(tmp_path: Path, monk
     assert stats["rows_written"] == 0
 
 
-def test_run_primary_label_null_increments_no_pattern_not_connection_errors(tmp_path: Path, monkeypatch):
+def test_run_primary_label_null_increments_no_pattern_not_connection_errors(
+    tmp_path: Path, monkeypatch
+):
     """Successful response with primary_label=None increments no_pattern,
     not connection_errors. This confirms we don't merge (1) and (3) from
     the issue description."""
@@ -260,16 +269,22 @@ def test_run_primary_label_null_increments_no_pattern_not_connection_errors(tmp_
         "device": "X",
         "date_range": ["2026-04-01", "2026-04-30"],
         "correctives": {
-            "perm": {"examples": [
-                {"trigger": "t", "correction": "c1"},
-            ]}
+            "perm": {
+                "examples": [
+                    {"trigger": "t", "correction": "c1"},
+                ]
+            }
         },
     }
     (sub / "X_patterns.json").write_text(_dumps_json(payload), encoding="utf-8")
 
     def null_label(user_text, prev):
-        return {"primary_label": None, "subtype": None,
-                "confidence": 0.0, "anchor_quote": user_text}
+        return {
+            "primary_label": None,
+            "subtype": None,
+            "confidence": 0.0,
+            "anchor_quote": user_text,
+        }
 
     monkeypatch.setattr(_mod, "call_ollama", null_label)
     stats = _mod.run(dry_run=True, cache_root=cache_root)
@@ -282,4 +297,5 @@ def test_run_primary_label_null_increments_no_pattern_not_connection_errors(tmp_
 # Helper kept here so the import block stays stable.
 def _dumps_json(obj) -> str:
     import json as _json
+
     return _json.dumps(obj, ensure_ascii=False)

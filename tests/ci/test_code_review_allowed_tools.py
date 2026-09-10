@@ -1,25 +1,40 @@
 """Drift guard for the code-review action's `--allowed-tools` allowlist.
 
 The code-review action runs HEADLESS (`anthropics/claude-code-action@v1`): any
-tool the plugin's reviewer agents invoke that is NOT in `--allowed-tools` is
-DENIED outright — there is no human to approve the prompt. When the allowlist
-is a strict subset of what the plugin actually uses, the denied calls turn into
-repeated `permission_denials`: the agents burn turns retrying, then flail at the
-final comment-post step — posting `test`/`PLACEHOLDER`/`ping` probe comments,
+tool the reviewer invokes that is NOT in `--allowed-tools` is DENIED outright —
+there is no human to approve the prompt. When the allowlist is a strict subset
+of what the reviewer actually uses, the denied calls turn into repeated
+`permission_denials`: the agent burns turns retrying, then flails at the final
+comment-post step — posting `test`/`PLACEHOLDER`/`ping` probe comments,
 fragmenting the review across comments, or posting nothing. A missing or
 unparseable verdict comment fails the merge gate CLOSED (#993), and the PR ends
 up admin-merged. (jarvis#1042; incident `incident_pr963_rework_blowup`.)
 
-Concretely: plugin reviewer agent #9 (structural-growth) runs
-`git show <sha>:<file> | wc -l`, and agent #3 reads `git blame` / `git log`.
-Those four tools (`git show`, `git blame`, `git log`, `wc`) were absent from the
-allowlist for months, producing ~9 denials per run.
-
 This is the #326 silent-subset-drift class: nothing compared the workflow
-allowlist against the tools the plugin needs, so the gap was invisible. This
-guard pins the load-bearing tools in BOTH the live reference workflow and the
-repo-baseline canon (the propagation template pushed to every owned repo,
-including redrobot) so the fix can't silently regress.
+allowlist against the tools the reviewer needs, so the gap was invisible. This
+guard pins the load-bearing tools in the live reference workflow so the
+fix can't silently regress.
+
+#1816: the code-review plugin invocation was retired in favor of a direct
+single-pass prompt (Layer B of the code-gate rebuild). The plugin-prose ⇄
+allowlist diff suite that used to pin the vendored plugin command snapshot
+(jarvis#1225) is retired along with it — there is no more vendored prose to
+diff against a live allowlist. `Skill(code-review:code-review)` is dropped
+from REQUIRED_TOOLS since the reviewer no longer dispatches through a plugin
+Skill invocation.
+
+#1850 DENYLIST REBUILD: the narrow per-verb allowlist model itself was the
+recurring root cause (jarvis#1042, #1198, #1210, #1218, #1223, #1841 — five
+rounds of "reviewer needed an unenumerated read verb, got denied, patch in
+the one missing prefix"). The allowlist now grants `Bash(git:*)` and the `gh`
+noun-groups the reviewer uses (`gh pr:*`, `gh issue:*`, `gh search:*`,
+`gh label:*`) wholesale, with a `--disallowed-tools` list carving the
+mutating verbs back out — mirrors the allow+disallow pattern already shipped
+in agent-dispatch.yml. `REQUIRED_TOOLS` entries that named individual git
+read verbs (`git show`/`git blame`/`git log`/`git fetch`) are superseded by
+the wholesale `Bash(git:*)` grant; this guard now also pins the
+`--disallowed-tools` mutating-verb list so the denylist can't silently thin
+out the same way the old allowlist did.
 """
 
 from __future__ import annotations
@@ -31,68 +46,137 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "code-review.yml"
-CANON_WORKFLOW = REPO_ROOT / "scripts" / "repo_baseline" / "canon" / "code-review.yml"
 
 # The tools whose absence caused the #1042 permission_denials. These are the
-# git/structural tools the plugin's reviewer agents invoke; if any is dropped
-# from the allowlist the headless action denies it and the post step degrades.
+# git/structural tools the reviewer invokes; if any is dropped from the
+# allowlist the headless action denies it and the post step degrades.
+#
+# #1850: individual git read-verb entries (`git show`/`git blame`/`git log`/
+# `git fetch`) were retired from this list — they're superseded by the
+# wholesale `Bash(git:*)` grant the denylist rebuild introduced. Pinning them
+# individually would just re-create the whack-a-mole this rebuild exists to
+# end; `test_git_wholesale_grant_present` below pins the wholesale grant
+# instead.
 REQUIRED_TOOLS = (
-    # Native file-reading tools. The deployed plugin prose (fork
-    # claude-plugins-official) steers reviewer + file-discovery agents to
-    # Read/Grep/Glob instead of Bash `cat`/`grep`/`find`. jarvis's allowlist
-    # never granted them (redrobot's did) — so the agents were told to use them
-    # then DENIED, the core face of the allowlist-drift class
-    # (`code_review_allowlist_drift_class`). Dropping any re-opens that drift.
+    # Native file-reading tools — the reviewer prose steers it to Read/Grep/
+    # Glob instead of Bash `cat`/`grep`/`find`. Dropping any re-opens the
+    # allowlist-drift class (`code_review_allowlist_drift_class`).
     "Read",
     "Grep",
     "Glob",
-    "Bash(git show:*)",
-    "Bash(git blame:*)",
-    "Bash(git log:*)",
     "Bash(wc:*)",
+    # #1841: merge-commit second-parent inspection (an autobase-pushed
+    # "Merge branch 'main' into <pr-branch>" commit) needs these to look up
+    # the merge commit and diff its parents. `gh api` stays on its own narrow
+    # grant even after #1850 — its `-X <method>`/`--input` mutation flags can
+    # appear anywhere in the command line, so a prefix-matched disallow can't
+    # reliably catch every spelling the way it can for `gh pr`/`gh issue`.
+    "Bash(gh api repos/*/commits/*:*)",
+    "Bash(gh api repos/*/compare/*:*)",
     # Compound-command guard: headless permission matching splits on ; | && and
     # newlines and checks each sub-command, so an un-allowlisted `echo` prefix
     # (`echo "=== …" ; gh pr view …`) denies the whole compound even though
     # `gh pr view` is allowlisted. This was an observed denial on PR #1226.
     "Bash(echo:*)",
-    # #971: the plugin composes the verdict body with the Write tool at
+    # #971: the reviewer composes the verdict body with the Write tool at
     # /tmp/code-review-comment.md and posts via `gh pr comment --body-file`,
     # so no shell string-interpretation touches review prose (backticks,
     # $(...), $VAR would otherwise be evaluated under bash -c). Dropping this
     # grant denies the Write in the headless runner and the post step degrades
     # back to shell-assembled bodies. Granted UNSCOPED (`Write`, not
-    # `Write(//tmp/**)`): the `//tmp/**` glob failed to match the plugin's
-    # `/tmp/...` path on the Linux runner, denying the verdict Write.
+    # `Write(//tmp/**)`): the `//tmp/**` glob failed to match `/tmp/...` on
+    # the Linux runner, denying the verdict Write.
     "Write",
-    # #1218: the code-review plugin's `/code-review` command is dispatched
-    # through the `Skill` tool in the headless action (plugin commands are
-    # Skill invocations, registered as `code-review:code-review`). Without this
-    # grant EVERY review run denies the command itself → ~16 denials, no verdict
-    # posted, and the gates pass VACUOUSLY (empty exec log → exit 0), so
-    # auto-merge ships PRs unreviewed. This is the plugin-dispatch face of the
-    # allowlist-drift class (memory `code_review_allowlist_drift_class`).
-    "Skill(code-review:code-review)",
 )
 
-# Sanity floor — the pre-existing tools that must never disappear either.
-BASELINE_TOOLS = (
-    "Bash(gh pr comment:*)",
-    "Bash(gh pr diff:*)",
-    "Bash(gh pr view:*)",
+# #1850: the wholesale grants the denylist rebuild introduced. These replace
+# the old per-verb git/gh entries — dropping any of these re-opens exactly
+# the allowlist-drift class this rebuild was meant to close.
+WHOLESALE_GRANTS = (
+    "Bash(git:*)",
+    "Bash(gh pr:*)",
+    "Bash(gh issue:*)",
+    "Bash(gh search:*)",
+    "Bash(gh label:*)",
 )
+
+# #1850: the mutating verbs in the wholesale-granted noun-groups above must
+# stay carved out via --disallowed-tools, or the wholesale grants turn into a
+# real mutation surface (this job's token is pull-requests: write, so a `gh
+# pr edit`/`gh issue close` slipping through would actually succeed against
+# the API, unlike git push which the read-only contents token can't do
+# regardless).
+REQUIRED_DISALLOWED = (
+    "Bash(gh pr merge:*)",
+    "Bash(gh pr close:*)",
+    "Bash(gh pr edit:*)",
+    "Bash(gh pr reopen:*)",
+    "Bash(gh pr review:*)",
+    "Bash(gh pr ready:*)",
+    "Bash(gh pr create:*)",
+    "Bash(gh pr lock:*)",
+    "Bash(gh pr unlock:*)",
+    "Bash(gh issue create:*)",
+    "Bash(gh issue edit:*)",
+    "Bash(gh issue close:*)",
+    "Bash(gh issue reopen:*)",
+    "Bash(gh issue delete:*)",
+    "Bash(gh issue lock:*)",
+    "Bash(gh issue unlock:*)",
+    "Bash(gh issue pin:*)",
+    "Bash(gh issue unpin:*)",
+    "Bash(gh issue transfer:*)",
+    "Bash(gh issue comment:*)",
+    "Bash(gh label create:*)",
+    "Bash(gh label edit:*)",
+    "Bash(gh label delete:*)",
+    "Bash(git push:*)",
+    "Bash(git commit:*)",
+    "Bash(git merge:*)",
+    "Bash(git reset:*)",
+    "Bash(git rebase:*)",
+    "Bash(git cherry-pick:*)",
+    "Bash(git stash:*)",
+    "Bash(git clean:*)",
+    "Bash(git rm:*)",
+    "Bash(git mv:*)",
+    "Bash(git apply:*)",
+    "Bash(git am:*)",
+    "Bash(git checkout:*)",
+    "Bash(git switch:*)",
+    "Bash(git restore:*)",
+)
+
+# Sanity floor — the pre-existing tools that must never disappear. #1850:
+# these three are individual `gh pr` verbs superseded by the wholesale
+# `Bash(gh pr:*)` grant tested in `test_wholesale_git_and_gh_grants_present`
+# (that grant subsumes them, so pinning them as literal substrings would
+# just fail against the new broadened string). Kept as a comment rather than
+# a dropped test: `gh pr view`/`diff`/`comment` are the reviewer's actual
+# minimum viable command set — if the wholesale grant is ever narrowed back
+# to individual verbs, these three are the floor to restore first.
 
 _ALLOWED_TOOLS_RE = re.compile(r'--allowed-tools\s+"([^"]*)"')
+_DISALLOWED_TOOLS_RE = re.compile(r'--disallowed-tools\s+((?:"[^"]*"\s*)+)')
 
 
 def _allowed_tools_blocks(path: Path) -> list[str]:
-    """Every `--allowed-tools "..."` string in the file (canon has two jobs)."""
+    """Every `--allowed-tools "..."` string in the file."""
     text = path.read_text(encoding="utf-8")
     blocks = _ALLOWED_TOOLS_RE.findall(text)
     assert blocks, f"no --allowed-tools line found in {path}"
     return blocks
 
 
-@pytest.mark.parametrize("path", [LIVE_WORKFLOW, CANON_WORKFLOW], ids=["live", "canon"])
+def _disallowed_tools_blocks(path: Path) -> list[list[str]]:
+    """Every `--disallowed-tools "a" "b" ...` entry list in the file."""
+    text = path.read_text(encoding="utf-8")
+    raw_blocks = _DISALLOWED_TOOLS_RE.findall(text)
+    assert raw_blocks, f"no --disallowed-tools line found in {path}"
+    return [re.findall(r'"([^"]*)"', raw) for raw in raw_blocks]
+
+
+@pytest.mark.parametrize("path", [LIVE_WORKFLOW], ids=["live"])
 def test_required_git_tools_present(path: Path) -> None:
     for block in _allowed_tools_blocks(path):
         for tool in REQUIRED_TOOLS:
@@ -103,274 +187,47 @@ def test_required_git_tools_present(path: Path) -> None:
             )
 
 
-@pytest.mark.parametrize("path", [LIVE_WORKFLOW, CANON_WORKFLOW], ids=["live", "canon"])
-def test_baseline_tools_present(path: Path) -> None:
+@pytest.mark.parametrize("path", [LIVE_WORKFLOW], ids=["live"])
+def test_wholesale_git_and_gh_grants_present(path: Path) -> None:
+    """#1850: the denylist rebuild's core grants — dropping any of these
+    re-opens the per-verb whack-a-mole the rebuild was meant to end."""
     for block in _allowed_tools_blocks(path):
-        for tool in BASELINE_TOOLS:
-            assert tool in block, f"{path.name}: allowlist dropped baseline tool {tool!r}"
+        for tool in WHOLESALE_GRANTS:
+            assert tool in block, (
+                f"{path.name}: allowlist missing wholesale grant {tool!r} — this is "
+                f"the #1850 denylist-rebuild grant, dropping it reopens the "
+                f"allowlist-drift class. Allowlist was: {block}"
+            )
 
 
-def test_canon_jobs_share_one_allowlist() -> None:
-    """Canon's two retry jobs (attempt-1/attempt-2) must carry identical lists —
-    a fix applied to one job but not the other still leaks denials on retry."""
-    blocks = _allowed_tools_blocks(CANON_WORKFLOW)
-    assert len(blocks) == 2, f"expected 2 allowlist blocks in canon, got {len(blocks)}"
-    assert blocks[0] == blocks[1], "canon attempt-1 and attempt-2 allowlists diverged"
+@pytest.mark.parametrize("path", [LIVE_WORKFLOW], ids=["live"])
+def test_mutating_verbs_disallowed(path: Path) -> None:
+    """#1850: the wholesale `Bash(git:*)`/`Bash(gh pr:*)`/`Bash(gh issue:*)`/
+    `Bash(gh label:*)` grants above are only safe as long as every mutating
+    verb in those noun-groups is carved back out via --disallowed-tools."""
+    for block in _disallowed_tools_blocks(path):
+        for tool in REQUIRED_DISALLOWED:
+            assert tool in block, (
+                f"{path.name}: --disallowed-tools missing {tool!r} — the wholesale "
+                f"#1850 allow grants make this a real mutation surface without the "
+                f"disallow entry. Disallowed-tools was: {block}"
+            )
 
 
-def test_live_and_canon_allowlists_match() -> None:
-    """Live reference and canon template must agree, or propagated repos get a
-    different (stale) allowlist than the one we validated here."""
-    live = _allowed_tools_blocks(LIVE_WORKFLOW)[0]
-    canon = _allowed_tools_blocks(CANON_WORKFLOW)[0]
-    assert live == canon, (
-        "live workflow and canon allowlists diverged — re-snapshot the canon "
-        "after changing the live allowlist so the fix propagates to owned repos"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Plugin command-prose ⇄ allowlist pin (jarvis#1225)
-# ---------------------------------------------------------------------------
-#
-# The plugin command file (`Osasuwu/claude-plugins-official`
-# …/plugins/code-review/commands/code-review.md) is the PROSE that instructs the
-# headless reviewer agents. When that prose tells an agent to run a Bash command
-# that is NOT in the action's `--allowed-tools` allowlist, the headless runner
-# DENIES it (no human to approve), the denials pile up, and the review gate
-# degrades / fail-closes — exactly the claude-plugins-official#10 incident (a
-# step-1(d) `gh api` instruction that was unreachable in CI).
-#
-# claude-plugins-official#10 fixed it with a one-time grep (its AC6). This pins
-# that grep permanently — same "guards need a fixture test" convention as
-# jarvis#326: every backtick-quoted shell command in the vendored command prose
-# must match an `--allowed-tools` glob, UNLESS the surrounding sentence forbids
-# it.
-#
-# Two sources, one live and one vendored:
-#   * Allowlist — parsed LIVE from `.github/workflows/code-review.yml` via
-#     `_allowed_tools_blocks` (the mechanism this module already uses; the issue
-#     says pin against whatever copy/fetch mechanism the module already uses —
-#     no new sync channel). The workflow allowlist is what actually governs
-#     headless denial.
-#   * Command prose — a VENDORED static snapshot of the plugin command file
-#     (`tests/ci/fixtures/plugin_code_review_command.md`). ci-meta has no network
-#     and jarvis carries no submodule of the plugins repo, so the prose is
-#     hand-synced; the snapshot is re-vendored when the plugin command changes
-#     (accepted trade-off, jarvis#1225 — the extraction heuristic and snapshot
-#     both need maintenance as the prose evolves). The snapshot's own frontmatter
-#     allowlist is additionally asserted ⊆ the live workflow allowlist so a stale
-#     snapshot that grants MORE than CI can't pass silently.
-#
-# Extraction heuristic (AC2 — tolerate non-command backtick spans):
-#   1. A backtick span is a COMMAND CANDIDATE iff, after splitting on shell
-#      separators (`|` `||` `&&` `;`), a sub-span's first whitespace token is a
-#      known CLI executable (`gh`, `git`, `python`, …) AND the sub-span has ≥2
-#      tokens. This drops file paths (`/tmp/…`), URLs (`https://…`), JSON field
-#      names (`headRefOid`), tool names (`WebFetch`), globs (`*.lock`), and bare
-#      executables (`python3`, `cat`) — none are command instructions to pin.
-#   2. A candidate is a VIOLATION iff it matches NO allowlist prefix (exact or
-#      token-boundary prefix) AND its containing sentence carries no negation /
-#      prohibition cue (not / never / forbidden / unreachable / deliberately …).
-#      The negation carve-out is what lets the prose safely NAME forbidden
-#      commands (`gh api`, `curl`) inside "do NOT run …" instructions without
-#      tripping the guard. Sentence segmentation is on `. ; ! ?` / newline /
-#      em-dash, with backtick spans MASKED first so dotted args
-#      (`-q .commit.committer.date`) don't fragment the surrounding sentence.
-
-PLUGIN_COMMAND_SNAPSHOT = (
-    Path(__file__).resolve().parent / "fixtures" / "plugin_code_review_command.md"
-)
-
-# Bash(<prefix>:*) grant → command prefix. Write(...) / Skill(...) grants are
-# not shell commands and are ignored (the `:` class-exclusion stops the capture
-# before the `:*`).
-_BASH_ALLOW_RE = re.compile(r"Bash\(([^):]+):\*\)")
-_FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---", re.DOTALL)
-_BACKTICK_RE = re.compile(r"`([^`]+)`")
-_SENTENCE_SPLIT_RE = re.compile(r"[.;!?\n]+|[—–]")
-_SHELL_SEP_RE = re.compile(r"\|\||&&|[|;]")
-
-# First token of a backtick span that marks it as a shell-command instruction
-# (vs. a file path, JSON key, glob, or tool name).
-_CLI_EXECUTABLES = frozenset(
-    {
-        "gh",
-        "git",
-        "curl",
-        "wget",
-        "python",
-        "python3",
-        "bash",
-        "sh",
-        "node",
-        "npm",
-        "npx",
-        "pip",
-        "wc",
-        "grep",
-        "cat",
-        "find",
-    }
-)
-
-# Negation / prohibition cues. A backtick command whose sentence carries any of
-# these is an instruction NOT to run it (or a note that it is unreachable), so it
-# must not be flagged as an allowlist violation.
-_NEGATION_RE = re.compile(
-    r"\bnot\b|\bnever\b|n't\b|\bforbid\w*|\bavoid\b|\bunreachable\b"
-    r"|\bcannot\b|\bdeliberately\b|\bdenied\b|\bunavailable\b"
-    r"|not allowlisted|not in the allowed|rather than|instead of",
-    re.IGNORECASE,
-)
-
-
-def _allowlist_command_prefixes(block: str) -> set[str]:
-    """Bash(...) command prefixes from an allowlist string, minus the `:*`."""
-    return {m.strip() for m in _BASH_ALLOW_RE.findall(block)}
-
-
-def _prose_body(markdown: str) -> str:
-    """Command prose = the markdown minus its leading YAML frontmatter."""
-    return _FRONTMATTER_RE.sub("", markdown, count=1)
-
-
-def _split_subcommands(span: str) -> list[str]:
-    return [s.strip() for s in _SHELL_SEP_RE.split(span) if s.strip()]
-
-
-def _is_command_candidate(subcmd: str) -> bool:
-    toks = subcmd.split()
-    return len(toks) >= 2 and toks[0] in _CLI_EXECUTABLES
-
-
-def _command_matches_allowlist(subcmd: str, prefixes: set[str]) -> bool:
-    return any(subcmd == p or subcmd.startswith(p + " ") for p in prefixes)
-
-
-def _iter_backtick_commands(prose: str):
-    """Yield (subcommand, containing_sentence) for every candidate CLI command
-    in a backtick span. Spans are masked with delimiter-free placeholders before
-    sentence segmentation so dotted args don't fragment the sentence."""
-    spans = list(_BACKTICK_RE.finditer(prose))
-    contents: list[str] = []
-    masked: list[str] = []
-    last = 0
-    for i, m in enumerate(spans):
-        masked.append(prose[last : m.start()])
-        masked.append(f"{i}")
-        contents.append(m.group(1))
-        last = m.end()
-    masked.append(prose[last:])
-    masked_text = "".join(masked)
-    placeholder_re = re.compile(r"(\d+)")
-    for sentence in _SENTENCE_SPLIT_RE.split(masked_text):
-        for pm in placeholder_re.finditer(sentence):
-            for sub in _split_subcommands(contents[int(pm.group(1))]):
-                if _is_command_candidate(sub):
-                    yield sub, sentence
-
-
-def _prose_command_violations(markdown: str, prefixes: set[str]) -> list[str]:
-    """Backticked CLI commands the prose instructs that are neither allowlisted
-    nor sitting inside a prohibition sentence."""
-    violations: list[str] = []
-    for sub, sentence in _iter_backtick_commands(_prose_body(markdown)):
-        if _command_matches_allowlist(sub, prefixes):
-            continue
-        if _NEGATION_RE.search(sentence):
-            continue
-        violations.append(sub)
-    return violations
-
-
-# Pre-#10-fix step 1(d): the `gh api` instruction that made the review gate fail
-# in headless CI (`gh api repos/<owner>/<repo>/commits/<sha> -q ...`, positively
-# instructed, not in a prohibition sentence). Vendored inline as the AC3 negative
-# fixture — the guard MUST flag it. Note the "not" in the *previous* sentence
-# (`head-aware, not "any prior review from me".`) is deliberately in a different
-# sentence-segment, which is why the guard segments on sentences rather than a
-# fixed-distance window: a stray negation nearby must not suppress the flag.
-_PRE_FIX_STEP_1D = (
-    '   - For (d), the check MUST be head-aware, not "any prior review from me". '
-    "Resolve the head SHA and its committer time "
-    "(`gh pr view <n> --json headRefOid -q .headRefOid`, then "
-    "`gh api repos/<owner>/<repo>/commits/<sha> -q .commit.committer.date`) and "
-    "compare against the creation time of your latest `### Code review` comment."
-)
-
-
-def _live_prefixes() -> set[str]:
-    return _allowlist_command_prefixes(_allowed_tools_blocks(LIVE_WORKFLOW)[0])
-
-
-def test_plugin_prose_commands_within_allowlist() -> None:
-    """Every backticked CLI command the plugin prose instructs is covered by the
-    live workflow `--allowed-tools` allowlist (or sits in a prohibition
-    sentence). A violation means headless CI would DENY that command."""
-    markdown = PLUGIN_COMMAND_SNAPSHOT.read_text(encoding="utf-8")
-    violations = _prose_command_violations(markdown, _live_prefixes())
-    assert not violations, (
-        "plugin command prose instructs Bash commands absent from the "
-        f"--allowed-tools allowlist (headless CI will DENY these): {violations}. "
-        "Either add the tool to code-review.yml's allowlist or reword the prose. "
-        "If the plugin command changed, re-vendor the snapshot. (jarvis#1225)"
-    )
-
-
-def test_prose_guard_flags_pre_fix_gh_api() -> None:
-    """AC3: the guard fails on the pre-#10-fix content (the step 1(d) `gh api`
-    instruction). Without this negative case the guard could pass vacuously."""
-    violations = _prose_command_violations(_PRE_FIX_STEP_1D, _live_prefixes())
-    assert any(v.startswith("gh api") for v in violations), (
-        f"expected the pre-fix `gh api` instruction to be flagged; got {violations}"
-    )
-
-
-def test_prose_guard_skips_prohibition_mentions() -> None:
-    """AC2: commands named ONLY inside prohibition sentences ("NEVER run …",
-    "not in the allowed tools") must not be flagged as violations."""
-    markdown = PLUGIN_COMMAND_SNAPSHOT.read_text(encoding="utf-8")
-    violations = _prose_command_violations(markdown, _live_prefixes())
-    for forbidden in ("gh api", "curl", "wget", "gh pr checkout", "git fetch"):
-        assert not any(v.startswith(forbidden) for v in violations), (
-            f"{forbidden!r} is mentioned only in prohibition context and must "
-            f"not be flagged; violations={violations}"
+def test_plugin_skill_grant_retired() -> None:
+    """#1816: the plugin invocation is gone — `Skill(code-review:code-review)`
+    must not reappear in the allowlist (it would be a dead/unreachable grant,
+    or a regression back toward the plugin)."""
+    for block in _allowed_tools_blocks(LIVE_WORKFLOW):
+        assert "Skill(code-review:code-review)" not in block, (
+            "allowlist still grants the retired plugin Skill invocation "
+            f"(#1816 dropped the plugin). Allowlist was: {block}"
         )
 
 
-@pytest.mark.parametrize(
-    "span,is_cmd",
-    [
-        ("gh pr view <n> --json headRefOid,commits", True),
-        ("git show <sha>:<file> | wc -l", True),
-        ("python -m py_compile <file>", True),
-        ("gh api repos/o/r/commits/sha -q .commit.date", True),
-        ("headRefOid", False),  # JSON field name
-        ("WebFetch", False),  # tool name, not a shell exe
-        ("/tmp/code-review-comment.md", False),  # file path
-        ("https://github.com/o/r/blob/sha/f#L1-L2", False),  # URL
-        ("*.lock", False),  # glob
-        ("python3", False),  # bare executable, no args
-        ("cat", False),  # bare, single token
-    ],
-)
-def test_command_candidate_heuristic(span: str, is_cmd: bool) -> None:
-    """AC2: the candidate classifier separates shell commands from paths, JSON
-    keys, tool names, globs, and bare executables."""
-    candidates = [s for s in _split_subcommands(span) if _is_command_candidate(s)]
-    assert bool(candidates) is is_cmd, f"{span!r} classified wrong (candidates={candidates})"
-
-
-def test_snapshot_frontmatter_allowlist_subset_of_live() -> None:
-    """The vendored snapshot's own frontmatter allowlist must not grant more Bash
-    tools than the live workflow — else a stale snapshot could 'pass' commands
-    that CI would actually deny."""
-    markdown = PLUGIN_COMMAND_SNAPSHOT.read_text(encoding="utf-8")
-    fm = _FRONTMATTER_RE.match(markdown)
-    assert fm, "snapshot missing YAML frontmatter"
-    extra = _allowlist_command_prefixes(fm.group(1)) - _live_prefixes()
-    assert not extra, (
-        f"snapshot frontmatter grants Bash tools absent from live workflow: "
-        f"{extra} — re-vendor the snapshot or update code-review.yml"
-    )
+def test_plugin_marketplace_inputs_retired() -> None:
+    """#1816: `plugins:`/`plugin_marketplaces:` inputs to the review action
+    must not reappear — the reviewer is a direct prompt now, not a plugin."""
+    text = LIVE_WORKFLOW.read_text(encoding="utf-8")
+    assert "plugins: code-review@jarvis-fork-plugins" not in text
+    assert "plugin_marketplaces:" not in text

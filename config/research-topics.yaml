@@ -7,8 +7,8 @@ fallback_hints:
   - id: jarvis
     label: "Jarvis / personal AI agents"
 
-  - id: your-second-project
-    label: "Your second project's domain"
+  - id: redrobot
+    label: "Robotics / motion planning"
 
   - id: automation
     label: "Process automation & agentic tools"

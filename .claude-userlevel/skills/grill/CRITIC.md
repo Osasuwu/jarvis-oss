@@ -1,15 +1,15 @@
 # Cross-context CRITIC — sub-agent prompt template
 
-Used by `/grill` Phase 3 (cross-context review) when the grill is about to lock acceptance criteria or emit a `record_decision` with `reversibility ∈ {hard, irreversible}`. The point of dispatching a sub-agent (instead of the main grill session self-critiquing) is **role isolation**: single-agent self-critique grades its own exam; personalisation measurably increases sycophancy (MIT 2026; ICLR 2026). A sibling subagent prompted without identity calibration is a cheaper architectural mitigation than calling an external provider.
+Used by `/grill` Phase 3 (cross-context review) when the grill is about to lock acceptance criteria or record a decision with `reversibility ∈ {hard, irreversible}`. The point of dispatching a sub-agent (instead of the main grill session self-critiquing) is **role isolation**: single-agent self-critique grades its own exam; personalisation measurably increases sycophancy (MIT 2026; ICLR 2026). A sibling subagent prompted without identity calibration is a cheaper architectural mitigation than calling an external provider.
 
-This file is the inverted counterpart to [`reason/NEUTRAL-RESEARCHER.md`](../reason/NEUTRAL-RESEARCHER.md): NEUTRAL-RESEARCHER hunts evidence with no recommendation; CRITIC delivers a recommendation in fixed-schema form. The dispatch convention, isolation model, and verbatim-system-block pattern are mirrored deliberately.
+CRITIC delivers a recommendation in fixed-schema form via a dedicated sub-agent dispatch — the dispatch convention, isolation model, and verbatim-system-block pattern below are deliberate: role isolation reduces the self-critique sycophancy risk described above.
 
 Decision basis:
 
 - **Bundle layout** (decision `5d084972-5adb-4df7-8edb-717a3515f522`) — CRITIC lives as a sibling file in the `/grill` bundle, not a cross-skill invocation. Skills stay independent + complementary.
 - **Contract** (decision `222e9bfe-2150-400c-afd9-a3e8defb5988`) — behavioural scrubbing via Agent + nudge prompt; fixed output schema (≤3 risks with severity, ≤3 unmentioned alternatives, 1 challenged assumption); forced per-item disposition (accept/reject/defer) blocks AC-lock.
 
-**Isolation is behavioural, not structural.** The sub-agent is dispatched via the `Agent` tool with `subagent_type: general-purpose` and **without** `isolation: "worktree"`, so the parent session's conversation history (including SOUL.md, always_load memory, CONTEXT.md, and the proposal under critique) is in principle reachable. The instructions below — "you do NOT know which side the dispatcher favours", "produce only the fixed schema, no prose", "your job is to find what the proposer missed" — are a **behavioural nudge** biasing the sub-agent toward fresh critique instead of agreement. This is a known limitation: real isolation would lose access to project memory/codebase the critic needs for grounded critique. The nudge is sufficient for routine bias prevention, not for adversarial scenarios.
+**Isolation is behavioural, not structural.** The sub-agent is dispatched via the `Agent` tool with `subagent_type: general-purpose` and **without** `isolation: "worktree"`, so the parent session's conversation history (including SOUL.md, cross-session recall content, CONTEXT.md, and the proposal under critique) is in principle reachable. The instructions below — "you do NOT know which side the dispatcher favours", "produce only the fixed schema, no prose", "your job is to find what the proposer missed" — are a **behavioural nudge** biasing the sub-agent toward fresh critique instead of agreement. This is a known limitation: real isolation would lose access to project memory/codebase the critic needs for grounded critique. The nudge is sufficient for routine bias prevention, not for adversarial scenarios.
 
 ## Usage from /grill
 
@@ -17,14 +17,14 @@ Decision basis:
 2. **Strip the framing.** Do not forward your own analysis, your prior conclusion, or the user's stated intuition. Do not forward SOUL.md / CLAUDE.md / CONTEXT.md content — the critic should not be pre-aligned with project tendencies.
 3. Concatenate the **System block** below with the stripped proposal and dispatch via the `Agent` tool. Use `subagent_type: general-purpose`.
 4. Wait for the verdict. Do NOT pre-comment or hint at expected findings.
-5. Surface the verdict **unedited** to the owner. The owner then assigns one of **accept / reject / defer** to every returned item before the grill can proceed to AC-lock or emit `record_decision`.
+5. Surface the verdict **unedited** to the owner. The owner then assigns one of **accept / reject / defer** to every returned item before the grill can proceed to AC-lock or record the decision.
 
 ## What NOT to include in the dispatch
 
 - Your own analysis of the proposal ("I think this is solid because…").
 - Which framing the owner currently favours.
 - Prior memory hits that informed the proposal.
-- SOUL.md / CLAUDE.md / CONTEXT.md / always_load memory content.
+- SOUL.md / CLAUDE.md / CONTEXT.md / cross-session recall content.
 - The phrase "is this a good plan?" — primes the critic toward binary judgement instead of structured critique.
 
 If you find yourself wanting to add any of the above for "context", that *is* the bias you are trying to avoid.
@@ -38,7 +38,7 @@ You are a cross-context critic. The agent dispatching you is about to lock accep
 
 Your obligations:
 
-1. **Find what the proposer missed.** Risks they did not name, alternatives they did not consider, assumptions they treated as given. Use the tools available (`Grep`, `Read`, `Glob`, `memory_recall`, web search) to ground your critique in evidence, not vibes — but the deliverable is the critique itself, not a research report.
+1. **Find what the proposer missed.** Risks they did not name, alternatives they did not consider, assumptions they treated as given. Use the tools available (`Grep`, `Read`, `Glob`, web search) to ground your critique in evidence, not vibes — but the deliverable is the critique itself, not a research report.
 
 2. **Produce ONLY the fixed schema below.** No preamble, no executive summary, no closing "hope this helps". Free-form prose is forbidden — prose lets you hedge, and hedging is how cross-context review collapses back into sycophancy at the wording layer.
 

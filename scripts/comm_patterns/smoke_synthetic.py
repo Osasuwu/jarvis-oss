@@ -24,18 +24,42 @@ from .store import InMemoryStore
 def _build_transcript(tmp: Path) -> Path:
     fp = tmp / "synthetic.jsonl"
     rows = [
-        {"type": "assistant", "timestamp": "2026-05-10T12:00:00Z",
-         "message": {"content": [{"type": "text", "text": "I closed issue #200 since #199 covers it."}]}},
-        {"type": "user", "timestamp": "2026-05-10T12:00:01Z",
-         "message": {"content": "нет, не закрывай — там разные acceptance criteria, проверь #200 ещё раз."}},
-        {"type": "assistant", "timestamp": "2026-05-10T12:00:02Z",
-         "message": {"content": [{"type": "text", "text": "Reopened. Updated AC mapping."}]}},
-        {"type": "user", "timestamp": "2026-05-10T12:00:03Z",
-         "message": {"content": "правильно, спасибо."}},
-        {"type": "assistant", "timestamp": "2026-05-10T12:00:04Z",
-         "message": {"content": [{"type": "text", "text": "Tests pass. Want me to open the PR?"}]}},
-        {"type": "user", "timestamp": "2026-05-10T12:00:05Z",
-         "message": {"content": "да, открой."}},
+        {
+            "type": "assistant",
+            "timestamp": "2026-05-10T12:00:00Z",
+            "message": {
+                "content": [{"type": "text", "text": "I closed issue #200 since #199 covers it."}]
+            },
+        },
+        {
+            "type": "user",
+            "timestamp": "2026-05-10T12:00:01Z",
+            "message": {
+                "content": "нет, не закрывай — там разные acceptance criteria, проверь #200 ещё раз."
+            },
+        },
+        {
+            "type": "assistant",
+            "timestamp": "2026-05-10T12:00:02Z",
+            "message": {"content": [{"type": "text", "text": "Reopened. Updated AC mapping."}]},
+        },
+        {
+            "type": "user",
+            "timestamp": "2026-05-10T12:00:03Z",
+            "message": {"content": "правильно, спасибо."},
+        },
+        {
+            "type": "assistant",
+            "timestamp": "2026-05-10T12:00:04Z",
+            "message": {
+                "content": [{"type": "text", "text": "Tests pass. Want me to open the PR?"}]
+            },
+        },
+        {
+            "type": "user",
+            "timestamp": "2026-05-10T12:00:05Z",
+            "message": {"content": "да, открой."},
+        },
     ]
     with fp.open("w", encoding="utf-8") as f:
         for r in rows:

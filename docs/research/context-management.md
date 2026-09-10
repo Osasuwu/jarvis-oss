@@ -133,7 +133,7 @@ Method (#1270): spawn an Agent-tool subagent under a hard **no-tool** rule and a
 |---|---|---|
 | User-level `~/.claude/CLAUDE.md` | file | **YES** |
 | Project `CLAUDE.md` | file | **YES** |
-| `docs/context/invariants.md` | bare `@import` from project `CLAUDE.md` | **YES** |
+| `docs/context/invariants.md` (since folded into root `AGENTS.md` by #1791) | bare `@import` from project `CLAUDE.md` | **YES** |
 | `docs/context/glossary-index.md` | bare `@import` from project `CLAUDE.md` | **YES** |
 | `~/.claude/SOUL.md` | mid-prose `@SOUL.md,` from user-level `CLAUDE.md` | **NO** — and see below |
 | `~/.claude/DOCTRINE.md` | mid-prose `@DOCTRINE.md,` from user-level `CLAUDE.md` | **NO** — and see below |

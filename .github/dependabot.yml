@@ -1,16 +1,11 @@
 version: 2
 updates:
-  # Python dependencies (root pyproject.toml)
+  # Python dependencies (root pyproject.toml + uv.lock) (#1313)
+  # Dependabot updates the ranges in pyproject.toml; uv.lock is regenerated
+  # automatically by dependabot-lockfile.yml on each dependabot push. CI
+  # verifies parity with `uv lock --check` in the lockfile-check job.
   - package-ecosystem: pip
     directory: "/"
-    schedule:
-      interval: weekly
-      day: monday
-    target-branch: main
-
-  # Python dependencies (MCP memory server)
-  - package-ecosystem: pip
-    directory: "/mcp-memory"
     schedule:
       interval: weekly
       day: monday

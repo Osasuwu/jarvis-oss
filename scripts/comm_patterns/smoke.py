@@ -45,9 +45,7 @@ def _pick_default_transcript() -> Path | None:
 
 
 def main() -> int:
-    transcript = (
-        Path(sys.argv[1]) if len(sys.argv) > 1 else _pick_default_transcript()
-    )
+    transcript = Path(sys.argv[1]) if len(sys.argv) > 1 else _pick_default_transcript()
     if not transcript or not transcript.exists():
         print("usage: smoke.py <transcript.jsonl>", file=sys.stderr)
         return 2

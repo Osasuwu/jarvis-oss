@@ -1,0 +1,9 @@
+# Gitleaks false-positive suppressions, keyed by exact finding fingerprint
+# (commit:file:ruleID:line). Each entry documents why it's a known non-secret —
+# do NOT add an entry here for a finding you haven't personally verified is fake.
+
+# #1547: fake apprise service URL in a test fixture exercising _sanitize()'s
+# non-http-scheme redaction — matches jarvis-apprise-service-webhook-url
+# (the exact rule this same PR added) by design, since the test proves the
+# sanitizer catches this shape. Not a real credential.
+cb6536eaa9ad3548f0bb600954f31ce5cfd54c70:tests/reactive_core/test_notify.py:jarvis-apprise-service-webhook-url:331

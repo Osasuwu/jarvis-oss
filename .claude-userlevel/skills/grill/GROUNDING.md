@@ -14,7 +14,7 @@ Decision basis:
 
 ## When this pass fires
 
-Same gating logic as the coverage critic, on top of the existing CRITIC.md triggers (AC-lock gate OR hard/irreversible `record_decision`):
+Same gating logic as the coverage critic, on top of the existing CRITIC.md triggers (AC-lock gate OR a hard/irreversible decision-log entry):
 
 1. **>=2 grill-checkbox yes** — the grill trigger checkbox (`~/.claude/reference/engineering-principles.md`) (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked.
 2. **Milestone-level** — multi-slice grouping under a capability, not an individual slice.
@@ -56,7 +56,7 @@ Same forbidden list as critics, plus grounding-specific:
 - Your own analysis of the design's quality ("I think this is solid because…").
 - Which framing the owner currently favours.
 - Prior memory hits that informed the proposal.
-- SOUL.md / CLAUDE.md / CONTEXT.md / always_load memory content.
+- SOUL.md / CLAUDE.md / CONTEXT.md / cross-session recall content.
 - The phrase "is the design correct?" — primes the agent toward critique-shape; you have two critics for that.
 - **Pre-filled MATCH/MISSING verdicts.** The agent verifies; do not seed answers.
 - **Speculation about why something might be missing.** The agent reports facts; root-cause speculation belongs to the owner's disposition pass, not the Read.

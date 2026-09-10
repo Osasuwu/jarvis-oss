@@ -1,0 +1,75 @@
+# Plan-review classification registry — versioned in git.
+# Human-managed: thresholds/globs/criteria are added and changed only via PR
+# review. No automation writes to this file.
+#
+# Single classification artifact (issue #1685): class-2 trigger thresholds,
+# the exempt criteria list, and the class-3 criteria list live together here
+# — they are one classification vocabulary, not two config files.
+#
+# Schema v2 (#1707): v1's class_3 (a mechanical, no-owner-review exemption
+# list) is renamed to exempt:. The freed class_3: key now carries the true
+# HITL criteria (#1573 AC2) — a change matching one of these cannot close
+# without a human, ordinally the highest classification. Precedence inside
+# classify(): exempt match -> 1, then class_3 match -> 3 (even if a class_2
+# threshold also matches), then class_2 thresholds -> 2, else -> 1.
+#
+# Schema:
+#   class_2:
+#     shared_surface_globs: list[str]   — glob patterns; a change touching any
+#                                          matching path is a shared-surface hit
+#     churn_threshold: int              — total changed-lines strictly above
+#                                          this value trips class 2
+#     min_prod_areas: int               — distinct production areas touched
+#                                          (excluding tests) at or above this
+#                                          count trips class 2
+#   exempt:
+#     mechanical_criteria: list[str]    — named mechanical criteria; a
+#                                          change-set matching any of these is
+#                                          exempt (class 1, no owner review
+#                                          required)
+#   class_3:
+#     mechanical_criteria: list[str]    — named true-HITL criteria; a
+#                                          change-set matching any of these
+#                                          cannot close without a human
+#   models:
+#     planner: str                      — model floor for the planner role
+#                                          (issue #1686 AC9); strong-model
+#                                          class, since a bad plan is expensive
+#     critic: str                       — model floor for the critic panel;
+#                                          sonnet-class by default
+#   lock_max_age_days: int               — pick-time ceiling (issue #1691):
+#                                          a plan:locked sandcastle issue whose
+#                                          lock is older than this is refused
+#                                          at pick time (falls to owner
+#                                          attention, never auto-replanned).
+#                                          Optional; defaults to 14 if absent.
+
+schema_version: "v2"
+
+class_2:
+  shared_surface_globs:
+    - "supabase/**"
+    - "config/repos.conf"
+  churn_threshold: 400
+  min_prod_areas: 2
+
+exempt:
+  mechanical_criteria:
+    - "docs-only"
+    - "typo-fix"
+    - "dependency-bump"
+    - "lint-fix"
+
+class_3:
+  mechanical_criteria:
+    - "admin-rights-required"
+    - "secret-or-credential-provisioning"
+    - "live-third-party-state-verification"
+    - "physical-device-bound"
+    - "whitelist-barred-shared-surface-ddl"
+
+models:
+  planner: "claude-opus-5"
+  critic: "claude-sonnet-5"
+
+lock_max_age_days: 14

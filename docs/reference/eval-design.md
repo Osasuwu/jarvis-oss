@@ -1,6 +1,6 @@
 # Eval design — pull-only reference
 
-Evicted from the always-loaded [`docs/context/invariants.md`](../context/invariants.md) by
+Evicted from the always-loaded invariants file by
 [#1418](https://github.com/Osasuwu/jarvis/issues/1418). Four consecutive eval-design facts were being
 paid in every session on all three devices, and again after every compaction, to serve the rare
 session that actually designs an eval run. Pull this file when planning, scoring, or baselining one.

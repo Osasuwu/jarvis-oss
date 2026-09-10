@@ -115,7 +115,7 @@ The mitigations split along *who emits* and *who reads*:
 
 | Option | Covers | Cost | Risk | Notes |
 |---|---|---|---|---|
-| **P1 — Commit-message convention** | Pattern recognition | XS | zero | Add to `.github/copilot-instructions.md`: "If commit has a per-device-process side-effect, include `device-state: <key>=<value>` line so future readers know it's cross-device-opaque". Doesn't fix the gap; surfaces it. |
+| **P1 — Commit-message convention** | Pattern recognition | XS | zero | Add to root `AGENTS.md`: "If commit has a per-device-process side-effect, include `device-state: <key>=<value>` line so future readers know it's cross-device-opaque". Doesn't fix the gap; surfaces it. |
 | **P2 — `verify` skill clause** | Verification-time check | XS | zero | `/verify` skill (existing) gets a clause: when checking a PR with `area:device-config` label, query `device_status` for relevant keys before declaring verified. ~5 lines in skill. |
 | **P3 — CLAUDE.md "Device boundary" section** | Onboarding | XS | zero | Document the per-device-opaque class explicitly in CLAUDE.md so future chains don't re-derive it. ~10 lines. |
 

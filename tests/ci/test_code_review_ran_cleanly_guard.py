@@ -306,7 +306,7 @@ def workflow_text() -> str:
 @pytest.fixture(scope="module")
 def ran_cleanly_step(workflow_text) -> dict:
     workflow = yaml.safe_load(workflow_text)
-    steps = workflow["jobs"]["review"]["steps"]
+    steps = workflow["jobs"]["code-gate"]["steps"]
     return next(s for s in steps if s.get("name") == "Verify review ran cleanly")
 
 
@@ -389,7 +389,7 @@ class TestRanCleanlyStepWiring:
         # HEAD_TIME is safe here because the step is skipped on autobase
         # pushes (the #1134 non-bot-head case cannot arise) — pinned below.
         run = ran_cleanly_step["run"]
-        assert "HEAD_TIME=$(gh api \"repos/$REPO/commits/$HEAD_SHA\"" in run
+        assert 'HEAD_TIME=$(gh api "repos/$REPO/commits/$HEAD_SHA"' in run
 
     def test_step_skipped_on_autobase_push(self, ran_cleanly_step):
         # Load-bearing for the plain-HEAD_TIME anchor above: on an autobase

@@ -128,12 +128,7 @@ firecrawl_search(query="<topic X> postmortem OR 'considered harmful' OR 'why we 
 - **Knowledge gap** → authoritative explanations, practical examples.
 - **Comparison** → objective criteria, benchmarks, community consensus.
 
-**No topic (discovery):** load context first.
-
-```
-memory_recall(type="decision", limit=10)
-memory_recall(query="working_state", type="project", limit=3)
-```
+**No topic (discovery):** load context first — read the project's `CONTEXT.md` (and `CONTEXT-MAP.md` if present) plus any repo-local `docs/adr/` or `docs/decisions/*.md` entries already in the repo. Don't invent a "working-state section" of `CONTEXT.md` — if the repo doesn't keep one, skip that source.
 
 Also scan recent GitHub issues for each repo in `config/repos.conf`.
 
@@ -206,11 +201,26 @@ One sentence: what makes this confident or uncertain.
 
 ### 5. Save
 
-Save to Supabase if finding is significant:
+Save to a repo-local file if the finding is significant:
 
 ```
-memory_store(type="reference", name="research_{slug}", description="...", content="...", source_provenance="skill:research")
+docs/research/<topic-slug>-<date>.md
 ```
+
+The filename's `<topic-slug>` (kebab-case) identifies the research topic for gate matching — e.g. `topic-agent-loop-architecture`, `topic-memory-subsystem-scaling`, `topic-ci-gate-prevention`. This ties the artifact to the decision topic it was researched for — the research-pass-gate only accepts an artifact file whose slug matches the current topic (see grill/SKILL.md's Research-pass-gate section).
+
+Give the file itself a small header block so the topic and tags travel with the artifact instead of living in an external store:
+
+```
+write_research_artifact(
+    topic="<topic-slug>",
+    tags="area:<area-tag>, research",
+    content="<findings body, the template above>",
+    source_provenance="<issue #, /research invocation, or scheduled run>",
+)
+```
+
+`topic:` here MUST match the filename's `<topic-slug>` exactly — a mismatch (writing `topic: foo` into a file named `bar-<date>.md`) is exactly the #1351 regression this discipline exists to prevent.
 
 If finding is actionable → create GitHub issue in appropriate repo:
 
@@ -221,7 +231,7 @@ gh issue create --repo <R> --title "[RESEARCH] <topic>" --body "..."
 **Discovery-only**: also write a dedup marker so the next scheduled run doesn't repeat topics:
 
 ```
-memory_store(type="project", name="research_last_run", content="{date} — topics: {t1}, {t2}, {t3}", source_provenance="skill:research")
+docs/research/.last-run — {date} — topics: {t1}, {t2}, {t3}
 ```
 
 Check for duplicate research-spawned issues before creating new ones.

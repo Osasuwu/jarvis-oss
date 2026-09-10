@@ -167,7 +167,7 @@ def test_empty_text_returns_false():
 
 def test_scrubber_secret_labels_match_secret_scanner_coverage():
     """Drift sentinel: scrubber's secret-pattern labels must cover the
-    same key types as ``scripts/secret-scanner.py`` (Pillar-9 Sprint-1).
+    same key types as ``.claude/hooks/secret-scanner.py`` (Pillar-9 Sprint-1).
     Regex bodies legitimately differ — JWT got tightened to 3 segments,
     sk- got a negative-lookahead — but the *coverage* must not drift.
 
@@ -178,7 +178,7 @@ def test_scrubber_secret_labels_match_secret_scanner_coverage():
     from comm_patterns.scrubber import _SECRET_PATTERNS
 
     scanner_src = (
-        Path(__file__).resolve().parent.parent.parent / "scripts" / "secret-scanner.py"
+        Path(__file__).resolve().parent.parent.parent / ".claude" / "hooks" / "secret-scanner.py"
     ).read_text(encoding="utf-8")
 
     # ------------------------------------------------------------------
@@ -205,12 +205,9 @@ def test_scrubber_secret_labels_match_secret_scanner_coverage():
     # so "OpenAI-style API Key" was silently dropped before this test was
     # strengthened. Keep the class synced with label naming conventions.
     # ------------------------------------------------------------------
-    _LABEL_RE = _re.compile(
-        r',\s*"([A-Za-z][-A-Za-z0-9 /]+(?:Key|Token|PAT))"'
-    )
+    _LABEL_RE = _re.compile(r',\s*"([A-Za-z][-A-Za-z0-9 /]+(?:Key|Token|PAT))"')
     scanner_labels = set(
-        m.group(1).lower().replace(" ", "-")
-        for m in _re.finditer(_LABEL_RE, scanner_src)
+        m.group(1).lower().replace(" ", "-") for m in _re.finditer(_LABEL_RE, scanner_src)
     )
     scrubber_labels = {label for _, label in _SECRET_PATTERNS}
 
@@ -221,24 +218,36 @@ def test_scrubber_secret_labels_match_secret_scanner_coverage():
     # Floor of secret families we must always carry. Drift below the
     # floor (a family disappearing) trips the assert; new families above
     # the floor are silent because additions are never the bug.
-    expected_floor = {"awskey", "anthropickey", "githubtoken", "openaikey",
-                      "voyagekey", "firecrawlkey", "slacktoken", "telegramtoken"}
+    expected_floor = {
+        "awskey",
+        "anthropickey",
+        "githubtoken",
+        "openaikey",
+        "voyagekey",
+        "firecrawlkey",
+        "slacktoken",
+        "telegramtoken",
+    }
     # 1) Scrubber must cover every high-confidence family.
     assert expected_floor.issubset(scrubber_stems), (
-        f"scrubber missing high-confidence secret families: "
-        f"{expected_floor - scrubber_stems}"
+        f"scrubber missing high-confidence secret families: {expected_floor - scrubber_stems}"
     )
     # 2) Scanner must also cover the same floor (bidirectional drift
     #    sentinel). If the tuple format in secret-scanner.py changes and
     #    the regex silently drops labels, this catches the drift.
     #    Format matches scanner_labels (lowercased, hyphens for spaces).
     scanner_floor = {
-        "aws-access-key", "anthropic-api-key", "github-token",
-        "openai-style-api-key", "voyage-ai-key", "firecrawl-api-key",
-        "slack-token", "telegram-bot-token",
+        "aws-access-key",
+        "anthropic-api-key",
+        "github-token",
+        "openai-style-api-key",
+        "voyage-ai-key",
+        "firecrawl-api-key",
+        "slack-token",
+        "telegram-bot-token",
     }
     assert scanner_floor.issubset(scanner_labels), (
-        f"secret-scanner.py missing or regex failed to extract: "
+        f".claude/hooks/secret-scanner.py missing or regex failed to extract: "
         f"{scanner_floor - scanner_labels}"
     )
 

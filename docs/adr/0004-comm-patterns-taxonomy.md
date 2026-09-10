@@ -78,7 +78,7 @@ The four open questions in the parent issue body were called out specifically be
 
 ## Sample size and method (for §1)
 
-- **Sources:** `~/.claude/projects/<your-projects-dir>/*.jsonl` for each repo, files modified within 14 days (cutoff: 2026-04-26 → 2026-05-10).
+- **Sources:** `~/.claude/projects/<jarvis-project>/*.jsonl` and `~/.claude/projects/<other-project>/*.jsonl`, files modified within 14 days (cutoff: 2026-04-26 → 2026-05-10).
 - **Filter:** sessions with ≥3 user messages after stripping tool results, `<system-reminder>` blocks, hook injections, and `<command-…>` echoes (same filter as [`extract_comms.py`](../../scripts/analyze-comms/extract_comms.py)).
 - **Pool:** 69 interactive sessions, 676 user messages.
 - **Regex prefilter** (kept identical to old `/reflect` for continuity with prior-art baseline):

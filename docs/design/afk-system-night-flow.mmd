@@ -19,7 +19,8 @@ sequenceDiagram
     alt weekly >= 80%
         Probe->>GH: gh variable set CLAUDE_QUOTA_PRESSURE=true
         Probe->>Mem: events_canonical row (quota_pressure, severity=high)
-        Mem->>TG: telegram-notify-hook drains high
+        Mem->>Orch: no enumerated route for quota_pressure — fail-safe ESCALATE
+        Orch->>TG: telegram_notifier (agents/notify.py)
         TG->>P: phone ping — AFK paused
     else weekly < 70%
         Probe->>GH: gh variable set CLAUDE_QUOTA_PRESSURE=false
@@ -82,7 +83,8 @@ sequenceDiagram
         SC->>Mem: events_canonical (rework_stuck, severity=medium)
     else CI red on rework push
         GA->>Mem: events_canonical (ci_failure, severity=high)
-        Mem->>TG: telegram-notify drain high
+        Mem->>Orch: no enumerated route for ci_failure at severity=high — fail-safe ESCALATE
+        Orch->>TG: telegram_notifier (agents/notify.py)
         TG->>P: phone ping
     end
     SC->>GH: PR label status:needs-human + summary comment + body update (## Rework history)

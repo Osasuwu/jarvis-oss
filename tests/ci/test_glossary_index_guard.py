@@ -16,6 +16,7 @@ The duplicate cases are the ones with history behind them: 51fce34 ("dedupe
 ADR block") removed a duplicated glossary block by hand, and a set-based
 checker reports that state as clean in both directions.
 """
+
 from __future__ import annotations
 
 import importlib.util

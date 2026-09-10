@@ -91,16 +91,18 @@ class _FakeResponse(io.BytesIO):
 
 
 def _fake_ollama_envelope(response_text: str) -> bytes:
-    return _json.dumps(
-        {"model": "qwen3:4b", "response": response_text, "done": True}
-    ).encode("utf-8")
+    return _json.dumps({"model": "qwen3:4b", "response": response_text, "done": True}).encode(
+        "utf-8"
+    )
 
 
 def test_call_ollama_unwraps_envelope_and_normalises():
     """Synthetic Ollama response → envelope unwrap → JSON extract →
     normalise. Pinning the wire shape so a future Ollama API change shows
     up here, not in production silently returning None."""
-    inner = '{"primary_label": "affirmation", "subtype": null, "confidence": 0.9, "anchor_quote": "ok"}'
+    inner = (
+        '{"primary_label": "affirmation", "subtype": null, "confidence": 0.9, "anchor_quote": "ok"}'
+    )
     payload = _fake_ollama_envelope(inner)
     with patch("urllib.request.urlopen", return_value=_FakeResponse(payload)):
         out = _classifier.call_ollama("ok", "did X")
@@ -148,7 +150,7 @@ def test_valid_labels_match_schema_check_constraint():
     If this fails, ADR 0004 / schema / classifier are out of sync.
     Reads schema.sql directly so the test can't drift from the table
     definition."""
-    schema = (Path(__file__).resolve().parent.parent.parent / "mcp-memory" / "schema.sql").read_text(
+    schema = (Path(__file__).resolve().parent.parent.parent / "supabase" / "schema.sql").read_text(
         encoding="utf-8"
     )
     # Walk the comm_patterns CREATE TABLE block.

@@ -4,6 +4,7 @@ Reads comms_extract.jsonl → {DEVICE}_patterns.json (aggregate, <20KB).
 Preserves actual text snippets (NOT paraphrased), truncated to 100 chars.
 Small enough to scp between devices; never uploaded to third-party services.
 """
+
 from __future__ import annotations
 import json, re, socket, sys, random
 from collections import defaultdict
@@ -27,35 +28,50 @@ LATIN_RE = re.compile(r"[a-z]", re.I)
 
 # Corrective category patterns — order matters (first match wins)
 CATEGORIES = [
-    ("permission_seeking", re.compile(
-        r"хочешь.*сделаю|хочешь,?\s*я|можно\s+я|подтверд|разреш"
-        r"|approve\b|confirm\b|shall\s+i\b|should\s+i\b|want\s+me\s+to\b"
-        r"|можешь\s+ли|могу\s+ли\s+я",
-        re.I,
-    )),
-    ("tunnel_vision", re.compile(
-        r"узк|tunnel\s+vision|не\s+только\s+про|шире\s+смотр|масштаб"
-        r"|frontend.*не\s+подключ|backend.*не\s+подключ|половин.*работ"
-        r"|не\s+доделал|не\s+довел",
-        re.I,
-    )),
-    ("hallucination_attribution", re.compile(
-        r"не\s+говорил|галлюцин|приписыва|это\s+сказал\s+я|я\s+говорил\s+не"
-        r"|не\s+мои\s+слова|не\s+моя\s+идея|я\s+имел\s+в\s+виду\s+не",
-        re.I,
-    )),
-    ("repeat_mistake", re.compile(
-        r"опять\s+то\s+же|снова\s+та\s+же|в\s+прошлый\s+раз.*так\s+же"
-        r"|уже\s+говорил.*нельзя|already\s+told|same\s+mistake|again\s+and\s+again"
-        r"|ты\s+же\s+так\s+в\s+прошлый",
-        re.I,
-    )),
-    ("cross_device_miss", re.compile(
-        r"\bwindows\b|\bустройств|\bдокер\s+нет\b|\bdocker\s+нет\b"
-        r"|\.sh\s+файл|\bhardcod|\bабсолютн.*path\b|\blinux\s+команд"
-        r"|на\s+этом\s+устройств|не\s+работает\s+на\s+windows",
-        re.I,
-    )),
+    (
+        "permission_seeking",
+        re.compile(
+            r"хочешь.*сделаю|хочешь,?\s*я|можно\s+я|подтверд|разреш"
+            r"|approve\b|confirm\b|shall\s+i\b|should\s+i\b|want\s+me\s+to\b"
+            r"|можешь\s+ли|могу\s+ли\s+я",
+            re.I,
+        ),
+    ),
+    (
+        "tunnel_vision",
+        re.compile(
+            r"узк|tunnel\s+vision|не\s+только\s+про|шире\s+смотр|масштаб"
+            r"|frontend.*не\s+подключ|backend.*не\s+подключ|половин.*работ"
+            r"|не\s+доделал|не\s+довел",
+            re.I,
+        ),
+    ),
+    (
+        "hallucination_attribution",
+        re.compile(
+            r"не\s+говорил|галлюцин|приписыва|это\s+сказал\s+я|я\s+говорил\s+не"
+            r"|не\s+мои\s+слова|не\s+моя\s+идея|я\s+имел\s+в\s+виду\s+не",
+            re.I,
+        ),
+    ),
+    (
+        "repeat_mistake",
+        re.compile(
+            r"опять\s+то\s+же|снова\s+та\s+же|в\s+прошлый\s+раз.*так\s+же"
+            r"|уже\s+говорил.*нельзя|already\s+told|same\s+mistake|again\s+and\s+again"
+            r"|ты\s+же\s+так\s+в\s+прошлый",
+            re.I,
+        ),
+    ),
+    (
+        "cross_device_miss",
+        re.compile(
+            r"\bwindows\b|\bустройств|\bдокер\s+нет\b|\bdocker\s+нет\b"
+            r"|\.sh\s+файл|\bhardcod|\bабсолютн.*path\b|\blinux\s+команд"
+            r"|на\s+этом\s+устройств|не\s+работает\s+на\s+windows",
+            re.I,
+        ),
+    ),
 ]
 
 
@@ -82,15 +98,12 @@ def main(src_path: str, out_path: str) -> None:
     for r in recs:
         by_sess[r["sess"]].append(r)
     interactive = {
-        s: msgs for s, msgs in by_sess.items()
-        if sum(1 for m in msgs if m["role"] == "u") >= 3
+        s: msgs for s, msgs in by_sess.items() if sum(1 for m in msgs if m["role"] == "u") >= 3
     }
 
     device = socket.gethostname()
     dates = []
-    corrective_cats: dict[str, dict] = {
-        cat: {"n_sessions": 0, "raw": []} for cat, _ in CATEGORIES
-    }
+    corrective_cats: dict[str, dict] = {cat: {"n_sessions": 0, "raw": []} for cat, _ in CATEGORIES}
     corrective_cats["other"] = {"n_sessions": 0, "raw": []}
 
     affirmative_raw: list[dict] = []
@@ -98,14 +111,13 @@ def main(src_path: str, out_path: str) -> None:
     style_samples: list[str] = []
     ru = en = mixed = 0
 
-    for sess_id, msgs in interactive.items():
+    for _sess_id, msgs in interactive.items():
         msgs.sort(key=lambda m: m["ts"])
         ts_list = [m["ts"] for m in msgs if m["ts"]]
         if ts_list:
             dates.append(ts_list[0][:10])
 
         sess_cats: set[str] = set()
-        has_affirmative = False
 
         for i, m in enumerate(msgs):
             if m["role"] != "u":
@@ -138,17 +150,20 @@ def main(src_path: str, out_path: str) -> None:
 
             if NEG_RE.search(correction_text):
                 cat = infer_category(trigger_text, correction_text)
-                corrective_cats[cat]["raw"].append({
-                    "trigger": snip(trigger_text),
-                    "correction": snip(correction_text),
-                })
+                corrective_cats[cat]["raw"].append(
+                    {
+                        "trigger": snip(trigger_text),
+                        "correction": snip(correction_text),
+                    }
+                )
                 sess_cats.add(cat)
             elif POS_RE.search(correction_text):
-                affirmative_raw.append({
-                    "trigger": snip(trigger_text),
-                    "snippet": snip(correction_text),
-                })
-                has_affirmative = True
+                affirmative_raw.append(
+                    {
+                        "trigger": snip(trigger_text),
+                        "snippet": snip(correction_text),
+                    }
+                )
 
         for cat in sess_cats:
             corrective_cats[cat]["n_sessions"] += 1
@@ -164,8 +179,12 @@ def main(src_path: str, out_path: str) -> None:
         examples = sorted(data["raw"], key=lambda x: len(x["correction"]), reverse=True)[:4]
         correctives_out[cat] = {
             "n_sessions": data["n_sessions"],
-            "freq_pct": round(100 * data["n_sessions"] / total_sessions, 1) if total_sessions else 0,
-            "examples": [{"trigger": e["trigger"], "correction": e["correction"]} for e in examples],
+            "freq_pct": round(100 * data["n_sessions"] / total_sessions, 1)
+            if total_sessions
+            else 0,
+            "examples": [
+                {"trigger": e["trigger"], "correction": e["correction"]} for e in examples
+            ],
         }
 
     # Best 5 affirmative examples
@@ -182,7 +201,10 @@ def main(src_path: str, out_path: str) -> None:
 
     result = {
         "device": device,
-        "date_range": [dates_sorted[0] if dates_sorted else "", dates_sorted[-1] if dates_sorted else ""],
+        "date_range": [
+            dates_sorted[0] if dates_sorted else "",
+            dates_sorted[-1] if dates_sorted else "",
+        ],
         "total_sessions": total_sessions,
         "correctives": correctives_out,
         "affirmatives": {
@@ -207,7 +229,9 @@ def main(src_path: str, out_path: str) -> None:
 
     size_kb = out.stat().st_size / 1024
     print(f"device: {device}")
-    print(f"sessions: {total_sessions}  date_range: {dates_sorted[0] if dates_sorted else '?'} -> {dates_sorted[-1] if dates_sorted else '?'}")
+    print(
+        f"sessions: {total_sessions}  date_range: {dates_sorted[0] if dates_sorted else '?'} -> {dates_sorted[-1] if dates_sorted else '?'}"
+    )
     cats_summary = ", ".join(f"{k}={v['n_sessions']}" for k, v in correctives_out.items())
     print(f"corrective categories: {cats_summary}")
     print(f"affirmatives: {len(affirmative_raw)}")

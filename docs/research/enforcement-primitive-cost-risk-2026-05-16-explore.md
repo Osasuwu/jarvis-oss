@@ -41,7 +41,7 @@ Twelve primitives, deduped across the two prior briefings (iter:21 §2 and iter:
 
 Each primitive estimated against:
 
-- **LOC** — net new code, including hook + smoke test + docs blurb. ±50% precision. Tests counted at ~2× hook LOC per CLAUDE.md path-filtered-CI rule (`#326`).
+- **LOC** — net new code, including hook + smoke test + docs blurb. ±50% precision. Tests counted at ~2× hook LOC per `docs/reference/ci-guard-meta-tests.md` (`#326`).
 - **Hours** — wall clock for one solo developer pass, *with* grill, PR, review, merge. Not raw coding time. Half-day = 4h, day = 8h.
 - **Files touched** — count of files in the resulting PR. Used to estimate review surface area.
 - **Gate-block status** — does the PR need to edit `.claude/*` (autonomous-blocked, owner-routed PR) or stays in `.claude-userlevel/*` (autonomous-PRable)?

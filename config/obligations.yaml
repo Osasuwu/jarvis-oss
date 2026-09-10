@@ -1,0 +1,44 @@
+# Recurring obligations registry — versioned in git.
+# Human-managed: entries are added and removed only via PR review.
+# No automation writes to this file.
+#
+# Schema:
+#   id: unique slug (no spaces)
+#   label: human-readable name shown in the morning digest
+#   cadence.unit: daily | weekly | monthly | quarterly
+#   cadence.every: multiplier (default 1; e.g. every=2 weekly = biweekly)
+#   catch_up: "single" (cap at one copy when overdue — suits daily/weekly)
+#           | "all"    (track actual missed periods — suits monthly/quarterly)
+#   probe: (optional) string name of an injectable evidence-probe callable.
+#          When evaluate() receives a probes dict with this key, the callable
+#          is invoked to confirm completion by world-state instead of ack alone.
+#          A fired probe must return ProbeResult with a non-empty citation.
+#          A failed probe degrades to "unknown", never to "overdue".
+#
+# Status rules (enforced by evaluate()):
+#   - No ack and no evidence trace → "unknown" (never "overdue")
+#   - "overdue" requires an observed last-done date
+#   - Ack an obligation via MCP tool (next slice)
+
+schema_version: "v1"
+entries:
+  - id: "worktree-cleanup"
+    label: "Worktree cleanup"
+    cadence:
+      unit: "weekly"
+      every: 1
+    catch_up: "single"
+
+  - id: "install-apply-devices"
+    label: "install.ps1 -Apply on other devices"
+    cadence:
+      unit: "weekly"
+      every: 2
+    catch_up: "single"
+
+  - id: "architecture-sweep"
+    label: "Architecture sweep"
+    cadence:
+      unit: "monthly"
+      every: 1
+    catch_up: "all"

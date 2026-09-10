@@ -4,19 +4,19 @@
 --
 -- Scope rationale: the advancer (scripts/advance-global-tasks.py) INSERTs
 -- `global_task_due` rows into the LEGACY `events` table, which no Supabase
--- migration creates — it lives only in mcp-memory/schema.sql, a 133KB
+-- migration creates — it lives only in supabase/schema.sql, a declarative
 -- Supabase-specific file (pgvector / pg_cron / auth schema / predefined roles)
 -- that does not apply cleanly to a stock postgres:16 image. So this file
 -- bootstraps ONLY what the advancer path touches:
 --   1. the Supabase predefined roles the RLS policies reference, and
---   2. the legacy `events` table (faithful copy of mcp-memory/schema.sql).
+--   2. the legacy `events` table (faithful copy of supabase/schema.sql).
 --
 -- The `global_task_sources` table itself is NOT created here — the CI job
 -- applies its REAL migration
 -- (supabase/migrations/20260615120000_create_global_task_sources.sql) on top
 -- of this bootstrap, so the tests exercise production DDL (constraints, RLS,
 -- indexes) rather than a re-implementation. Keep the `events` block below in
--- sync with mcp-memory/schema.sql if that table's shape changes.
+-- sync with supabase/schema.sql if that table's shape changes.
 
 -- ---------------------------------------------------------------------------
 -- Supabase predefined roles. CI connects as the postgres superuser via
@@ -38,7 +38,7 @@ begin
 end $$;
 
 -- ---------------------------------------------------------------------------
--- Legacy `events` table — faithful copy of mcp-memory/schema.sql (the events
+-- Legacy `events` table — faithful copy of supabase/schema.sql (the events
 -- substrate the advancer writes to). The advancer relies on: event_type,
 -- severity (low), repo, source, title, payload, and the partial UNIQUE index
 -- on dedup_key that backs its `ON CONFLICT (dedup_key) DO NOTHING` dedup.
@@ -62,16 +62,15 @@ create table if not exists events (
 
   state text not null default 'pending'
     check (state in ('pending', 'claimed', 'processed', 'parked')),
-  dedup_key text,
+  -- Full UNIQUE constraint, not a partial index: PostgREST's bare
+  -- ON CONFLICT (dedup_key) cannot infer a partial index (42P10, #1491).
+  dedup_key text unique,
   claimed_at timestamptz,
   claimed_by text,
 
   created_at timestamptz default now(),
   event_at timestamptz default now()
 );
-
-create unique index if not exists idx_events_dedup_key
-  on events(dedup_key) where dedup_key is not null;
 
 alter table events enable row level security;
 

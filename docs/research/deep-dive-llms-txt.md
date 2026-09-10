@@ -169,7 +169,7 @@ dependency (.venv, node_modules).
 
 - [docs/research/agent-dev-practices-sweep-2026-05-06.md](https://github.com/Osasuwu/jarvis/blob/main/docs/research/agent-dev-practices-sweep-2026-05-06.md): annotated map of the 2026 agent-dev landscape.
 - [docs/VISION.md](https://github.com/Osasuwu/jarvis/blob/main/docs/VISION.md): long-horizon ambition, beyond v2.
-- [.github/copilot-instructions.md](https://github.com/Osasuwu/jarvis/blob/main/.github/copilot-instructions.md): process rules duplicated for GitHub Copilot's discovery path.
+- [AGENTS.md](https://github.com/Osasuwu/jarvis/blob/main/AGENTS.md): process rules, in the cross-tool `AGENTS.md` convention GitHub Copilot and others already discover (superseded the old duplicate-file approach, #1791).
 ```
 
 Notes on the mock-up:
@@ -227,7 +227,7 @@ Multi-stack repo (Python + FastAPI + React + Three.js + MuJoCo). Higher coordina
 | `README.md` (if/when added) | Human-facing intro | Partial overlap on the elevator pitch. Acceptable — different audiences. README has install instructions, screenshots; `llms.txt` has neither. |
 | `docs/adr/` (planned) | Per-decision rationale | No. ADR index gets one bullet under `## Architecture`. |
 | `docs/design/*.md` | Design specs | Two or three of the most load-bearing get top-level bullets; the rest stay discoverable by the agent following links. |
-| `.github/copilot-instructions.md` | Same as CLAUDE.md, different consumer | Listed in `## Optional` so consumers know it's a duplicate-by-design. |
+| `AGENTS.md` | Same process rules as CLAUDE.md, cross-tool consumer (was a separate `.github/copilot-instructions.md` duplicate pre-#1791) | Listed in `## Optional` so consumers know it's a duplicate-by-design. |
 
 The discipline that keeps it cheap: **`llms.txt` only stores titles + one-line descriptions + URLs.** All actual content lives elsewhere. A doc rename means editing one URL in `llms.txt`; a doc rewrite means editing zero lines in `llms.txt`.
 
@@ -275,7 +275,7 @@ Revisit if `jarvis` ever ships a public docs site.
 3. **Absolute URLs to `https://github.com/Osasuwu/jarvis/blob/main/...`** — survives external scrape.
 4. ≤ 8 bullets in non-Optional sections combined. Ruthless prioritization.
 5. PR body explains the spec briefly + links this research doc.
-6. **No CI guard yet.** The doc is small enough that drift is low-frequency. If we add one later (issue: "fail CI if `llms.txt` links 404"), it should follow the path-filtered-CI-guards-need-meta-test rule (CLAUDE.md #326).
+6. **No CI guard yet.** The doc is small enough that drift is low-frequency. If we add one later (issue: "fail CI if `llms.txt` links 404"), it should follow the path-filtered-CI-guards-need-meta-test rule (`docs/reference/ci-guard-meta-tests.md`, #326).
 7. **No generator.** Hand-maintained markdown. The moment we automate this, we're paying maintenance to remove maintenance.
 
 ### Anti-patterns to avoid

@@ -1,104 +1,23 @@
 {
   "name": "jarvis-fork-plugins",
   "owner": {
-    "name": "your-name",
-    "email": "you@example.com"
+    "name": "your-username"
   },
   "plugins": [
     {
       "name": "code-review",
       "description": "Code-review plugin (forked from anthropics/claude-plugins-official, adapted: SOUL.md/AGENTS.md/SKILL.md awareness + diff-coherence reviewer for subagent-fabrication detection).",
       "author": {
-        "name": "code-review (fork of Anthropic plugin)"
+        "name": "your-username (fork of Anthropic plugin)"
       },
       "category": "productivity",
       "source": {
         "source": "git-subdir",
         "url": "https://github.com/your-username/claude-plugins-official.git",
         "path": "plugins/code-review",
-        "ref": "main"
+        "ref": "jarvis-pin-code-review-1"
       },
       "homepage": "https://github.com/your-username/claude-plugins-official/tree/main/plugins/code-review"
-    },
-    {
-      "name": "pr-review-toolkit",
-      "description": "Comprehensive PR review agents specializing in comments, tests, error handling, type design, code quality, and code simplification.",
-      "author": {
-        "name": "Anthropic",
-        "email": "support@anthropic.com"
-      },
-      "category": "productivity",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/anthropics/claude-plugins-official.git",
-        "path": "plugins/pr-review-toolkit",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/anthropics/claude-plugins-public/tree/main/plugins/pr-review-toolkit"
-    },
-    {
-      "name": "session-report",
-      "description": "Generate an explorable HTML report of Claude Code session usage — tokens, cache efficiency, subagents, skills, and the most expensive prompts — from local ~/.claude/projects transcripts.",
-      "author": {
-        "name": "Anthropic",
-        "email": "support@anthropic.com"
-      },
-      "category": "productivity",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/anthropics/claude-plugins-official.git",
-        "path": "plugins/session-report",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/session-report"
-    },
-    {
-      "name": "hookify",
-      "description": "Easily create custom hooks to prevent unwanted behaviors by analyzing conversation patterns or from explicit instructions. Define rules via simple markdown files.",
-      "author": {
-        "name": "Anthropic",
-        "email": "support@anthropic.com"
-      },
-      "category": "productivity",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/anthropics/claude-plugins-official.git",
-        "path": "plugins/hookify",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/anthropics/claude-plugins-public/tree/main/plugins/hookify"
-    },
-    {
-      "name": "claude-md-management",
-      "description": "Tools to maintain and improve CLAUDE.md files — audit quality, capture session learnings, and keep project memory current.",
-      "author": {
-        "name": "Anthropic",
-        "email": "support@anthropic.com"
-      },
-      "category": "productivity",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/anthropics/claude-plugins-official.git",
-        "path": "plugins/claude-md-management",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/claude-md-management"
-    },
-    {
-      "name": "mcp-server-dev",
-      "description": "Skills for designing and building MCP servers that work seamlessly with Claude. Guides you through deployment models (remote HTTP, MCPB, local), tool design patterns, auth, and interactive MCP apps.",
-      "author": {
-        "name": "Anthropic",
-        "email": "support@anthropic.com"
-      },
-      "category": "development",
-      "source": {
-        "source": "git-subdir",
-        "url": "https://github.com/anthropics/claude-plugins-official.git",
-        "path": "plugins/mcp-server-dev",
-        "ref": "main"
-      },
-      "homepage": "https://github.com/anthropics/claude-plugins-official/tree/main/plugins/mcp-server-dev"
     }
   ]
 }

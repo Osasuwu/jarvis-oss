@@ -20,13 +20,8 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-MIGRATION = (
-    REPO_ROOT
-    / "supabase"
-    / "migrations"
-    / "20260429145000_create_events_canonical.sql"
-)
-SCHEMA_MIRROR = REPO_ROOT / "mcp-memory" / "schema.sql"
+MIGRATION = REPO_ROOT / "supabase" / "migrations" / "20260429145000_create_events_canonical.sql"
+SCHEMA_MIRROR = REPO_ROOT / "supabase" / "schema.sql"
 
 REQUIRED_COLUMNS = (
     "event_id",
@@ -77,29 +72,27 @@ def schema_sql() -> str:
 
 @pytest.mark.parametrize("column", REQUIRED_COLUMNS)
 def test_migration_declares_column(migration_sql: str, column: str) -> None:
-    assert re.search(
-        rf"^\s*{column}\s+", migration_sql, re.MULTILINE
-    ), f"column {column!r} missing from CREATE TABLE events_canonical"
+    assert re.search(rf"^\s*{column}\s+", migration_sql, re.MULTILINE), (
+        f"column {column!r} missing from CREATE TABLE events_canonical"
+    )
 
 
 @pytest.mark.parametrize("column", REQUIRED_COLUMNS)
 def test_schema_mirror_declares_column(schema_sql: str, column: str) -> None:
     block = _extract_events_canonical_block(schema_sql)
-    assert re.search(
-        rf"^\s*{column}\s+", block, re.MULTILINE
-    ), f"column {column!r} missing from schema.sql events_canonical block"
+    assert re.search(rf"^\s*{column}\s+", block, re.MULTILINE), (
+        f"column {column!r} missing from schema.sql events_canonical block"
+    )
 
 
 def test_event_outcome_enum_present(migration_sql: str, schema_sql: str) -> None:
     """outcome column references an event_outcome enum with the four values."""
     for source, label in ((migration_sql, "migration"), (schema_sql, "schema")):
-        assert (
-            "CREATE TYPE event_outcome AS ENUM" in source
-        ), f"event_outcome enum missing from {label}"
+        assert "CREATE TYPE event_outcome AS ENUM" in source, (
+            f"event_outcome enum missing from {label}"
+        )
         for value in ("success", "failure", "timeout", "partial"):
-            assert (
-                f"'{value}'" in source
-            ), f"enum value {value!r} missing from {label}"
+            assert f"'{value}'" in source, f"enum value {value!r} missing from {label}"
 
 
 def test_trace_id_is_not_null(migration_sql: str) -> None:
@@ -121,9 +114,7 @@ def test_degraded_defaults_false(migration_sql: str) -> None:
 
 @pytest.mark.parametrize("index", REQUIRED_INDEXES)
 def test_migration_declares_index(migration_sql: str, index: str) -> None:
-    assert (
-        index in migration_sql
-    ), f"index {index!r} missing from migration"
+    assert index in migration_sql, f"index {index!r} missing from migration"
 
 
 def test_cost_index_is_partial(migration_sql: str) -> None:
@@ -135,9 +126,9 @@ def test_cost_index_is_partial(migration_sql: str) -> None:
         re.IGNORECASE | re.DOTALL,
     )
     assert match, "idx_events_canonical_cost not found"
-    assert "WHERE cost_usd IS NOT NULL" in match.group(
-        0
-    ), "idx_events_canonical_cost must be partial on cost_usd IS NOT NULL"
+    assert "WHERE cost_usd IS NOT NULL" in match.group(0), (
+        "idx_events_canonical_cost must be partial on cost_usd IS NOT NULL"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -159,9 +150,7 @@ def test_notify_payload_includes_trace_id(migration_sql: str) -> None:
     """Payload must include trace_id so subscribers can route by trace."""
     fn_block = _extract_function_body(migration_sql, "notify_events_canonical")
     for key in ("event_id", "trace_id", "action", "actor"):
-        assert (
-            f"'{key}'" in fn_block
-        ), f"notify payload missing key {key!r}: {fn_block}"
+        assert f"'{key}'" in fn_block, f"notify payload missing key {key!r}: {fn_block}"
 
 
 # ---------------------------------------------------------------------------
@@ -171,55 +160,45 @@ def test_notify_payload_includes_trace_id(migration_sql: str) -> None:
 
 @pytest.mark.parametrize("matview", REQUIRED_MATVIEWS)
 def test_migration_declares_matview(migration_sql: str, matview: str) -> None:
-    assert (
-        f"CREATE MATERIALIZED VIEW IF NOT EXISTS {matview}" in migration_sql
-    ), f"matview {matview!r} missing"
+    assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS {matview}" in migration_sql, (
+        f"matview {matview!r} missing"
+    )
 
 
 @pytest.mark.parametrize("matview", REQUIRED_MATVIEWS)
-def test_matview_has_unique_index_for_concurrent_refresh(
-    migration_sql: str, matview: str
-) -> None:
+def test_matview_has_unique_index_for_concurrent_refresh(migration_sql: str, matview: str) -> None:
     """REFRESH MATERIALIZED VIEW CONCURRENTLY requires a unique index."""
     pattern = rf"CREATE UNIQUE INDEX[^;]*ON {matview}"
-    assert re.search(
-        pattern, migration_sql, re.IGNORECASE
-    ), f"matview {matview!r} needs a unique index for CONCURRENTLY refresh"
+    assert re.search(pattern, migration_sql, re.IGNORECASE), (
+        f"matview {matview!r} needs a unique index for CONCURRENTLY refresh"
+    )
 
 
 def test_cost_view_uses_otel_model_key(migration_sql: str) -> None:
     """Cost rollup must read OTel-shaped model key, not a bespoke alias."""
     cost_view = _extract_matview_body(migration_sql, "events_cost_by_day_mv")
     for key in OTEL_KEYS_IN_VIEW:
-        assert (
-            f"'{key}'" in cost_view
-        ), f"cost view must read OTel key {key!r}: {cost_view}"
+        assert f"'{key}'" in cost_view, f"cost view must read OTel key {key!r}: {cost_view}"
 
 
 def test_cost_view_excludes_degraded(migration_sql: str) -> None:
     """Replayed (degraded=true) events must not contribute to cost truth."""
     cost_view = _extract_matview_body(migration_sql, "events_cost_by_day_mv")
-    assert (
-        "degraded = false" in cost_view
-    ), "cost view must filter out degraded=true rows"
+    assert "degraded = false" in cost_view, "cost view must filter out degraded=true rows"
 
 
 def test_pg_cron_schedules_present(migration_sql: str) -> None:
     """Both materialized views need scheduled refreshes."""
-    assert (
-        "events_cost_by_day_mv_refresh" in migration_sql
-    ), "cost view cron job missing"
-    assert (
-        "events_last_run_by_actor_mv_refresh" in migration_sql
-    ), "last_run view cron job missing"
+    assert "events_cost_by_day_mv_refresh" in migration_sql, "cost view cron job missing"
+    assert "events_last_run_by_actor_mv_refresh" in migration_sql, "last_run view cron job missing"
 
 
 def test_pg_cron_extension_enabled(migration_sql: str) -> None:
     """Migration must enable pg_cron — Supabase ships it but doesn't
     install by default."""
-    assert (
-        "CREATE EXTENSION IF NOT EXISTS pg_cron" in migration_sql
-    ), "migration must enable pg_cron"
+    assert "CREATE EXTENSION IF NOT EXISTS pg_cron" in migration_sql, (
+        "migration must enable pg_cron"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -240,27 +219,27 @@ def test_rls_enabled_with_allow_all_policies(
     source = request.getfixturevalue(source_attr)
     if source_attr == "schema_sql":
         source = _extract_events_canonical_block(source)
-    assert (
-        "ALTER TABLE events_canonical ENABLE ROW LEVEL SECURITY" in source
-    ), f"RLS not enabled in {source_attr}"
-    assert (
-        '"Allow all for authenticated" ON events_canonical' in source
-    ), f"authenticated policy missing in {source_attr}"
+    assert "ALTER TABLE events_canonical ENABLE ROW LEVEL SECURITY" in source, (
+        f"RLS not enabled in {source_attr}"
+    )
+    assert '"Allow all for authenticated" ON events_canonical' in source, (
+        f"authenticated policy missing in {source_attr}"
+    )
     if source_attr == "migration_sql":
-        assert (
-            '"Allow all for anon" ON events_canonical' in source
-        ), "anon policy missing in migration_sql"
+        assert '"Allow all for anon" ON events_canonical' in source, (
+            "anon policy missing in migration_sql"
+        )
     else:
         # post-#542 split-anon shape in schema.sql
-        assert (
-            '"Anon select" ON events_canonical' in source
-        ), "anon SELECT policy missing in schema_sql"
-        assert (
-            '"Anon sandcastle insert" ON events_canonical' in source
-        ), "anon sandcastle INSERT policy missing in schema_sql"
-        assert (
-            "actor LIKE 'sandcastle:%'" in source
-        ), "anon INSERT must be gated on sandcastle: provenance"
+        assert '"Anon select" ON events_canonical' in source, (
+            "anon SELECT policy missing in schema_sql"
+        )
+        assert '"Anon sandcastle insert" ON events_canonical' in source, (
+            "anon sandcastle INSERT policy missing in schema_sql"
+        )
+        assert "actor LIKE 'sandcastle:%'" in source, (
+            "anon INSERT must be gated on sandcastle: provenance"
+        )
 
 
 # ---------------------------------------------------------------------------

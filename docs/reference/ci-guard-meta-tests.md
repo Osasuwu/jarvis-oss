@@ -3,7 +3,8 @@
 Pull-only. Not `@import`ed by anything — read it when adding, renaming, or repointing a
 blocking workflow under `.github/workflows/` that carries a `paths:` filter. Moved out of
 `CLAUDE.md` by [#1418](https://github.com/Osasuwu/jarvis/issues/1418); the one-line convention
-stays there, the reasoning lives here.
+and the reasoning behind it both live here (the standalone `.claude/rules/` file this used to
+split across was folded into this doc by #1791).
 
 ## The convention
 
@@ -62,6 +63,19 @@ for a sprint.
 
 `.github/workflows/ci-meta.yml`, on every PR. Deliberately **not** itself path-filtered —
 path-filtering the suite that exists to catch path-filter bugs would be self-undermining.
+
+## `review` can't see edits to its own workflow
+
+A PR that edits `.github/workflows/code-review.yml` can't get a verdict from the workflow version
+it's changing — the run that would review it either uses the pre-edit definition or skips
+validation outright, so no verdict comment posts. The gate on the other end fails **CLOSED**, not
+open: `auto-merge-enable.yml`'s positive-evidence check (`has_code=true`, no verdict comment,
+nothing failed or in flight ⇒ `exit 1`, #1434) sits atop the head-lineage/PR-state probes (#1228),
+so a review-blind PR reads `review` as RED rather than a silent pass. Verified live on PR #1499
+(runs `31378173152`/`31378378047`, 2026-08-10). This makes such a PR review-blind in the DOCTRINE
+`~/.claude/DOCTRINE.md` → *Review-blind carve-out* sense — "gate cannot run" is not "gate ran and
+raised no objection" — and `auto-merge-enable` correctly withholds merge until an admin-merge is
+used per the sanctioned stop-gap case.
 
 ## Related
 

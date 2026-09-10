@@ -19,24 +19,25 @@ import sys
 from collections import Counter
 
 
-_TERM_RE = re.compile(r'^-\s+\*\*(.+?)\*\*')
+_TERM_RE = re.compile(r"^-\s+\*\*(.+?)\*\*")
 
 
 def _normalize(name: str) -> str:
     """Normalize a term name for comparison between index and sections."""
     name = name.strip()
-    name = name.replace('`', '')
+    name = name.replace("`", "")
     # Strip leading heading markers inside bold text
-    name = re.sub(r'^#+\s*', '', name)
+    name = re.sub(r"^#+\s*", "", name)
     # Strip trailing description after em-dash (never part of term name)
-    name = re.sub(r'\s*[—–]\s*.*$', '', name)
+    name = re.sub(r"\s*[—–]\s*.*$", "", name)
     # Strip trailing descriptive suffixes
-    name = re.sub(r'\s+(?:repo variable)$', '', name)
+    name = re.sub(r"\s+(?:repo variable)$", "", name)
     # Strip trailing parenthetical + = patterns + period
     name = re.sub(
-        r'\s*(?:\(#[A-Za-z0-9_-]+\)|\([^)]{1,60}\))?\s*'
-        r'(?:=.*)?\.?\s*$',
-        '', name,
+        r"\s*(?:\(#[A-Za-z0-9_-]+\)|\([^)]{1,60}\))?\s*"
+        r"(?:=.*)?\.?\s*$",
+        "",
+        name,
     )
     return name.strip()
 
@@ -48,7 +49,7 @@ def _duplicates(terms: list[str]) -> list[str]:
 
 def _parse_index_terms(text: str) -> list[str]:
     """Return indexed term names under ### Index, in order, duplicates kept."""
-    m = re.search(r'^### Index\s*$.*?(?=^### |\Z)', text, re.MULTILINE | re.DOTALL)
+    m = re.search(r"^### Index\s*$.*?(?=^### |\Z)", text, re.MULTILINE | re.DOTALL)
     if not m:
         return []
     terms: list[str] = []
@@ -68,7 +69,7 @@ def _parse_section_entries(text: str) -> list[str]:
     reports the file as clean, so the checker would be structurally blind to
     a repeat of the very incident it exists to catch.
     """
-    sections = re.split(r'^### ', text, flags=re.MULTILINE)
+    sections = re.split(r"^### ", text, flags=re.MULTILINE)
     terms: list[str] = []
     for sec in sections:
         sec = sec.strip()
@@ -88,7 +89,7 @@ def _parse_section_entries(text: str) -> list[str]:
 def check(text: str) -> int:
     """Return 0 if index and entries are in sync, 1 otherwise."""
     # Narrow to content between ## Glossary and the next ## heading (or end of file)
-    m = re.search(r'^## Glossary\s*$.*?(?=^## |\Z)', text, re.MULTILINE | re.DOTALL)
+    m = re.search(r"^## Glossary\s*$.*?(?=^## |\Z)", text, re.MULTILINE | re.DOTALL)
     if not m:
         print("ERROR: ## Glossary section not found", file=sys.stderr)
         return 1

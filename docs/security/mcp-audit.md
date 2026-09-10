@@ -1,13 +1,18 @@
 # MCP Server Security Audit
 
 Date: 2026-04-15
-Scope: All MCP servers in `.mcp.json`
+Scope: All MCP servers in `.mcp.json` (this snapshot predates the removal of both — MCP servers
+are now registered at user level via `claude mcp add --scope user`, not a repo-local `.mcp.json`)
+
+**The `memory` server audited below was retired in [#1801](https://github.com/Osasuwu/jarvis/issues/1801)**
+in favor of native file-based memory (per [#1790](https://github.com/Osasuwu/jarvis/issues/1790)) —
+its row/section are kept only as a historical record of that audit, not a current risk assessment.
 
 ## Audit Summary
 
 | Server | Risk | Read | Write | Network | Secrets access |
 |--------|------|------|-------|---------|---------------|
-| memory | Medium | Supabase DB | Supabase DB | Supabase API | Needs SUPABASE_KEY, VOYAGE_API_KEY |
+| memory (retired, #1801) | Medium | Supabase DB | Supabase DB | Supabase API | Needs SUPABASE_KEY, VOYAGE_API_KEY |
 | github | Medium | Repos, issues, PRs | Issues, PRs, files, branches | GitHub API | Needs GITHUB_TOKEN |
 | firecrawl | Medium | Web pages | None | Arbitrary URLs | Needs FIRECRAWL_API_KEY |
 | context7 | Low | Library docs | None | Upstash CDN | None |
@@ -17,7 +22,7 @@ Scope: All MCP servers in `.mcp.json`
 
 ## Detailed Analysis
 
-### memory (custom — `mcp-memory/server.py`)
+### memory (retired, #1801 — was custom, `mcp-memory/server.py`)
 
 **Capabilities:** Full CRUD on Supabase tables (memories, goals, task_outcomes, events, credential_registry).
 

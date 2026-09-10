@@ -4,9 +4,11 @@
 
 -- Dependency: this migration assumes the `events` table already exists (the
 -- advancer INSERTs global_task_due rows into it, deduped on events.dedup_key).
--- `events` is defined by mcp-memory/schema.sql, applied out-of-band — no
--- Supabase migration creates it. Fail fast with a clear message rather than
--- letting the advancer hit a missing-relation error at first tick.
+-- `events` is declared in supabase/schema.sql (applied out-of-band by hand —
+-- schema.sql is aspirational documentation, not a bootstrap migration; see
+-- its own header note) — no Supabase migration creates it. Fail fast with a
+-- clear message rather than letting the advancer hit a missing-relation error
+-- at first tick.
 do $$
 begin
   if not exists (
@@ -14,7 +16,7 @@ begin
     where table_schema = 'public' and table_name = 'events'
   ) then
     raise exception
-      'global_task_sources requires the events table (advancer emits global_task_due rows there). Apply mcp-memory/schema.sql first.';
+      'global_task_sources requires the events table (advancer emits global_task_due rows there). Apply the events table definition from supabase/schema.sql first.';
   end if;
 end $$;
 

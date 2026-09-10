@@ -116,6 +116,8 @@ If a correct seam exists:
 3. Apply the fix.
 4. Watch it pass.
 5. Re-run the Phase 1 feedback loop against the original (un-minimised) scenario.
+6. **Reverse case.** Alongside the regression test (which pins the defect fixed), pick a nearby input that should **not** be touched by the fix — one that looks similar enough to tempt an overbroad fix but whose correct behavior stays exactly as it was. Assert it stays green both before and after the fix. This is symmetry against overfixing (per #1260): a regression test alone only proves the bug case now passes, not that the fix didn't also swallow adjacent correct behavior. Inherits the same correct-seam carve-out as the regression test above — if no seam exists for a reverse case either, note that as part of the same finding.
+   - **If the reverse case is red before the fix**, that's not a false positive — it's evidence the defect is wider than the minimised repro captured. Don't narrow the reverse case to force it green; instead fold it into the reproducer (return to Phase 2), widen the fix scope to cover it, and pick a new reverse case further out from the (now-larger) fixed region.
 
 ## Phase 6 — Cleanup + post-mortem
 

@@ -65,11 +65,11 @@ Do NOT propose interfaces yet. Ask the user: "Which of these would you like to e
 
 Once the user picks a candidate, drop into a grilling conversation. Walk the design tree with them — constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
 
-**Before creating any child issues** from a deepening opportunity, load and execute the research-pass gate:
+**Before creating any child issues** from a deepening opportunity, run the research-pass-gate. This gate is **unconditional** — publishing child issues always requires a research artifact:
 
-**Procedural source: [`../_shared/research-pass-gate.md`](../_shared/research-pass-gate.md).**
-
-This gate is **unconditional** — publishing child issues always requires a research artifact. If the gate blocks, do not create the child issue; propose `/research` on the topic first.
+1. **Extract topic keywords** — assemble >=3 keyword sets: the issue/PRD title verbatim, the skill-area tag (e.g. `area:infrastructure`, `area:skills`), and the primary entity/concept name the deepening candidate concerns.
+2. **Check for a research artifact** — look for a file under `docs/research/<topic-slug>-*.md` in the current repo whose slug matches one of the topic keywords and whose date is within 60 days of today. First match passes the gate.
+3. **Resolve** — artifact found → gate passes silently, create the child issue. No artifact → do not create the child issue; propose `/research` on the topic first.
 
 Side effects happen inline as decisions crystallize:
 

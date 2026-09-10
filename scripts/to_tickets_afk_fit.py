@@ -1,48 +1,98 @@
-"""AFK-fit static path-grep helper for /to-tickets (issue #642).
+"""AFK-fit static path-grep helper for /to-tickets and /triage (#642, split per #1708).
 
-The /to-tickets AFK-fit checklist has four questions. Question 1 is static
-and lives here: do the slice's declared-changed files intersect any
-protected/safety-critical glob from the per-repo list in
-``config/protected-paths.json``?
+Question 1 of the four-question AFK-fit checklist is static: does any
+declared-changed file match a protected-path glob for the target repo?
+config/protected-paths.json holds two buckets per repo:
 
-Questions 2-4 are LLM-judgement and live as prose in /to-tickets SKILL.md.
+- ``hitl``    — identity/security config, a categorical security boundary.
+                Any match -> class 3 (afk:3-human), hard refusal.
+- ``guarded`` — shared surfaces with off-repo consumers, recoverable via a
+                locked plan. Any match -> class 2 (afk:2-plan).
 
-Adding a new repo to the system means adding an entry to the JSON config —
-never editing this module or any SKILL.md (issue #642 hard constraint).
+No match in either bucket falls through to Q2-Q4 LLM judgement (documented
+in each skill's own SKILL.md, not reimplemented here).
 """
 
 from __future__ import annotations
 
 import fnmatch
 import json
+import sys
+from dataclasses import dataclass
 from pathlib import Path
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
-def load_protected_paths(path: str | Path) -> dict[str, list[str]]:
-    """Load the per-repo protected-path map from JSON.
+from agents.plan_classifier import label_for  # noqa: E402
 
-    Underscore-prefixed keys (`_comment`, etc.) are metadata and excluded.
-    """
+
+def load_protected_paths(path: str | Path) -> dict[str, dict[str, list[str]]]:
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return {k: list(v) for k, v in data.items() if not k.startswith("_")}
+    config: dict[str, dict[str, list[str]]] = {}
+    for repo, buckets in data.items():
+        if repo.startswith("_"):
+            continue
+        if not isinstance(buckets, dict):
+            raise ValueError(
+                f"config/protected-paths.json: {repo!r} uses the legacy flat-list "
+                "schema (pre-#1708) — expected a {'hitl': [...], 'guarded': [...]} object"
+            )
+        config[repo] = {
+            "hitl": list(buckets.get("hitl", [])),
+            "guarded": list(buckets.get("guarded", [])),
+        }
+    return config
 
 
-def intersects_protected(
+@dataclass(frozen=True)
+class ClassVerdict:
+    cls: int | None
+    bucket: str | None
+    label: str | None
+    matched_files: tuple[str, ...]
+    reason: str
+
+
+def classify_static_paths(
     declared_files: list[str],
     repo: str,
-    config: dict[str, list[str]],
-) -> list[str]:
-    """Return the subset of ``declared_files`` that match a protected glob.
+    config: dict[str, dict[str, list[str]]],
+) -> ClassVerdict:
+    if repo not in config:
+        return ClassVerdict(
+            cls=None,
+            bucket=None,
+            label=None,
+            matched_files=(),
+            reason="unknown repo, judge manually",
+        )
 
-    Globs follow gitignore-style semantics translated into fnmatch — the leading
-    ``**/`` is implicit (we match against the repo-relative path). Unknown
-    repos return an empty list by design (fail-open); /to-tickets prose must
-    surface "unknown repo" as a manual judgement prompt instead.
-    """
-    globs = config.get(repo, [])
+    for bucket, cls in (("hitl", 3), ("guarded", 2)):
+        globs = config.get(repo, {}).get(bucket, [])
+        matched = _matched_files(declared_files, globs)
+        if matched:
+            return ClassVerdict(
+                cls=cls,
+                bucket=bucket,
+                label=label_for(cls),
+                matched_files=matched,
+                reason=f"matched {bucket} path(s): {', '.join(matched)}",
+            )
+
+    return ClassVerdict(
+        cls=None,
+        bucket=None,
+        label=None,
+        matched_files=(),
+        reason="no protected-path match; fall through to Q2-Q4",
+    )
+
+
+def _matched_files(declared_files: list[str], globs: list[str]) -> tuple[str, ...]:
     if not globs:
-        return []
-
+        return ()
     matched: list[str] = []
     for declared in declared_files:
         norm = declared.replace("\\", "/")
@@ -52,13 +102,10 @@ def intersects_protected(
             if _matches(norm, glob):
                 matched.append(declared)
                 break
-    return matched
+    return tuple(matched)
 
 
 def _matches(path: str, glob: str) -> bool:
-    """fnmatch with `**` expanded to mean 'any depth'."""
-    # fnmatch treats `**` as `*` (no recursion). Translate explicit `prefix/**`
-    # into "starts with prefix/".
     if glob.endswith("/**"):
         prefix = glob[:-3].rstrip("/")
         return path == prefix or path.startswith(prefix + "/")

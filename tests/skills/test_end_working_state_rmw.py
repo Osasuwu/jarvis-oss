@@ -15,7 +15,11 @@ def _load_end_skill() -> tuple[Path | None, str | None]:
     Returns (path, content) or (None, None).
     """
     candidates = [
-        Path(__file__).resolve().parent.parent.parent / ".claude-userlevel" / "skills" / "end" / "SKILL.md",
+        Path(__file__).resolve().parent.parent.parent
+        / ".claude-userlevel"
+        / "skills"
+        / "end"
+        / "SKILL.md",
         Path.home() / ".claude" / "skills" / "end" / "SKILL.md",
     ]
 
@@ -48,9 +52,11 @@ class TestEndSkillWorkingStateRMW:
         assert step5_match, "Step 5 section not found"
         step5 = step5_match.group(0)
 
-        has_read_write = ("read" in step5.lower() and "modify" in step5.lower() and "write" in step5.lower()) or \
-                         "read-modify-write" in step5.lower() or \
-                         "RMW" in step5
+        has_read_write = (
+            ("read" in step5.lower() and "modify" in step5.lower() and "write" in step5.lower())
+            or "read-modify-write" in step5.lower()
+            or "RMW" in step5
+        )
         assert has_read_write, "Step 5 does not mention read-modify-write pattern"
 
     def test_step_5_mentions_merge_doc_format(self):
@@ -73,9 +79,12 @@ class TestEndSkillWorkingStateRMW:
         step5 = step5_match.group(0)
 
         # Look for GC keywords
-        has_gc = "GC" in step5 or "garbage" in step5.lower() or \
-                 ("delete" in step5.lower() and "old" in step5.lower()) or \
-                 ("evict" in step5.lower() and ("age" in step5.lower() or "date" in step5.lower()))
+        has_gc = (
+            "GC" in step5
+            or "garbage" in step5.lower()
+            or ("delete" in step5.lower() and "old" in step5.lower())
+            or ("evict" in step5.lower() and ("age" in step5.lower() or "date" in step5.lower()))
+        )
         assert has_gc, "Step 5 does not document GC/eviction logic"
 
     def test_step_5_mentions_size_cap(self):
@@ -87,8 +96,9 @@ class TestEndSkillWorkingStateRMW:
         step5 = step5_match.group(0)
 
         # Look for cap/limit keywords with size numbers
-        has_size_cap = ("1500" in step5 or "cap" in step5.lower() or "≤3" in step5 or "limit" in step5.lower()) and \
-                       ("char" in step5.lower() or "size" in step5.lower() or "entries" in step5.lower())
+        has_size_cap = (
+            "1500" in step5 or "cap" in step5.lower() or "≤3" in step5 or "limit" in step5.lower()
+        ) and ("char" in step5.lower() or "size" in step5.lower() or "entries" in step5.lower())
         assert has_size_cap, "Step 5 does not document size cap (1500 chars, ≤3 entries)"
 
     def test_step_5_mentions_tombstone(self):
@@ -100,8 +110,9 @@ class TestEndSkillWorkingStateRMW:
         step5 = step5_match.group(0)
 
         # Look for tombstone or evicted marker
-        assert ("### [evicted]" in step5 or "tombstone" in step5.lower()), \
+        assert "### [evicted]" in step5 or "tombstone" in step5.lower(), (
             "Step 5 does not mention ### [evicted] tombstone or eviction marking"
+        )
 
     def test_step_5_mentions_scoping_within_block(self):
         """AC6: Step 5 documents gate scoping within ### [entry] blocks."""
@@ -112,9 +123,11 @@ class TestEndSkillWorkingStateRMW:
         step5 = step5_match.group(0)
 
         # Look for scoping or block-boundary keywords
-        has_scoping = ("block" in step5.lower() and "scop" in step5.lower()) or \
-                      "within" in step5.lower() or \
-                      "own entry" in step5.lower()
+        has_scoping = (
+            ("block" in step5.lower() and "scop" in step5.lower())
+            or "within" in step5.lower()
+            or "own entry" in step5.lower()
+        )
         assert has_scoping, "Step 5 does not document scoping gates within blocks"
 
     def test_step_5_mentions_read_after_write(self):
@@ -126,9 +139,13 @@ class TestEndSkillWorkingStateRMW:
         step5 = step5_match.group(0)
 
         # Look for verification/check after write keywords
-        has_verify = ("read" in step5.lower() and "after" in step5.lower() and "write" in step5.lower()) or \
-                     ("verify" in step5.lower() and "block" in step5.lower()) or \
-                     ("check" in step5.lower() and ("presence" in step5.lower() or "own" in step5.lower()))
+        has_verify = (
+            ("read" in step5.lower() and "after" in step5.lower() and "write" in step5.lower())
+            or ("verify" in step5.lower() and "block" in step5.lower())
+            or (
+                "check" in step5.lower() and ("presence" in step5.lower() or "own" in step5.lower())
+            )
+        )
         assert has_verify, "Step 5 does not document read-after-write verification"
 
     def test_step_5_mentions_ceiling_marker(self):
@@ -137,35 +154,40 @@ class TestEndSkillWorkingStateRMW:
         assert content is not None
 
         # Look for ceiling marker with RMW or prose context
-        has_ceiling = "ceiling:" in content and \
-                      (("prose" in content.lower() or "instruction" in content.lower()) or \
-                       "read-modify-write" in content.lower() or \
-                       "RMW" in content)
+        has_ceiling = "ceiling:" in content and (
+            ("prose" in content.lower() or "instruction" in content.lower())
+            or "read-modify-write" in content.lower()
+            or "RMW" in content
+        )
         assert has_ceiling, "end/SKILL.md does not have ceiling: marker explaining failure mode"
 
 
 class TestOtherReadersUnchanged:
-    """Verify AC7: other readers (session-context.py, research/SKILL.md, self-improve/SKILL.md) are not modified."""
+    """Verify AC7: other readers (research/SKILL.md) are not modified.
 
-    def test_session_context_working_state_query_unchanged(self):
-        """AC7: session-context.py still queries working_state_<project> as before."""
-        path = Path(__file__).resolve().parent.parent.parent / "scripts" / "session-context.py"
-        if path.exists():
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            # Verify the simple query is still there
-            assert "working_state_" in content, "session-context.py no longer queries working_state"
+    session-context.py's working_state_<project> read was intentionally
+    deleted in #1824 as dead code (nothing wrote that key after #1793 moved
+    working-state persistence to handoff.md) — the corresponding pin here
+    was removed along with it.
+    """
 
     def test_research_skill_gate_unchanged(self):
         """AC7: research/SKILL.md still references working_state gate pattern."""
-        path = Path(__file__).resolve().parent.parent.parent / ".claude-userlevel" / "skills" / "research" / "SKILL.md"
+        path = (
+            Path(__file__).resolve().parent.parent.parent
+            / ".claude-userlevel"
+            / "skills"
+            / "research"
+            / "SKILL.md"
+        )
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
             # Verify the gate reference pattern is unchanged
             # (exact content varies, but working_state should be mentioned in research pass gate)
-            assert "working_state" in content or "research-pass" in content, \
+            assert "working_state" in content or "research-pass" in content, (
                 "research/SKILL.md may have been inadvertently modified"
+            )
 
 
 class TestStep8OutputMentionsTombstones:

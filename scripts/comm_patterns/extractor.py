@@ -58,7 +58,7 @@ def _to_row(
         "confidence": classified["confidence"],
         "anchor_quote": anchor_scrubbed,
         "redacted": redacted,
-        "embedding": None,  # Day-1 column nullable; backfilled by /learn comms.
+        "embedding": None,  # Day-1 column nullable; backfilled by a later comms pass.
         "source_provenance": source_provenance,
     }
 

@@ -3,28 +3,34 @@
 
 title = "Gitleaks config for Jarvis"
 
-# Paths to exclude from scanning
+# Extend gitleaks' built-in default ruleset (AWS keys, GitHub tokens, private
+# keys, JWTs, generic API keys, etc). PRE-EXISTING BUG fixed here (#1547):
+# this block used to be `[extend].paths = [...]` — `paths` is not a valid key
+# under [extend] (path exclusion lives under [allowlist].paths, moved below),
+# and with no `useDefault` and no [[rules]] this file ran with ZERO active
+# detection rules since it was introduced. The required "Detect secrets with
+# gitleaks" PR check has been fail-open the whole time as a result.
 [extend]
-paths = [
-  '''.build/''',
-  '''dist/''',
-  '''node_modules/''',
-  '''.venv/''',
-  '''__pycache__/''',
-  '''.vscode/''',
-  '''.idea/''',
-  '''.mypy_cache/''',
-  '''.pytest_cache/''',
-  '''.ruff_cache/''',
-  '''tests/fixtures/''',
-  '''test-data/''',
-]
+useDefault = true
 
-# Allowlist for common false positives specific to this project
+# Allowlist for common false positives specific to this project, plus the
+# path exclusions previously (and invalidly) declared under [extend].
 [allowlist]
 description = "Global allowlist"
 paths = [
   '''\.gitleaks\.toml$''',
+  '''\.build/''',
+  '''dist/''',
+  '''node_modules/''',
+  '''\.venv/''',
+  '''__pycache__/''',
+  '''\.vscode/''',
+  '''\.idea/''',
+  '''\.mypy_cache/''',
+  '''\.pytest_cache/''',
+  '''\.ruff_cache/''',
+  '''tests/fixtures/''',
+  '''test-data/''',
 ]
 regexTarget = "match"
 regexes = [
@@ -32,4 +38,39 @@ regexes = [
   '''(us-east-1|us-west-2|eu-west-1|ap-southeast-1|ap-south-1)''',
   # Supabase public project URLs
   '''https://[a-z0-9]+\.supabase\.co''',
+  # Fake AWS key suffixes used in test fixtures. These classic example patterns
+  # (IOSFODNN7EXAMPLE from AWS docs, ABCDEFGHIJKLMNOP alphabetic sequence)
+  # appear only in test code that asserts the secret-scanner detects them.
+  # The write-scrubber blocks `# gitleaks:allow` inline suppression for these
+  # files because the PreToolUse hook fires on the full AKIA+suffix pattern;
+  # allowlist-level suppression is the correct alternative.
+  '''IOSFODNN7EXAMPLE''',
+  '''ABCDEFGHIJKLMNOP''',
+]
+
+# #1547: Apprise/webhook notification transport secrets. NOTIFY_APPRISE_URL
+# (agents/notify.py resolve_notifier) holds a service URL that frequently
+# embeds a bot token or webhook secret in its path/query — same shape as the
+# Slack/Discord webhook URLs the default ruleset already catches, generalized
+# to Apprise's own URL schemes plus a literal env-assignment form so a
+# hardcoded value is caught even for services without a dedicated default rule.
+[[rules]]
+id = "jarvis-notify-apprise-url-assignment"
+description = "NOTIFY_APPRISE_URL assigned a literal service URL (should be env-injected, not hardcoded)"
+regex = '''NOTIFY_APPRISE_URL\s*[:=]\s*["']?[a-zA-Z][a-zA-Z0-9+.-]*://\S+["']?'''
+keywords = ["notify_apprise_url"]
+
+[[rules]]
+id = "jarvis-apprise-service-webhook-url"
+description = "Apprise service URL embedding a token/webhook secret (tgram/discord/slack/matrix/ntfy/etc)"
+regex = '''\b(?:tgram|discord|slack|mattermost|msteams|matrix|pover|ntfy|mailto|mailtos)://[^\s"'<>]{8,}'''
+keywords = [
+  "tgram://",
+  "discord://",
+  "slack://",
+  "mattermost://",
+  "msteams://",
+  "matrix://",
+  "pover://",
+  "ntfy://",
 ]

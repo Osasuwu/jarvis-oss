@@ -74,15 +74,6 @@ ALLOWLIST: dict[str, object] = {
     "docs/design/": ALL,  # design-history docs — lineage mentions
     "docs/research/": ALL,  # research drafts — verbatim external/pre-retirement captures
     # -- specific files, restricted to their correct-by-design tokens ---------
-    "pyproject.toml": {  # retirement-rationale comment block (#734)
-        "langgraph",
-        "langchain-ollama",
-        "event_monitor",
-        "apscheduler",
-    },
-    "agents/executor.py": {"langgraph"},  # "Salvaged from agents/dispatcher.py" lineage
-    "tests/reactive_core/test_agents_supabase_bridge.py": {"event_monitor"},  # tool_name fixture (retired module name is legit test data)
-    "tests/reactive_core/test_wake_driver.py": {"apscheduler"},  # retirement-enforcement assertions
     ".claude-userlevel/skills/implement/SKILL.md": {
         "apscheduler"
     },  # historical bug-class example (#304/#298)

@@ -148,7 +148,7 @@ Best-faith reconstruction, cross-checked against Spec Kit and OpenSpec:
 
 **Today:** in CI tests + `/verify` reading `gh pr view` checks. The gate proves "tests passed", not "spec was satisfied" — because spec ≡ PRD prose.
 
-**Under SDD:** the gate is `/spec-validate` running the spec-as-tests, ideally wired as a CI check (`.github/workflows/spec-validate.yml`) that gates PR merge. The PR-Body-Check pattern from the existing repo (CLAUDE.md §"Path-filtered CI guards require a meta-test", #326) is the right precedent — spec validation is just another path-filtered guard, with its own meta-test.
+**Under SDD:** the gate is `/spec-validate` running the spec-as-tests, ideally wired as a CI check (`.github/workflows/spec-validate.yml`) that gates PR merge. The PR-Body-Check pattern from the existing repo (`docs/reference/ci-guard-meta-tests.md`, #326) is the right precedent — spec validation is just another path-filtered guard, with its own meta-test.
 
 **Confidence: 4/5** that this delta is the right shape. **Confidence: 3/5** on naming `/spec-validate` separately from `/verify`; the alternative is folding it into `/verify` step 0.
 
@@ -227,7 +227,7 @@ Once 2–3 features have shipped with `spec.md` artefacts, add the validation sk
 
 1. Skill reads `specs/<slug>/spec.md`, executes the Gherkin scenarios as pytest-bdd (or jest-cucumber, depending on stack), reports pass/fail per scenario.
 2. Wire as optional CI check (`.github/workflows/spec-validate.yml`) — non-blocking initially.
-3. After ~5 features, **promote to required check** for any PR that touches `specs/`. Path-filtered guards must ship with a meta-test (CLAUDE.md §"Path-filtered CI guards require a meta-test", #326) — `tests/ci/test_spec_validate_guard.py` ships in the same PR.
+3. After ~5 features, **promote to required check** for any PR that touches `specs/`. Path-filtered guards must ship with a meta-test (`docs/reference/ci-guard-meta-tests.md`, #326) — `tests/ci/test_spec_validate_guard.py` ships in the same PR.
 
 ### Phase 3 — `/verify` integration
 
@@ -268,4 +268,4 @@ Once 2–3 features have shipped with `spec.md` artefacts, add the validation sk
 - Concrete delta: keep `/grill-me`, shrink `/to-prd` to ≤500-word PRD plus a `specs/<feature>/spec.md` executable artefact, have `/to-issues` cite spec scenarios per slice, add a new `/spec-validate` skill that becomes the real validation gate, leave `/verify` consuming its output.
 - Tool choice: do not adopt Spec Kit / Augment / Kiro / OpenSpec wholesale — Jarvis already has skills, hooks, MCP, memory; steal the *seven-phase model* (most likely Augment's) and the *ADR-coexistence pattern* (OpenSpec / intent-driven.dev) but keep the implementation native. Confidence 4/5.
 - Trade-off shape: SDD pays off on net-new features (≥3 slices) and behaviour-preserving refactors; it actively hurts on hotfixes, narrow bug fixes, and `Fix > track` work — so the pilot must ship with an explicit SDD-skip path.
-- Bootstrap: Phase 0 adds `specs/` + `--spec` flag to `/to-prd` and `/to-issues` (additive, ~30 LOC); Phase 1 pilots one ≥3-issue feature; Phase 2 ships `/spec-validate` + meta-test (per CLAUDE.md §"Path-filtered CI guards require a meta-test"); Phase 3 wires Supabase outcome enrichment. Open questions on spec format (Gherkin recommended), location, PRD length cap, and cross-repo applicability — answer before Phase 0.
+- Bootstrap: Phase 0 adds `specs/` + `--spec` flag to `/to-prd` and `/to-issues` (additive, ~30 LOC); Phase 1 pilots one ≥3-issue feature; Phase 2 ships `/spec-validate` + meta-test (per `docs/reference/ci-guard-meta-tests.md`); Phase 3 wires Supabase outcome enrichment. Open questions on spec format (Gherkin recommended), location, PRD length cap, and cross-repo applicability — answer before Phase 0.

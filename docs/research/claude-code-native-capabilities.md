@@ -4361,7 +4361,7 @@ Set via `claude --model opus`, `/model sonnet` (`d` saves default), `ANTHROPIC_M
 
 ### Channels — push external events into a running session
 
-> **Jarvis-relevant.** This is the native mechanism behind our Telegram integration (CLAUDE.md: "Telegram → Channels"). Distinct from MCP (which Claude *pulls* from) — channels *push* inbound events into the live session.
+> **Jarvis-relevant.** This is the native mechanism behind our Telegram integration (`docs/reference/native-first-substrate.md`: "Telegram → Channels"). Distinct from MCP (which Claude *pulls* from) — channels *push* inbound events into the live session.
 
 A channel is a plugin that listens for inbound messages and pushes them as events into your **already-open local session** (not a fresh cloud session) ([channels.md](https://code.claude.com/docs/en/channels.md)). Two-way channels let Claude reply back through the same platform. Built-ins: **Telegram, Discord, iMessage**; custom channels possible for webhooks/proprietary systems.
 

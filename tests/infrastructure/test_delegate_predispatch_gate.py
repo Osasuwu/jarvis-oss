@@ -17,6 +17,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 gate = importlib.import_module("delegate_predispatch_gate")
 check_issue = gate.check_issue
+check_repo = gate.check_repo
+check_orchestrator_target = gate.check_orchestrator_target
 
 
 # ── Fixtures ────────────────────────────────────────────────────────────────
@@ -197,7 +199,12 @@ def test_handles_missing_labels_key():
 
 
 def test_main_returns_zero_on_allow(monkeypatch, capsys):
-    envelope = {"issue": _issue(), "open_prs": [], "open_branches": []}
+    envelope = {
+        "issue": _issue(),
+        "repo": "your-username/jarvis",
+        "open_prs": [],
+        "open_branches": [],
+    }
     monkeypatch.setattr("sys.stdin", _StringStream(json.dumps(envelope)))
     rc = gate.main([])
     assert rc == 0
@@ -208,6 +215,7 @@ def test_main_returns_zero_on_allow(monkeypatch, capsys):
 def test_main_returns_nonzero_on_refuse(monkeypatch, capsys):
     envelope = {
         "issue": _issue(body="", labels=()),
+        "repo": "your-username/jarvis",
         "open_prs": [],
         "open_branches": [],
     }
@@ -217,6 +225,157 @@ def test_main_returns_nonzero_on_refuse(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "REFUSE" in out
     assert "sandcastle" in out
+
+
+def test_main_returns_one_on_repo_mismatch_before_readiness_check(monkeypatch, capsys):
+    """A foreign-repo issue is refused even if it also fails readiness (#1651)."""
+    envelope = {
+        "issue": _issue(body="", labels=()),
+        "repo": "SergazyNarynov/redrobot",
+        "open_prs": [],
+        "open_branches": [],
+    }
+    monkeypatch.setattr("sys.stdin", _StringStream(json.dumps(envelope)))
+    rc = gate.main([])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "REFUSE" in out
+    assert "SergazyNarynov/redrobot" in out
+    assert "sandcastle" not in out  # repo check short-circuits before readiness
+
+
+def test_main_skips_on_missing_repo_key(monkeypatch, capsys):
+    envelope = {"issue": _issue(), "open_prs": [], "open_branches": []}
+    monkeypatch.setattr("sys.stdin", _StringStream(json.dumps(envelope)))
+    rc = gate.main([])
+    assert rc == 2
+    out = capsys.readouterr().out
+    assert "SKIP" in out
+    assert "repo" in out
+
+
+# ── check_repo (#1651) ───────────────────────────────────────────────────────
+
+
+def test_check_repo_allows_matching_default():
+    result = check_repo("your-username/jarvis", default_repo="your-username/jarvis")
+    assert result.allow
+
+
+def test_check_repo_refuses_mismatch():
+    result = check_repo("SergazyNarynov/redrobot", default_repo="your-username/jarvis")
+    assert not result.allow
+    assert "SergazyNarynov/redrobot" in result.message
+    assert "M58" in result.message or "#1651" in result.message
+
+
+def test_check_repo_falls_back_to_github_repo_env(monkeypatch):
+    monkeypatch.setenv("GITHUB_REPO", "your-username/other-repo")
+    assert check_repo("your-username/other-repo").allow
+    assert not check_repo("your-username/jarvis").allow
+
+
+def test_check_repo_falls_back_to_hardcoded_default_when_env_unset(monkeypatch):
+    monkeypatch.delenv("GITHUB_REPO", raising=False)
+    assert check_repo("your-username/jarvis").allow
+
+
+# ── check_orchestrator_target (#1617) ───────────────────────────────────────
+
+
+def _row(target_type=None, target_repo=None, target_number=None):
+    return {
+        "target_type": target_type,
+        "target_repo": target_repo,
+        "target_number": target_number,
+    }
+
+
+def test_orchestrator_target_passes_when_type_none():
+    result = check_orchestrator_target(_row(target_type="none"))
+    assert result.allow
+
+
+def test_orchestrator_target_passes_when_pr_open_and_same_repo():
+    fetch_pull = lambda n: {"state": "open"}  # noqa: E731
+    result = check_orchestrator_target(
+        _row(target_type="pr", target_repo="your-username/jarvis", target_number=42),
+        fetch_pull=fetch_pull,
+        default_repo="your-username/jarvis",
+    )
+    assert result.allow
+
+
+def test_orchestrator_target_parks_when_pr_foreign_repo():
+    fetch_pull = lambda n: {"state": "open"}  # noqa: E731
+    result = check_orchestrator_target(
+        _row(target_type="pr", target_repo="SergazyNarynov/redrobot", target_number=42),
+        fetch_pull=fetch_pull,
+        default_repo="your-username/jarvis",
+    )
+    assert not result.allow
+    assert "SergazyNarynov/redrobot" in result.message
+
+
+def test_orchestrator_target_parks_when_pr_closed_or_merged():
+    fetch_pull = lambda n: {"state": "closed", "merged": True}  # noqa: E731
+    result = check_orchestrator_target(
+        _row(target_type="pr", target_repo="your-username/jarvis", target_number=42),
+        fetch_pull=fetch_pull,
+        default_repo="your-username/jarvis",
+    )
+    assert not result.allow
+    assert "42" in result.message
+
+
+def test_orchestrator_target_parks_when_pr_number_missing():
+    result_no_number = check_orchestrator_target(
+        _row(target_type="pr", target_repo="your-username/jarvis", target_number=None),
+        fetch_pull=lambda n: {"state": "open"},
+        default_repo="your-username/jarvis",
+    )
+    assert not result_no_number.allow
+
+
+def test_orchestrator_target_disables_pr_gate_when_fetch_pull_unwired():
+    """fetch_pull=None (the default) must DISABLE the PR-state re-check, not
+    park the row — same DI contract as fetch_issue (#1617 AC, DedupConfig
+    .fetch_pull docstring: "None here (the default) disables that re-check
+    entirely"). A caller that never wires fetch_pull must not have every
+    PR-pinned row parked by omission (#1758 review finding 2)."""
+    result_no_fetch = check_orchestrator_target(
+        _row(target_type="pr", target_repo="your-username/jarvis", target_number=42),
+        fetch_pull=None,
+        default_repo="your-username/jarvis",
+    )
+    assert result_no_fetch.allow
+
+
+def test_orchestrator_target_parks_when_type_null():
+    result = check_orchestrator_target(_row(target_type=None))
+    assert not result.allow
+    assert "unclassified" in result.message
+
+
+def test_orchestrator_target_parks_when_issue_unverifiable():
+    result = check_orchestrator_target(
+        _row(target_type="issue", target_number=7), fetched_issue=None
+    )
+    assert not result.allow
+    assert "unverifiable" in result.message
+
+
+def test_orchestrator_target_passes_when_issue_mechanical_subset_satisfied():
+    fetched_issue = {"labels": [{"name": "sandcastle"}]}
+    result = check_orchestrator_target(
+        _row(target_type="issue", target_number=7), fetched_issue=fetched_issue
+    )
+    assert result.allow
+
+
+def test_orchestrator_target_parks_on_unrecognized_type():
+    result = check_orchestrator_target(_row(target_type="bogus"))
+    assert not result.allow
 
 
 class _StringStream:

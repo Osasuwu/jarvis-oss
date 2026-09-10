@@ -41,15 +41,16 @@ CRITIC_MD = REPO_ROOT / ".claude-userlevel" / "skills" / "grill" / "CRITIC.md"
 def extract_system_block(critic_md_text: str) -> str:
     """Return the verbatim system-block body that operators paste into Agent.
 
-    CRITIC.md follows the convention from NEUTRAL-RESEARCHER.md: a markdown
-    heading containing 'System block' is followed by a fenced code block whose
-    body is the verbatim prompt body.
+    CRITIC.md's convention: a markdown heading containing 'System block' is
+    followed by a fenced code block whose body is the verbatim prompt body.
     """
     # Find the System-block heading
-    heading_match = re.search(r"^#{1,6}\s.*system block.*$", critic_md_text, re.IGNORECASE | re.MULTILINE)
+    heading_match = re.search(
+        r"^#{1,6}\s.*system block.*$", critic_md_text, re.IGNORECASE | re.MULTILINE
+    )
     assert heading_match, "CRITIC.md must contain a heading mentioning 'System block'"
     # Find the next fenced code block after the heading
-    tail = critic_md_text[heading_match.end():]
+    tail = critic_md_text[heading_match.end() :]
     fence = re.search(r"```[a-zA-Z]*\n(.+?)\n```", tail, re.DOTALL)
     assert fence, "CRITIC.md must contain a fenced code block under the System-block heading"
     return fence.group(1)
@@ -77,8 +78,13 @@ def parse_critic_verdict(verdict_text: str) -> CriticVerdict:
       - more than 1 challenged assumption
       - a risk missing its [SEVERITY] tag
     """
+
     def _section(name: str) -> str:
-        m = re.search(rf"##\s+{re.escape(name)}\s*\n(.*?)(?=^##\s+|\Z)", verdict_text, re.DOTALL | re.MULTILINE)
+        m = re.search(
+            rf"##\s+{re.escape(name)}\s*\n(.*?)(?=^##\s+|\Z)",
+            verdict_text,
+            re.DOTALL | re.MULTILINE,
+        )
         if not m:
             return ""
         return m.group(1).strip()
@@ -87,7 +93,11 @@ def parse_critic_verdict(verdict_text: str) -> CriticVerdict:
     alts_section = _section("Unmentioned alternatives")
     assumption_section = _section("Challenged assumption")
 
-    risk_lines = [line.strip("- ").strip() for line in risks_section.splitlines() if line.strip().startswith("-")]
+    risk_lines = [
+        line.strip("- ").strip()
+        for line in risks_section.splitlines()
+        if line.strip().startswith("-")
+    ]
     if len(risk_lines) > 3:
         raise ValueError(f"CRITIC schema violation: >3 risks ({len(risk_lines)})")
     risks = []
@@ -97,13 +107,23 @@ def parse_critic_verdict(verdict_text: str) -> CriticVerdict:
             raise ValueError(f"CRITIC schema violation: risk missing [SEVERITY] tag: {line!r}")
         risks.append(Risk(severity=sev_match.group(1), text=sev_match.group(2)))
 
-    alt_lines = [line.strip("- ").strip() for line in alts_section.splitlines() if line.strip().startswith("-")]
+    alt_lines = [
+        line.strip("- ").strip()
+        for line in alts_section.splitlines()
+        if line.strip().startswith("-")
+    ]
     if len(alt_lines) > 3:
         raise ValueError(f"CRITIC schema violation: >3 alternatives ({len(alt_lines)})")
 
-    assumption_lines = [line.strip("- ").strip() for line in assumption_section.splitlines() if line.strip().startswith("-")]
+    assumption_lines = [
+        line.strip("- ").strip()
+        for line in assumption_section.splitlines()
+        if line.strip().startswith("-")
+    ]
     if len(assumption_lines) > 1:
-        raise ValueError(f"CRITIC schema violation: >1 challenged assumption ({len(assumption_lines)})")
+        raise ValueError(
+            f"CRITIC schema violation: >1 challenged assumption ({len(assumption_lines)})"
+        )
     challenged = assumption_lines[0] if assumption_lines else ""
 
     return CriticVerdict(
@@ -197,8 +217,9 @@ class TestSystemBlockExtraction:
         assert system_block.strip(), "Extracted system block must not be empty"
 
     def test_system_block_preserves_fixed_schema_constraint(self, system_block: str):
-        assert re.search(r"fixed schema|only the fixed schema|ONLY this", system_block, re.IGNORECASE), \
-            "Extracted system block must preserve the fixed-schema constraint"
+        assert re.search(
+            r"fixed schema|only the fixed schema|ONLY this", system_block, re.IGNORECASE
+        ), "Extracted system block must preserve the fixed-schema constraint"
 
     def test_system_block_preserves_severity_constraint(self, system_block: str):
         # The {LOW, MEDIUM, HIGH, CRITICAL} ladder must survive into the paste body.
@@ -206,14 +227,21 @@ class TestSystemBlockExtraction:
             assert sev in system_block, f"Extracted system block must enumerate severity {sev}"
 
     def test_system_block_preserves_no_recommendation_rule(self, system_block: str):
-        assert re.search(r"no recommendation|no verdict|not.*recommend", system_block, re.IGNORECASE), \
-            "Extracted system block must preserve the no-recommendation rule"
+        assert re.search(
+            r"no recommendation|no verdict|not.*recommend", system_block, re.IGNORECASE
+        ), "Extracted system block must preserve the no-recommendation rule"
 
     def test_system_block_preserves_hard_ceilings(self, system_block: str):
         # The 3/3/1 ceilings are the load-bearing schema bounds.
         assert re.search(r"(at most|<=|≤|max(imum)?)\s*3\s*risks?", system_block, re.IGNORECASE)
-        assert re.search(r"(at most|<=|≤|max(imum)?)\s*3\s*(unmentioned\s+)?alternatives?", system_block, re.IGNORECASE)
-        assert re.search(r"(exactly|only)\s*1\s*challenged\s+assumption", system_block, re.IGNORECASE)
+        assert re.search(
+            r"(at most|<=|≤|max(imum)?)\s*3\s*(unmentioned\s+)?alternatives?",
+            system_block,
+            re.IGNORECASE,
+        )
+        assert re.search(
+            r"(exactly|only)\s*1\s*challenged\s+assumption", system_block, re.IGNORECASE
+        )
 
 
 class TestSampleVerdictParses:
@@ -235,7 +263,9 @@ class TestSampleVerdictParses:
     def test_parses_single_challenged_assumption(self):
         verdict = parse_critic_verdict(SAMPLE_VERDICT_TEXT)
         assert verdict.challenged_assumption
-        assert "Mustache" in verdict.challenged_assumption  # captures the load-bearing presupposition
+        assert (
+            "Mustache" in verdict.challenged_assumption
+        )  # captures the load-bearing presupposition
 
 
 class TestSchemaCeilingsEnforced:
@@ -331,8 +361,9 @@ class TestFakeDesignForkEndToEnd:
         # (the dispatcher is responsible for stripping it, but the template
         # must not bias the critic with phrasing like "the owner believes…").
         for forbidden in ("the owner believes", "we think", "the user wants us to"):
-            assert forbidden.lower() not in system_block.lower(), \
+            assert forbidden.lower() not in system_block.lower(), (
                 f"System block must not embed owner-side framing: {forbidden!r}"
+            )
 
     def test_full_loop_completes_on_fake_design_fork(self, system_block: str):
         # 1. Operator concatenates system block + stripped proposal.
@@ -345,10 +376,10 @@ class TestFakeDesignForkEndToEnd:
         verdict = parse_critic_verdict(SAMPLE_VERDICT_TEXT)
         # 3. Owner records dispositions for every returned item.
         dispositions = {
-            "risk:0": "accept",   # owner accepts the CRITICAL Mustache flaw
-            "risk:1": "defer",    # owner defers the hook-removal concern to follow-up
-            "alt:0": "accept",    # owner pursues the narrow venv-fix alternative
-            "alt:1": "reject",    # owner rejects the hybrid Mustache+Python alternative
+            "risk:0": "accept",  # owner accepts the CRITICAL Mustache flaw
+            "risk:1": "defer",  # owner defers the hook-removal concern to follow-up
+            "alt:0": "accept",  # owner pursues the narrow venv-fix alternative
+            "alt:1": "reject",  # owner rejects the hybrid Mustache+Python alternative
             "assumption": "accept",
         }
         # 4. Gate now permits AC-lock; without these dispositions it would not.

@@ -2,7 +2,7 @@
 
 **Status:** accepted (2026-05-08, epic [#549](https://github.com/Osasuwu/jarvis/issues/549))
 
-Honcho-style passive derivation of `user` and `feedback` memory entries from session transcripts runs as Jarvis-native infra (Stop hook accumulator + SessionEnd Deriver on the routine host + Ollama with DeepSeek fallback + scheduled volume-triggered Dreamer), not as a skill. Two interlocking shape decisions go here because they cement the subsystem's safety boundary and its scope-reach, and a reader of the hook config alone would otherwise misread both.
+Honcho-style passive derivation of `user` and `feedback` memory entries from session transcripts runs as Jarvis-native infra (Stop hook accumulator + SessionEnd Deriver on Workshop+Ollama with DeepSeek fallback + scheduled volume-triggered Dreamer), not as a skill. Two interlocking shape decisions go here because they cement the subsystem's safety boundary and its scope-reach, and a reader of the hook config alone would otherwise misread both.
 
 ## Decision
 
@@ -22,7 +22,7 @@ The two decisions reinforce each other: owner-level scope means the Deriver can 
 - **Tiered auto-promote at confidence ≥0.9 with explicit-correction signal.** Rejected: the signal detection is itself the unreliable inference; circular gating.
 - **Jarvis-project-only Deriver, redrobot opts in later.** Rejected: artificially limits derivation despite Jarvis being the personal-agent layer; forces awkward "redrobot opt-out" special-case in shared `mcp-memory` recall pipeline.
 - **Per-project recall default for `include_unreviewed`.** Rejected: leaks project asymmetry into the shared recall pipeline config; the asymmetry doesn't actually exist once Deriver is owner-level.
-- **Honcho SaaS integration.** Rejected upstream of this ADR (decision `d9592c05` in epic body) — keep all derivation local on the routine host + Ollama for cost and privacy.
+- **Honcho SaaS integration.** Rejected upstream of this ADR (decision `d9592c05` in epic body) — keep all derivation local on Workshop+Ollama for cost and privacy.
 
 ## Consequences
 

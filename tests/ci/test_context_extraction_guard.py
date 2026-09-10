@@ -1,26 +1,27 @@
-"""Guard for #1417 — the extracted Invariants must be delivered by @import.
+"""Guard for #1791 — root AGENTS.md rebuild, CLAUDE.md collapsed to a bare import.
 
-Mirrors `test_soul_import_guard.py` / `test_doctrine_pointers_guard.py`'s
-pattern for `@SOUL.md` (#1328) / `@DOCTRINE.md` (#1315): a bare `@import`
-line in the project's root `CLAUDE.md` is how this content reaches every
-session, bypassing the SessionStart hook's budget-constrained assembler
-entirely (the assembler used to drop `project_context` in 47% of sessions —
-see CONTEXT.md → *Context delivery*).
+History: #1417 extracted the old Invariants into `docs/context/invariants.md`,
+delivered by a bare `@import` line in root `CLAUDE.md` (bypassing the
+SessionStart hook's budget-constrained assembler entirely — the assembler
+used to drop `project_context` in 47% of sessions, see CONTEXT.md → *Context
+delivery*). #1418 retired the second extracted file, `docs/context/glossary-index.md`.
+#1791 rebuilt the always-loaded half from scratch: a from-zero root `AGENTS.md`
+(≤100 lines, jarvis's process rules + exactly two invariants) replaces
+`invariants.md`, and `CLAUDE.md` collapses to a single bare `@AGENTS.md` line —
+still a bare `@import`, so the delivery mechanism this guard exists to pin is
+unchanged even though the target file is new.
 
-Unlike SOUL.md/DOCTRINE.md, this is project-repo content (not user-level), so
-there is no install-manifest coverage to check — the whole jarvis repo ships
-as-is via `git clone`/`git pull`, and CLAUDE.md is already read by the harness
-in every jarvis session.
+`AGENTS.md` is also the cross-tool standard filename (Linux Foundation AAIF;
+read by Codex, OpenCode, Cursor, Copilot, Gemini CLI, Zed, Amp) — unlike the
+old `invariants.md`, no other tool needs a duplicate file to find these rules.
 
-#1417 extracted two files; #1418 retired the second. `docs/context/glossary-index.md`
-was a hand-maintained category+count snapshot of `CONTEXT.md`'s Glossary, and an
-index of where to look does not need to be always-loaded to be findable — a
-one-line pull pointer in CLAUDE.md replaced it. Only `invariants.md` still rides
-an `@import`, so only it is pinned here.
-
-Three checks pinned here:
-  - the file exists and carries its unique import-marker string
-  - its bare `@import` line exists in root CLAUDE.md, outside any code span
+Checks pinned here:
+  - root AGENTS.md exists, is <=100 lines, and does not leak session-mechanism
+    vocabulary that has no business in a cross-tool-readable file
+  - CLAUDE.md's entire content is the single bare line `@AGENTS.md`
+  - the four #1791 deletion targets (`docs/context/invariants.md`,
+    `.claude/rules/*.md`, `.github/AGENTS.md`, `.github/copilot-instructions.md`)
+    are gone
   - `scripts/session-context.py` no longer defines the retired assembler path
     (`_load_project_context`) — the whole point of #1417 is that this content
     no longer rides the budget-constrained push
@@ -28,89 +29,83 @@ Three checks pinned here:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
-
-from ._md_helpers import find_bare_imports
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CLAUDE_MD_PATH = REPO_ROOT / "CLAUDE.md"
+AGENTS_MD_PATH = REPO_ROOT / "AGENTS.md"
 INVARIANTS_MD_PATH = REPO_ROOT / "docs" / "context" / "invariants.md"
-GLOSSARY_INDEX_MD_PATH = REPO_ROOT / "docs" / "context" / "glossary-index.md"
-SESSION_CONTEXT_PATH = REPO_ROOT / "scripts" / "session-context.py"
+CLAUDE_RULES_DIR = REPO_ROOT / ".claude" / "rules"
+GITHUB_AGENTS_MD_PATH = REPO_ROOT / ".github" / "AGENTS.md"
+COPILOT_INSTRUCTIONS_PATH = REPO_ROOT / ".github" / "copilot-instructions.md"
+
+# Session-mechanism vocabulary that must not leak into the cross-tool-readable
+# AGENTS.md — these terms are jarvis-instance-internal (MCP tool names, this
+# operator's memory backend, sandcastle infra) and belong in CLAUDE.md/CONTEXT.md,
+# never in the file Codex/Cursor/Copilot/etc. read directly.
+BANNED_TOKEN_PATTERN = re.compile(
+    r"mcp__memory|memory_recall|record_decision|session-context|jarvis-oss|"
+    r"sandcastle|always_load"
+)
 
 
-class TestExtractedFilesExist:
-    def test_invariants_md_exists(self):
-        assert INVARIANTS_MD_PATH.exists(), f"missing {INVARIANTS_MD_PATH}"
+class TestAgentsMd:
+    def test_agents_md_exists(self):
+        assert AGENTS_MD_PATH.exists(), f"missing {AGENTS_MD_PATH}"
 
-    def test_invariants_md_has_unique_marker(self):
-        text = INVARIANTS_MD_PATH.read_text(encoding="utf-8")
-        assert "<!-- jarvis-context-import-marker: invariants-md -->" in text
+    def test_agents_md_is_at_most_100_lines(self):
+        lines = AGENTS_MD_PATH.read_text(encoding="utf-8").splitlines()
+        assert len(lines) <= 100, (
+            f"AGENTS.md is {len(lines)} lines — #1791 requires <=100. It is meant "
+            "to stay short; move situational detail to docs/reference/*.md instead "
+            "of growing this file."
+        )
+
+    def test_agents_md_has_no_banned_session_mechanism_tokens(self):
+        text = AGENTS_MD_PATH.read_text(encoding="utf-8")
+        hits = BANNED_TOKEN_PATTERN.findall(text)
+        assert not hits, (
+            f"AGENTS.md contains session-mechanism vocabulary {hits} — this file "
+            "is read directly by non-Claude tools (Codex, Cursor, Copilot, ...) "
+            "and must not assume Claude Code's own MCP/memory/session internals."
+        )
 
 
-class TestImportLines:
+class TestClaudeMdIsBareImport:
     def test_claude_md_exists(self):
         assert CLAUDE_MD_PATH.exists(), f"missing {CLAUDE_MD_PATH}"
 
-    def test_bare_invariants_import_line_outside_code_span(self):
+    def test_claude_md_content_is_exactly_bare_agents_import(self):
         text = CLAUDE_MD_PATH.read_text(encoding="utf-8")
-        paths = [path for _, path in find_bare_imports(text)]
-        assert "docs/context/invariants.md" in paths, (
-            "expected a BARE, line-start `@docs/context/invariants.md` import in root "
-            f"CLAUDE.md, outside any code span or fence. Found bare imports: {paths}. "
-            "A mid-prose mention does not count (#1417, form asserted per #1426)."
+        assert text.strip("\n") == "@AGENTS.md", (
+            "root CLAUDE.md must contain exactly the single bare line `@AGENTS.md` "
+            f"— found: {text!r}. #1791 collapsed CLAUDE.md down to this one import; "
+            "any other content belongs in AGENTS.md, CONTEXT.md, or docs/reference/*.md."
         )
 
-    def test_glossary_index_stays_retired(self):
-        """#1418 evicted the Glossary category index from the always-loaded layer.
 
-        Reinstating it — as a file plus an `@import`, or as any other bare
-        import of that path — silently re-adds ~1.1 KB paid every session, again
-        after every compaction, and N+1 times per fan-out. The replacement is a
-        one-line pull pointer at `CONTEXT.md` -> `## Glossary`; if the index is
-        ever genuinely needed again, that is a fixture-and-decision change, not
-        a quiet re-import.
-        """
-        assert not GLOSSARY_INDEX_MD_PATH.exists(), (
-            f"{GLOSSARY_INDEX_MD_PATH} was retired by #1418 — reinstating the "
-            "always-loaded category index needs a fresh record_decision, not a "
-            "silent restore"
-        )
-        text = CLAUDE_MD_PATH.read_text(encoding="utf-8")
-        paths = [path for _, path in find_bare_imports(text)]
-        assert "docs/context/glossary-index.md" not in paths, (
-            "root CLAUDE.md must not bare-import the retired glossary index "
-            f"(#1418). Found bare imports: {paths}."
+class TestDeletionTargetsStayDeleted:
+    def test_old_invariants_md_removed(self):
+        assert not INVARIANTS_MD_PATH.exists(), (
+            f"{INVARIANTS_MD_PATH} was folded into AGENTS.md by #1791 and must not be reinstated"
         )
 
-    def test_every_bare_import_target_exists_on_disk(self):
-        """A bare import to a missing file loads silently as nothing.
-
-        Project `CLAUDE.md` imports resolve relative to the repo root, so this
-        one can be checked directly (unlike the user-level file, whose targets
-        resolve against the installed `~/.claude/` layout).
-        """
-        text = CLAUDE_MD_PATH.read_text(encoding="utf-8")
-        for lineno, path in find_bare_imports(text):
-            resolved = (CLAUDE_MD_PATH.parent / path).resolve()
-            assert resolved.is_file(), (
-                f"CLAUDE.md:{lineno} imports `@{path}`, which does not exist at "
-                f"{resolved} — the import would load as empty"
-            )
-
-
-class TestRetiredAssemblerPath:
-    def test_load_project_context_removed(self):
-        text = SESSION_CONTEXT_PATH.read_text(encoding="utf-8")
-        assert "_load_project_context" not in text, (
-            "scripts/session-context.py must not define/reference "
-            "_load_project_context — #1417 retired the budget-constrained "
-            "CONTEXT.md push in favor of @import delivery"
+    def test_claude_rules_dir_removed(self):
+        assert not CLAUDE_RULES_DIR.exists(), (
+            f"{CLAUDE_RULES_DIR} was retired by #1791 — its content moved into "
+            "AGENTS.md, docs/reference/*.md, or the sole consumer skill"
         )
 
-    def test_priority_context_push_removed(self):
-        text = SESSION_CONTEXT_PATH.read_text(encoding="utf-8")
-        assert "_PRIORITY_CONTEXT_PUSH" not in text, (
-            "scripts/session-context.py must not define/reference "
-            "_PRIORITY_CONTEXT_PUSH — its priority slot was removed by #1417"
+    def test_github_agents_md_removed(self):
+        assert not GITHUB_AGENTS_MD_PATH.exists(), (
+            f"{GITHUB_AGENTS_MD_PATH} was retired by #1791 — the root AGENTS.md "
+            "is the single copy now; GitHub-native tools resolve the root file "
+            "without needing a `.github/` duplicate"
+        )
+
+    def test_copilot_instructions_removed(self):
+        assert not COPILOT_INSTRUCTIONS_PATH.exists(), (
+            f"{COPILOT_INSTRUCTIONS_PATH} was retired by #1791 — Copilot reads "
+            "root AGENTS.md directly under the cross-tool AAIF convention now"
         )

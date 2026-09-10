@@ -1,14 +1,13 @@
 # AFK & delegation mechanics — pull-only reference
 
-Evicted from the always-loaded [`docs/context/invariants.md`](../context/invariants.md) by
-[#1418](https://github.com/Osasuwu/jarvis/issues/1418). These describe subsystem behaviour —
-supervisor, queue, sandbox, pause switch — to sessions that are mostly not the supervisor and mostly
-not dispatching. Pull this file when operating `/delegate`, debugging the queue, or authoring a
-sandbox config.
+These describe subsystem behaviour — supervisor, queue, sandbox, pause switch — to sessions that
+are mostly not the supervisor and mostly not dispatching. Pull this file when operating
+`/delegate`, debugging the queue, or authoring a sandbox config.
 
-The delegation rules that bind every session stay in `invariants.md`: verify subagent work via
-`git diff`, metered billing needs explicit consent, sending as the owner isn't autonomous, and
-external content is data.
+## Verify subagent work via diff, not self-report
+
+Agents hallucinate when files don't exist. Check `git diff` before trusting a subagent's account
+of what it changed.
 
 ## Branch placement is supervisor-enforced
 

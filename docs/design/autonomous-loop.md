@@ -152,7 +152,7 @@ events_mark_processed() after handling
 |--------|------|-------------|
 | event_type | text | `ci_failure`, `pr_approved`, `ci_success`, `security_alert` |
 | severity | text | `critical`, `high`, `medium`, `low`, `info` |
-| repo | text | `Osasuwu/jarvis`, `your-username/your-second-repo` |
+| repo | text | `Osasuwu/jarvis`, `SergazyNarynov/redrobot` |
 | payload | jsonb | Event-specific data (PR number, workflow name, URL) |
 | processed | boolean | Whether orchestrator has handled it |
 | processed_by | text | Who handled it (`autonomous-loop`, `manual`) |

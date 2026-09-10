@@ -40,7 +40,6 @@ Thumbs.DB
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 .claude/session-snapshots/
-.claude/launch.json
 
 # env_sync / MCP bootstrap runtime artifacts (#1312)
 .claude/logs/

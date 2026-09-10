@@ -1,16 +1,16 @@
 [build-system]
-requires = ["setuptools>=83.0.0", "wheel"]
+requires = ["setuptools>=84.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "jarvis-agent"
-version = "0.4.1"
+version = "0.5.0"
 description = "Jarvis — universal personal AI agent built on Claude Code + MCP"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [
-  { name = "your-name" }
+  { name = "your-username" }
 ]
 keywords = ["ai", "agent", "claude", "mcp", "personal-assistant"]
 classifiers = [
@@ -34,71 +34,37 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Core: MCP memory server (cross-device persistent memory via Supabase)
-memory = [
-  # Floor raised to 2.0 in #1294: mcp-memory/server.py, mcp-status/server.py,
-  # and scripts/telegram-mcp-server.py are now all ported to the v2 API
-  # (constructor-param `Server(on_list_tools=..., on_call_tool=...)` in place
-  # of 1.x decorator registration; `MCPServer`/`Context` from
-  # `mcp.server.mcpserver` in place of `mcp.server.fastmcp.FastMCP`).
-  # tests/memory/test_memory_server_script_launch.py is the tripwire that
-  # would go red again on a v1-only environment. Upper-bounded <3 per #1296 —
-  # lift once the ported files are re-verified against the v3 API when it ships.
-  "mcp>=2.0.0,<3",
-  "supabase>=2.0.0,<3",
-  "voyageai>=0.2.3,<1",
-  "httpx>=0.27,<1",
-  "pyyaml>=6.0,<7",
-]
-# Pillar 7: reactive-core agents (Ollama + Postgres + Supabase bridge).
-# LangGraph (langgraph / langgraph-checkpoint-postgres / langchain-ollama) was
-# retired with agents/event_monitor.py in #744 — the deterministic router has
-# no graph runtime. APScheduler + SQLAlchemy were retired with agents/scheduler.py
-# in #743 — wake_driver is event-driven (LISTEN/NOTIFY), not a resident poller.
-# psycopg stays: wake_driver uses it for the LISTEN socket the PostgREST client
-# can't open. psutil is conditional (lazy import in pid_sidecar #952) — used to
-# re-adopt live processes across driver restarts.
+# agents/ package: the plan-review pipeline (plan_lock/plan_classifier/
+# plan_review_config/critic_verdict/plan_assumptions/implement_plan_gate).
+# The reactive-core agent stack (orchestrator/wake_driver/task_dispatch/
+# sandcastle/Ollama+Supabase bridges) that motivated psycopg/ollama/supabase/
+# httpx/psutil/apprise was demolished in #1802.
 agents = [
-  "psycopg[binary,pool]>=3.1,<4",
-  # STAGED-DORMANT (do-not-retire): no live consumer yet — staged for the
-  # orchestrator local-inference tick (decision a0a4ce7b, no tracking issue by
-  # design). See agents/ollama_client.py. Keep through native-first sweeps.
-  "ollama>=0.6.2,<1",
-  # Supabase bridge — agents read/write memories/events/goals/audit_log directly
-  # (MCP is Claude-Code-only, so graph nodes need a native client).
-  "supabase>=2.0.0,<3",
-  # GitHub Events API client. supabase-py pulls httpx transitively today,
-  # but agents/github_client.py depends on it unconditionally — declare it
-  # explicitly so the contract doesn't depend on a transitive.
-  "httpx>=0.27,<1",
-  # Process liveness tracking — survives driver restarts via PID sidecar (#952).
-  "psutil>=7.2.2,<8",
+  # config-file parsing for agents/plan_review_config.py.
+  "pyyaml>=6.0.3,<7",
 ]
 # All runtime components
 full = [
-  "jarvis-agent[memory]",
   "jarvis-agent[agents]",
 ]
 # Development
 dev = [
-  "pytest>=7.4,<10",
-  "pytest-asyncio>=0.23,<2",
-  "ruff>=0.16.1,<1",
+  "pytest>=9.1.1,<10",
+  "pytest-asyncio>=1.4.0,<2",
+  "ruff>=0.16.3,<1",
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-username/your-repo"
-Issues = "https://github.com/your-username/your-repo/issues"
+Homepage = "https://github.com/your-username/jarvis"
+Issues = "https://github.com/your-username/jarvis/issues"
 
 [tool.setuptools]
-# Mixed layout:
-#   - `agents/` package lives at repo root (Pillar 7 agents)
-#   - `risk_radar.py` remains a flat module under `src/` (legacy)
-# Explicit declarations so `pip install -e ".[agents]"` installs the root-layout
-# `agents` package correctly, rather than silently skipping it.
-package-dir = {"" = "src", "agents" = "agents"}
-packages = ["agents", "strategic_ideation"]
-py-modules = ["risk_radar"]
+# `agents/` package (the plan-review pipeline) lives at repo root, not under
+# `src/` (now empty — its former contents were retired in #1801/#1802).
+# Explicit declaration so `pip install -e ".[agents]"` installs it correctly,
+# rather than silently skipping it.
+package-dir = {"agents" = "agents"}
+packages = ["agents"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -120,3 +86,9 @@ addopts = "--import-mode=prepend"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Layer A of the #1816 code gate: lint group 1 only (deterministic,
+# exit-code-only, zero PR comments). Groups 2-4 (BLE001/S110/SIM105, E501,
+# S603/S607) are follow-up cleanup slices — see #1816's issue body.
+select = ["F", "B", "E722"]

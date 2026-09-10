@@ -139,8 +139,7 @@ class TestPowerShellEncoding:
         assert not offenses, (
             f"Found {len(offenses)} Set-Content/Out-File call(s) without -Encoding.\n"
             f"Add them to {ALLOWLIST_PATH.relative_to(REPO_ROOT)} with a reason, "
-            f"or add -Encoding to the call.\n"
-            + "\n".join(f"  {o}" for o in offenses)
+            f"or add -Encoding to the call.\n" + "\n".join(f"  {o}" for o in offenses)
         )
 
     def test_allowlist_entries_are_valid(self):
@@ -167,8 +166,8 @@ class TestPowerShellEncoding:
                     "allowlist entry is stale"
                 )
 
-        assert not bad, (
-            f"{len(bad)} invalid allowlist entr(ies):\n" + "\n".join(f"  {b}" for b in bad)
+        assert not bad, f"{len(bad)} invalid allowlist entr(ies):\n" + "\n".join(
+            f"  {b}" for b in bad
         )
 
     def test_allowlist_entries_have_comments(self):
@@ -190,7 +189,7 @@ class TestPowerShellEncoding:
                 # Line is an actual entry — split on first space to separate
                 # the path:line token from potential trailing content.
                 token = stripped.split()[0]
-                rest = stripped[len(token):].strip()
+                rest = stripped[len(token) :].strip()
                 if not rest.startswith("#"):
                     uncommented.append(token)
 

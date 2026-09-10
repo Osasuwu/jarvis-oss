@@ -9,7 +9,7 @@ _SPAN_RE = re.compile(r"`[^`\n]*`")
 
 # A line whose *entire* content is `@<path>`. This is the only import form with
 # positive evidence of resolving in this repo: project `CLAUDE.md`'s
-# `@docs/context/invariants.md` expands into every session, while
+# `@AGENTS.md` expands into every session, while
 # `.claude-userlevel/CLAUDE.md`'s two mid-prose imports did not — even though
 # both of their targets existed on disk at the right path (#1426).
 _BARE_IMPORT_RE = re.compile(r"^@(\S+)[ \t]*$")

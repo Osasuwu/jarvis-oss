@@ -1,5 +1,5 @@
 # Local Ollama benchmark — per-model cold/warm latency + sustained tok/s.
-# Baselines used: a 6 GB VRAM GPU 2026-05-10; a 16 GB VRAM GPU 2026-05-13 (#538).
+# Baselines used: Main PC (RTX 3050 6GB) 2026-05-10; Workshop PC (RTX 5080 16GB) 2026-05-13 (#538).
 #
 # For each model:
 #   1. Unload (POST /api/generate with keep_alive=0)

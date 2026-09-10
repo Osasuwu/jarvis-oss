@@ -229,7 +229,7 @@ Proactive protection: credential registry, expiry monitoring, secret-leak scanni
 **Digital Twin — acting as principal**
 Distinct operating mode: Jarvis drafts and acts in the principal's style for outbound work the principal would normally do (emails, messages, professional documents). Inverts the default principal-Jarvis role.
 
-Has its own gating: drafts welcome; final send stays with the principal until the digital-twin mode is mature (per `docs/context/invariants.md` → *Sending as the owner isn't autonomous*). Uses all five axes, but with judgment **calibrated to** the principal's voice rather than Jarvis's own — through accumulated examples and explicit style memories, not model fine-tuning.
+Has its own gating: drafts welcome; final send stays with the principal until the digital-twin mode is mature — see `.claude-userlevel/skills/weekly-release/SKILL.md` for a concrete example of this boundary enforced in a skill. Uses all five axes, but with judgment **calibrated to** the principal's voice rather than Jarvis's own — through accumulated examples and explicit style memories, not model fine-tuning.
 
 Distinct from Pillar 5 (Judgment & Calibration): that one calibrates Jarvis-as-Jarvis; Digital Twin calibrates Jarvis-as-principal.
 

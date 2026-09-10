@@ -5,7 +5,7 @@ Scope: Permission rules for **all principals** running Claude — interactive pr
 
 ## Principal model (#426, #429)
 
-Permissions depend on **who is running Claude**. Four principals — detection lives in [`scripts/principal.py`](../../scripts/principal.py):
+Permissions depend on **who is running Claude**. Four principals — detection formerly lived in `scripts/principal.py`, retired in #1800 along with the rest of the custom install/harness scaffolding; the principal model below stays as documented intent, not a currently-enforced code path:
 
 | Principal | Signal | Trust |
 |---|---|---|
@@ -32,10 +32,10 @@ Action tier model is shared with `agents/safety.py` (T0 = AUTO, T1 = OWNER_QUEUE
 | **T0** narrow GitHub labels (`priority:*`, `area:*`, `needs-*`, `status:ready`); status updates; memory_store with `tag=auto-generated`; comment own PR; close issue with evidence; open jarvis tracking issue | ✅ act | ✅ act | ✅ act | ✅ act |
 | **T1** code edit own repo; open PR; merge LOW-risk own PR per skill policy; `/implement` work; workflow files; drive-by fixes | ✅ act | ⚠️ enqueue `task_queue` *(future, lands with dispatcher)* | ✅ in worktree, no merge | ✅ within dispatcher grant *(future)* |
 | **T2-canonical** repo-side sources of truth — see "Repo-level" table below | ⚠️ harness asks (hook exits 0) | ❌ block | ❌ block, escalate to `/implement` | ❌ block |
-| **T2-mirror** `~/.claude/*` files installed by `install.ps1` — see "User-level" table below | ❌ block (use installer) | ❌ block | ❌ block | ❌ block |
+| **T2-mirror** `~/.claude/*` files kept in sync by hand from this repo — see "User-level" table below | ❌ block (edit the repo source, then copy by hand) | ❌ block | ❌ block | ❌ block |
 | **T2-secret** `.env*` values; force push to main/master; impersonation; outbound to other humans (PR comments to others, Telegram, email) | ❌ always block | ❌ block | ❌ block | ❌ block |
 
-Currently enforced in code: only **T2** rows, via [`scripts/protected-files.py`](../../scripts/protected-files.py). T1 routing (autonomous-enqueue, supervised-grant) lands when the dispatcher ships; until then T1 work is principal-driven through `/implement` and `/delegate`.
+Currently enforced in code: only **T2** rows, via `.claude/hooks/protected-files.py` — a standalone, non-principal-aware, fail-closed successor to the retired `scripts/protected-files.py` (#1800). T1 routing (autonomous-enqueue, supervised-grant) lands when the dispatcher ships; until then T1 work is principal-driven through `/implement` and `/delegate`.
 
 ## Protected Files
 
@@ -43,7 +43,7 @@ This table is the **single source of truth** — skills reference it rather than
 
 ### Policy
 
-All code changes go through PRs with CI + code review — that is the primary safety gate. File-level blocking is reserved for the narrow surface where a subagent edit could leak secrets into git history *before* review sees it (i.e. weakening the scanners themselves), plus the enforcement scripts themselves (a non-live principal that can modify them can bypass the rest). Repo-level copies of everything else — `config/SOUL.md`, `CLAUDE.md`, `.mcp.json`, `mcp-memory/*` — may be edited in feature branches; the review process rejects anything wrong. Note: user-level mirrors under `~/.claude/` are still blocked for all principals (no PR process there; see "User-level" table below).
+All code changes go through PRs with CI + code review — that is the primary safety gate. File-level blocking is reserved for the narrow surface where a subagent edit could leak secrets into git history *before* review sees it (i.e. weakening the scanners themselves), plus the enforcement scripts themselves (a non-live principal that can modify them can bypass the rest). Repo-level copies of everything else — `config/SOUL.md`, `CLAUDE.md` — may be edited in feature branches; the review process rejects anything wrong. Note: user-level mirrors under `~/.claude/` are still blocked for all principals (no PR process there; see "User-level" table below).
 
 Redrobot follows the same policy: no file-level protection; CI + PR review is sufficient.
 
@@ -55,7 +55,7 @@ Redrobot follows the same policy: no file-level protection; CI + PR review is su
 | `.pre-commit-config.yaml` | Pre-commit hooks — same class as .gitleaks.toml |
 | `scripts/secret-scanner.py` | The scanner itself — same blast radius |
 
-### User-level (installed under `~/.claude/` by `scripts/install/installer.py`)
+### User-level (kept under `~/.claude/` in sync by hand — no installer, per #1800)
 
 Editing these changes behaviour for **every Claude Code session on the device**, across all projects — strictly broader blast radius than the repo-level copies.
 
@@ -63,12 +63,11 @@ Editing these changes behaviour for **every Claude Code session on the device**,
 |------|-----|
 | `~/.claude/settings.json` | User-level hooks — run in every session on this device |
 | `~/.claude/SOUL.md` | User-level identity — loaded via a **bare, line-start** `@SOUL.md` import in `~/.claude/CLAUDE.md` (#1328; the import only actually resolved from #1426 — before that it sat mid-prose and delivered nothing) |
-| `~/.claude/.mcp.json` | User-level MCP config — mounts servers for every project |
 | `~/.claude/skills/*/SKILL.md` | User-level skill definitions — available in every project |
 
-The source of truth for these files lives in the jarvis repo (`config/SOUL.md`, `.claude-userlevel/settings.json`, `.claude-userlevel/.mcp.json`, `.claude-userlevel/skills/*/SKILL.md`). The installer copies or templates them into `~/.claude/`. Direct edits to `~/.claude/` drift from source and are lost on the next `install.ps1 --apply`.
+The source of truth for these files lives in the jarvis repo (`config/SOUL.md`, `.claude-userlevel/skills/*/SKILL.md`; `~/.claude/settings.json` has no repo-side source and is edited directly). There is no installer — a change lands in the repo via PR, then gets copied by hand into `~/.claude/` on each device. Direct edits to `~/.claude/` without updating the repo source drift silently, since nothing re-syncs them.
 
-Enforced via PreToolUse hook: `scripts/protected-files.py` (covers both surfaces; user-level paths anchored to `Path.home() / ".claude"` or `$JARVIS_CLAUDE_HOME` override). The hook is principal-aware (#426): `live` principal can edit canonical sources directly (the harness asks for one-off approval), but mirror files always block — the canonical source + installer flow is the only sanctioned path to update them.
+Enforced via PreToolUse hook: `.claude/hooks/protected-files.py` (covers both surfaces; user-level paths anchored to `Path.home() / ".claude"` or `$JARVIS_CLAUDE_HOME` override). Unlike the retired `scripts/protected-files.py` (#426's principal-aware bypass for the `live` principal), this standalone successor always blocks — it carries no principal-detection seam, so both canonical and mirror files block for every principal (#1800).
 
 ## Branch Rules
 

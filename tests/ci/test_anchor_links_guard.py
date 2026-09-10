@@ -10,9 +10,6 @@ Pattern follows #326: fixture tests validate both config and logic.
 
 from __future__ import annotations
 
-import re
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -28,6 +25,7 @@ AUDIT_SCRIPT = REPO_ROOT / "scripts" / "audit_anchors.py"
 def test_slugify_lowercase():
     """Slugify converts to lowercase."""
     from scripts.audit_anchors import slugify
+
     assert slugify("Heading") == "heading"
     assert slugify("UPPERCASE") == "uppercase"
 
@@ -35,6 +33,7 @@ def test_slugify_lowercase():
 def test_slugify_spaces_to_dashes():
     """Slugify replaces spaces with dashes."""
     from scripts.audit_anchors import slugify
+
     assert slugify("Two Word") == "two-word"
     assert slugify("Three Word Heading") == "three-word-heading"
 
@@ -42,6 +41,7 @@ def test_slugify_spaces_to_dashes():
 def test_slugify_strips_inline_markdown():
     """Slugify removes backticks, asterisks (inline code/bold/italics)."""
     from scripts.audit_anchors import slugify
+
     assert slugify("Code `example`") == "code-example"
     assert slugify("**Bold** text") == "bold-text"
     assert slugify("*Italic* here") == "italic-here"
@@ -50,12 +50,14 @@ def test_slugify_strips_inline_markdown():
 def test_slugify_resolves_link_syntax():
     """Slugify extracts text from [text](url) patterns."""
     from scripts.audit_anchors import slugify
+
     assert slugify("See [link](url)") == "see-link"
 
 
 def test_slugify_drops_punctuation():
     """Slugify removes punctuation except dashes and underscores."""
     from scripts.audit_anchors import slugify
+
     assert slugify("Hello, World!") == "hello-world"
     assert slugify("Question?") == "question"
     assert slugify("Em—dash text") == "emdash-text"
@@ -64,12 +66,14 @@ def test_slugify_drops_punctuation():
 def test_slugify_preserves_underscores():
     """Slugify keeps underscores."""
     from scripts.audit_anchors import slugify
+
     assert slugify("snake_case") == "snake_case"
 
 
 def test_slugify_edge_case_multiple_spaces():
     """Slugify converts each space to one dash (not collapsed)."""
     from scripts.audit_anchors import slugify
+
     result = slugify("A  B")
     # Two spaces -> two dashes
     assert result == "a--b"
@@ -78,6 +82,7 @@ def test_slugify_edge_case_multiple_spaces():
 def test_slugify_edge_case_consecutive_dashes():
     """Slugify preserves consecutive dashes from punctuation."""
     from scripts.audit_anchors import slugify
+
     # "C17 — Observability" should keep the -- from em-dash
     result = slugify("C17 — Observability")
     # em-dash becomes space, plus space -> a--, plus more chars -> c17--observability
@@ -87,6 +92,7 @@ def test_slugify_edge_case_consecutive_dashes():
 def test_collect_anchors_basic():
     """Collect anchors from markdown headings."""
     from scripts.audit_anchors import collect_anchors
+
     text = "# Heading One\n\n## Heading Two"
     anchors = collect_anchors(text)
     assert "heading-one" in anchors
@@ -96,6 +102,7 @@ def test_collect_anchors_basic():
 def test_collect_anchors_duplicates_suffixed():
     """Collect anchors adds -1, -2, ... to duplicate heading texts."""
     from scripts.audit_anchors import collect_anchors
+
     text = "# Foo\n## Foo\n### Foo"
     anchors = collect_anchors(text)
     assert "foo" in anchors
@@ -106,6 +113,7 @@ def test_collect_anchors_duplicates_suffixed():
 def test_collect_anchors_strips_html_tags():
     """Collect anchors removes HTML tags from heading text before slugifying."""
     from scripts.audit_anchors import collect_anchors
+
     text = "# Heading <em>emphasis</em> text"
     anchors = collect_anchors(text)
     assert "heading-emphasis-text" in anchors
@@ -114,6 +122,7 @@ def test_collect_anchors_strips_html_tags():
 def test_collect_anchors_inline_anchors():
     """Collect anchors also includes explicit <a id=...> anchors."""
     from scripts.audit_anchors import collect_anchors
+
     text = '<a id="custom-anchor">Label</a>\n# Heading'
     anchors = collect_anchors(text)
     assert "custom-anchor" in anchors
@@ -123,6 +132,7 @@ def test_collect_anchors_inline_anchors():
 def test_collect_anchors_lowercase_inline():
     """Inline anchor ids are lowercased."""
     from scripts.audit_anchors import collect_anchors
+
     text = '<a id="CustomAnchor">Label</a>'
     anchors = collect_anchors(text)
     assert "customanchor" in anchors
@@ -130,7 +140,8 @@ def test_collect_anchors_lowercase_inline():
 
 def test_fence_skipping_skip_code_in_fence():
     """Fence-skipping: lines inside ``` ``` are not parsed for anchors."""
-    from scripts.audit_anchors import find_broken_links, collect_anchors
+    from scripts.audit_anchors import find_broken_links
+
     # This text has an anchor-like #foo inside a code fence — should be ignored
     corpus = {
         REPO_ROOT / "test.md": """# Foo
@@ -150,6 +161,7 @@ def test_fence_skipping_skip_code_in_fence():
 def test_fence_skipping_with_language_tag():
     """Fence-skipping works with language tags (``` ```python)."""
     from scripts.audit_anchors import find_broken_links
+
     corpus = {
         REPO_ROOT / "test.md": """# Real
 \`\`\`python
@@ -163,9 +175,62 @@ def test_fence_skipping_with_language_tag():
     assert len(broken) == 0
 
 
+def test_fence_skipping_many_fence_pairs_no_drift():
+    """#1335: no line-offset drift across many fence pairs.
+
+    Regression for the `re.split()` + manual offset arithmetic that
+    double-counted each fence delimiter's own line and drifted by +1 per
+    fence pair — a link-like line inside a LATE fence must stay excluded
+    regardless of how many fence pairs precede it in the file.
+    """
+    from scripts.audit_anchors import find_broken_links
+
+    fences = "\n".join(f"```\ncode block {i}\n```" for i in range(15))
+    text = f"# Heading\n{fences}\n```markdown\n[fake](#fake-inside-late-fence)\n```\n"
+    corpus = {REPO_ROOT / "test.md": text}
+    broken = find_broken_links(corpus)
+    assert len(broken) == 0
+
+
+def test_fence_skipping_real_broken_link_after_many_fences_still_caught():
+    """#1335: drift could also produce false negatives.
+
+    A genuinely broken link OUTSIDE any fence, positioned after many fence
+    pairs, must still be flagged — accumulated offset must not silently
+    misattribute it as "inside a fence".
+    """
+    from scripts.audit_anchors import find_broken_links
+
+    fences = "\n".join(f"```\ncode block {i}\n```" for i in range(15))
+    text = f"# Heading\n{fences}\n[broken](#does-not-exist)\n"
+    corpus = {REPO_ROOT / "test.md": text}
+    broken = find_broken_links(corpus)
+    assert len(broken) == 1
+    assert broken[0][3] == "#does-not-exist"
+
+
+def test_fence_skipping_exact_line_attribution():
+    """#1335: fence-line attribution is exact, not just eventually-consistent.
+
+    Places a broken link on the line immediately AFTER a late-closing fence
+    to confirm the fence/non-fence boundary itself (not just deep-inside
+    content) is attributed to the correct line number.
+    """
+    from scripts.audit_anchors import find_broken_links
+
+    fences = "\n".join(f"```\ncode block {i}\n```" for i in range(10))
+    text = f"{fences}\n[broken](#missing)\n"
+    corpus = {REPO_ROOT / "test.md": text}
+    broken = find_broken_links(corpus)
+    assert len(broken) == 1
+    expected_lineno = len(text.splitlines())  # the last line, right after the final fence
+    assert broken[0][1] == expected_lineno
+
+
 def test_gh_relative_path_allowlist():
     """GH-relative paths (../issues/, ../pulls/, etc.) are allowlisted."""
     from scripts.audit_anchors import is_github_relative_path
+
     assert is_github_relative_path("../../issues/123")
     assert is_github_relative_path("../../pulls/456")
     assert is_github_relative_path("../../wiki/Home")
@@ -177,6 +242,7 @@ def test_gh_relative_path_allowlist():
 def test_suffixed_n_anchor_resolution():
     """Suffixed-N anchors resolve to the Nth occurrence (zero-indexed counter)."""
     from scripts.audit_anchors import collect_anchors
+
     # 3 identical headings: first is #foo, second is #foo-1, third is #foo-2
     text = "# Foo\n\n# Foo\n\n# Foo"
     anchors = collect_anchors(text)
@@ -189,6 +255,7 @@ def test_suffixed_n_anchor_resolution():
 def test_suffixed_n_resolution_example_4th_occurrence():
     """Example: the 4th occurrence of 'Bar' is #bar-3."""
     from scripts.audit_anchors import collect_anchors
+
     text = "# Bar\n# Bar\n# Bar\n# Bar"
     anchors = collect_anchors(text)
     assert "bar" in anchors
@@ -200,6 +267,7 @@ def test_suffixed_n_resolution_example_4th_occurrence():
 def test_line_number_annotation_regex():
     """L3 regex detects line-number annotations inside link text."""
     from scripts.audit_anchors import LINE_NUMBER_ANNOTATION_RE
+
     # Match: [text (line 123)](url) with paren before line keyword
     assert LINE_NUMBER_ANNOTATION_RE.search("[text (line 123)](url)")
     assert LINE_NUMBER_ANNOTATION_RE.search("[example (lines 10-20)](file.md)")
@@ -227,15 +295,15 @@ def test_audit_script_is_executable():
 def test_find_broken_links_function_exists():
     """find_broken_links function exists and is callable."""
     from scripts.audit_anchors import find_broken_links
+
     assert callable(find_broken_links)
 
 
 def test_find_broken_links_same_file_anchor():
     """Find broken links: same-file anchor that doesn't exist."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "[link](#nonexistent)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "[link](#nonexistent)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 1
     assert broken[0][3] == "#nonexistent"
@@ -244,6 +312,7 @@ def test_find_broken_links_same_file_anchor():
 def test_find_broken_links_cross_file_anchor_missing(tmp_path):
     """Find broken links: anchor in target file doesn't exist."""
     from scripts.audit_anchors import find_broken_links
+
     test_file = tmp_path / "test1.md"
     target_file = tmp_path / "test2.md"
     test_file.write_text("[link](test2.md#missing)")
@@ -259,9 +328,8 @@ def test_find_broken_links_cross_file_anchor_missing(tmp_path):
 def test_find_broken_links_missing_file():
     """Find broken links: referenced file doesn't exist."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "[link](nonexistent.md)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "[link](nonexistent.md)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 1
 
@@ -269,9 +337,8 @@ def test_find_broken_links_missing_file():
 def test_find_broken_links_valid_link():
     """Find broken links: valid same-file link passes."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "# Heading\n\n[link](#heading)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "# Heading\n\n[link](#heading)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 0
 
@@ -279,9 +346,8 @@ def test_find_broken_links_valid_link():
 def test_find_broken_links_external_url_ignored():
     """Find broken links: external URLs (http/https) are ignored."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "[link](https://example.com)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "[link](https://example.com)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 0
 
@@ -289,9 +355,8 @@ def test_find_broken_links_external_url_ignored():
 def test_find_broken_links_mailto_ignored():
     """Find broken links: mailto: URIs are ignored."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "[email](mailto:test@example.com)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "[email](mailto:test@example.com)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 0
 
@@ -299,9 +364,8 @@ def test_find_broken_links_mailto_ignored():
 def test_get_broken_list_output_format():
     """get_broken_list returns tuples of (file, lineno, label, target)."""
     from scripts.audit_anchors import find_broken_links
-    corpus = {
-        REPO_ROOT / "test.md": "[label](#missing)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "[label](#missing)"}
     broken = find_broken_links(corpus)
     assert len(broken) == 1
     file_path, lineno, label, target = broken[0]
@@ -321,6 +385,7 @@ def test_live_no_broken_anchors_in_corpus():
     must find zero broken links.
     """
     from scripts.audit_anchors import get_corpus, find_broken_links
+
     corpus = get_corpus()
     broken = find_broken_links(corpus)
     # Format error message to show what was found
@@ -343,7 +408,8 @@ def test_live_no_broken_anchors_in_corpus():
 
 def test_l3_line_annotation_simple():
     """L3: Line-number annotation inside link text is detected."""
-    from scripts.audit_anchors import find_line_number_annotations, LINE_NUMBER_ANNOTATION_RE
+    from scripts.audit_anchors import LINE_NUMBER_ANNOTATION_RE
+
     # This should match the L3 pattern
     text = "[text (line 42)](url)"
     assert LINE_NUMBER_ANNOTATION_RE.search(text)
@@ -352,12 +418,14 @@ def test_l3_line_annotation_simple():
 def test_l3_line_annotation_lines_plural():
     """L3: Plural 'lines' is also matched."""
     from scripts.audit_anchors import LINE_NUMBER_ANNOTATION_RE
+
     assert LINE_NUMBER_ANNOTATION_RE.search("[text (lines 1-10)](url)")
 
 
 def test_l3_line_annotation_case_insensitive():
     """L3: 'Line' and 'line' both match."""
     from scripts.audit_anchors import LINE_NUMBER_ANNOTATION_RE
+
     assert LINE_NUMBER_ANNOTATION_RE.search("[text (Line 5)](url)")
     assert LINE_NUMBER_ANNOTATION_RE.search("[text (line 5)](url)")
 
@@ -365,6 +433,7 @@ def test_l3_line_annotation_case_insensitive():
 def test_l3_no_match_outside_brackets():
     """L3: Line numbers outside [brackets] should NOT match."""
     from scripts.audit_anchors import LINE_NUMBER_ANNOTATION_RE
+
     text = "See line 42 in the docs"
     assert not LINE_NUMBER_ANNOTATION_RE.search(text)
 
@@ -372,9 +441,8 @@ def test_l3_no_match_outside_brackets():
 def test_l3_finds_annotations_in_corpus():
     """L3: find_line_number_annotations returns list of (file, lineno, text)."""
     from scripts.audit_anchors import find_line_number_annotations
-    corpus = {
-        REPO_ROOT / "test.md": "Normal [link](url)\n\n[text (line 5)](doc.md)"
-    }
+
+    corpus = {REPO_ROOT / "test.md": "Normal [link](url)\n\n[text (line 5)](doc.md)"}
     found = find_line_number_annotations(corpus)
     assert len(found) == 1
     assert found[0][1] == 3  # line number (1-indexed)
@@ -390,6 +458,7 @@ def test_l3_finds_annotations_in_corpus():
 def test_is_excluded_matches_research_prefix():
     """docs/research/ is outside the audit corpus (research drafts, #1286)."""
     from scripts.audit_anchors import is_excluded
+
     assert is_excluded("docs/research/some-topic-2026-07-28.md")
     assert is_excluded("docs/research/nested/deep.md")
 
@@ -397,6 +466,7 @@ def test_is_excluded_matches_research_prefix():
 def test_is_excluded_does_not_match_siblings():
     """Exclusion is prefix-anchored — sibling doc trees stay in the corpus."""
     from scripts.audit_anchors import is_excluded
+
     assert not is_excluded("docs/design/jarvis-v2-redesign.md")
     assert not is_excluded("docs/research-notes.md")  # not the directory
     assert not is_excluded("CONTEXT.md")
@@ -410,9 +480,9 @@ def test_corpus_excludes_research_dir():
     string never matched and the exclusion was a silent no-op.
     """
     from scripts.audit_anchors import get_corpus
+
     leaked = [
-        f for f in get_corpus()
-        if f.relative_to(REPO_ROOT).as_posix().startswith("docs/research/")
+        f for f in get_corpus() if f.relative_to(REPO_ROOT).as_posix().startswith("docs/research/")
     ]
     assert not leaked, f"docs/research/ leaked into corpus: {leaked[:5]}"
 
@@ -420,6 +490,7 @@ def test_corpus_excludes_research_dir():
 def test_pathlib_path_used_in_corpus():
     """Test fixtures use pathlib.Path, not string literals."""
     from scripts.audit_anchors import get_corpus
+
     corpus = get_corpus()
     for file_path in corpus.keys():
         assert isinstance(file_path, Path), f"Expected Path, got {type(file_path)}"

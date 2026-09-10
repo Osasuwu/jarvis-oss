@@ -9,6 +9,7 @@ load-bearing invariant, kept next to the canonical source it guards.
 The taxonomy is re-derivable, but every re-derivation should be a
 deliberate ADR update — not a drive-by edit. This test is the gate.
 """
+
 from __future__ import annotations
 
 import re
@@ -17,7 +18,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCHEMA_PATH = REPO_ROOT / "mcp-memory" / "schema.sql"
+SCHEMA_PATH = REPO_ROOT / "supabase" / "schema.sql"
 ADR_PATH = REPO_ROOT / "docs" / "adr" / "0004-comm-patterns-taxonomy.md"
 
 EXPECTED_LABELS = {
@@ -114,9 +115,7 @@ class TestEnum:
             body,
             re.S,
         )
-        assert m, (
-            "primary_label must have a CHECK (primary_label IN (...)) constraint."
-        )
+        assert m, "primary_label must have a CHECK (primary_label IN (...)) constraint."
         listed = set(re.findall(r"'([a-z_]+)'", m.group(1)))
         assert listed == EXPECTED_LABELS, (
             f"primary_label enum drift.\n"
@@ -129,9 +128,7 @@ class TestEnum:
 class TestIndices:
     @pytest.mark.parametrize("idx", sorted(EXPECTED_INDICES))
     def test_index_declared(self, idx):
-        assert idx in _schema(), (
-            f"Index `{idx}` missing from schema.sql (ADR 0004)."
-        )
+        assert idx in _schema(), f"Index `{idx}` missing from schema.sql (ADR 0004)."
 
     def test_dedup_is_unique(self):
         text = _schema()
@@ -174,9 +171,7 @@ class TestRLS:
 
 class TestADR:
     def test_adr_exists(self):
-        assert ADR_PATH.exists(), (
-            f"ADR 0004 missing at {ADR_PATH.relative_to(REPO_ROOT)}"
-        )
+        assert ADR_PATH.exists(), f"ADR 0004 missing at {ADR_PATH.relative_to(REPO_ROOT)}"
 
     def test_adr_lists_all_labels(self):
         text = ADR_PATH.read_text(encoding="utf-8")

@@ -106,28 +106,32 @@ NONBLOCK_SEV_RE = re.compile(
 # severity heading at all (which the non-block grep above would miss).
 LGTM_RE = re.compile(r"\bLGTM\b|Verdict:[^\n]*\bAPPROVED?\b", re.I)
 
-# Structured findings block (#1456). The plugin emits an HTML comment whose
-# JSON gives every finding an explicit "severity". Consulted BEFORE the prose
-# ladder, because it is machine-emitted: severity does not have to be inferred
-# from heading shape. The prose ladder only sees line-start markdown headings,
-# so when the plugin uses the numbered-list shape ("Found N issues:" + prose
-# bullets) the JSON is the ONLY place severity lives — and the FOUND_RE branch
-# then passes the whole comment as advisory. PR #1452 auto-merged that way with
-# two MEDIUM findings.
+# Structured verdict block (#1816 code-gate rebuild). Layer B (the tiered LLM
+# reviewer) emits a single HTML comment carrying a binary
+# ``{"blocking": bool, "findings": [{"class": str, "file": str}, ...]}``
+# payload — no severity ladder, no line numbers. Consulted BEFORE the prose
+# ladder and, when present, is fully authoritative in BOTH directions (a
+# malformed/absent-field block still fails closed): the whole point of the
+# rebuild is that Layer B never emits ambiguous prose, so once the block is
+# there nothing downstream needs to infer intent from heading shape. Older
+# comments that predate this schema (or come from an unrelated bot) carry no
+# marker at all and fall through to the prose ladder unchanged (kept as a
+# defense-in-depth fallback, not a live emission path any more) — this is the
+# additive guarantee pinned by test_absent_block_leaves_every_prose_branch_unchanged.
 FINDINGS_MARKER_RE = re.compile(r"<!-- *code-review-findings")
-FINDINGS_BLOCK_RE = re.compile(
-    r"<!-- *code-review-findings[^\n]*\n(.*?)\n-->", re.S
-)
-BLOCKING_SEVERITIES = frozenset({"CRITICAL", "MAJOR", "BLOCKING", "MEDIUM"})
+FINDINGS_BLOCK_RE = re.compile(r"<!-- *code-review-findings[^\n]*\n(.*?)\n-->", re.S)
 
 
 def structured_verdict(body: str) -> str | None:
-    """Mirror of the verdict step's structured-findings check (#1456).
+    """Mirror of the verdict step's structured-verdict check (#1816).
 
-    Returns ``'fail'`` when the block carries a blocking severity or is present
-    but unparseable, and ``None`` when the block is absent or carries only
-    non-blocking severities — ``None`` meaning "fall through to the prose
-    ladder", which is what keeps this additive over every older comment shape.
+    Returns ``'fail'``/``'pass'`` per the ``blocking`` field when the block is
+    present and well-formed, ``'fail'`` when the block is present but
+    malformed (missing/non-bool ``blocking``, non-list ``findings``, or a
+    ``blocking``/``findings``-emptiness mismatch — fail closed rather than
+    trust a payload that violates its own schema invariant), and ``None`` when
+    the block is absent at all — ``None`` meaning "fall through to the prose
+    ladder", the additive-over-older-shapes guarantee.
     """
     if not FINDINGS_MARKER_RE.search(body):
         return None
@@ -140,12 +144,17 @@ def structured_verdict(body: str) -> str | None:
         return "fail"
     if not isinstance(payload, dict):
         return "fail"
-    severities = {
-        str(f.get("severity", "")).upper()
-        for f in payload.get("findings", [])
-        if isinstance(f, dict)
-    }
-    return "fail" if severities & BLOCKING_SEVERITIES else None
+    blocking = payload.get("blocking")
+    if not isinstance(blocking, bool):
+        return "fail"
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        return "fail"
+    if blocking and not findings:
+        return "fail"  # schema invariant: blocking=true requires findings
+    if not blocking and findings:
+        return "fail"  # schema invariant: blocking=false requires no findings
+    return "fail" if blocking else "pass"
 
 
 def lineage_failed_runs(
@@ -228,7 +237,10 @@ def verdict(
             denials — otherwise the job would have already failed before this
             check runs). Only consulted when there is no selected comment: it
             disambiguates "legitimate skip" (ran=False → pass) from
-            "ran-but-silent" (ran=True → fail closed, #1182).
+            "ran-but-silent" (ran=True and not is_draft → fail closed, #1182).
+            A draft that ran cleanly and posted nothing is expected (the
+            plugin declines drafts by design), not silent failure — carved
+            out of this check the same way ``has_code`` is below (#1733).
         lineage_failed: number of FAILED code-review runs over the PR's head
             lineage (#1228). Non-zero means every review attempt died before
             posting, so "no comment" is evidence of never-reviewed, not of a
@@ -265,8 +277,10 @@ def verdict(
         #   3. lineage_in_flight > 0 → a review over this PR's own commits is
         #      still running, so nothing has verified this head yet → fail
         #      closed (#1434; PRs #1429 and #1435 both merged through this hole).
-        #   4. ran=True → eligible + ran cleanly yet posted nothing →
-        #      ran-but-silent → fail closed (#1182 — PR #1179).
+        #   4. ran=True and not is_draft → eligible + ran cleanly yet posted
+        #      nothing → ran-but-silent → fail closed (#1182 — PR #1179). A
+        #      draft is carved out: the plugin declines drafts by design, so
+        #      a clean run with zero comments there is expected (#1733).
         #   5. has_code=True on a non-draft → the PR carries reviewable code and
         #      no verdict comment exists, with nothing failed and nothing in
         #      flight to explain it → it was never reviewed → fail closed
@@ -279,16 +293,19 @@ def verdict(
             return "fail"
         if lineage_in_flight > 0:
             return "fail"
-        if ran:
+        if ran and not is_draft:
             return "fail"
         if has_code and not is_draft:
             return "fail"
         return "pass"
     body = selected[-1]  # latest review comment wins
-    # Structured findings block first (#1456) — authoritative severity, and the
-    # only signal present at all when the plugin uses the numbered-list shape.
-    if structured_verdict(body) == "fail":
-        return "fail"
+    # Structured verdict block first (#1816) — fully authoritative in BOTH
+    # directions when present, since Layer B always emits it. Only an absent
+    # marker (a pre-rebuild or unrelated-bot comment) falls through to the
+    # prose ladder below.
+    sv = structured_verdict(body)
+    if sv is not None:
+        return sv
     # BLOCK check runs first: a pass signal must never shadow a CRITICAL/MAJOR/
     # BLOCKING heading.
     if BLOCK_RE.search(body):
@@ -365,18 +382,18 @@ def verdict_fresh(
 
 # -- Autobase carry-forward anchor (mirror of the #1134 autobase branch) -------
 #
-# On the jarvis-ci[bot] auto-rebase (update-branch) push the verdict step now
+# On the osasuwu-ci[bot] auto-rebase (update-branch) push the verdict step now
 # RUNS — its if: no longer short-circuits on steps.autobase.outputs.skip — but
 # HEAD is the bot's 2-parent merge commit. Anchoring freshness on that commit's
 # committer time is an anchor-trap: no review comment is newer than a just-made
 # merge commit, so a clean PR would fail-closed forever. Instead the autobase
 # branch anchors on the LAST NON-BOT HEAD — the committer date of the most
-# recent PR commit whose author is not jarvis-ci[bot] — so the last REAL review
+# recent PR commit whose author is not osasuwu-ci[bot] — so the last REAL review
 # verdict is re-enforced. The walk is newest→oldest so a run of consecutive
 # auto-rebases (PR #963 had 28) is skipped, not just parents[0]. A null/unlinked
 # commit author counts as real (safe default). Normal path unchanged: anchor ==
 # head_time.
-AUTOBASE_BOT = "jarvis-ci[bot]"
+AUTOBASE_BOT = "osasuwu-ci[bot]"
 
 
 def anchor_time(commits: list[tuple[str, str | None]], head_time: str, *, autobase: bool) -> str:
@@ -388,7 +405,7 @@ def anchor_time(commits: list[tuple[str, str | None]], head_time: str, *, autoba
             the GitHub login or ``None`` when the commit email is unlinked.
         head_time: committer date of the current head commit.
         autobase: whether ``steps.autobase.outputs.skip == 'true'`` (the push was
-            an jarvis-ci[bot] auto-rebase).
+            an osasuwu-ci[bot] auto-rebase).
 
     Returns the ISO-8601 UTC string to anchor freshness on. Normal path →
     ``head_time``. Autobase path → committer date of the most recent non-bot
@@ -436,6 +453,66 @@ def verdict_autobase(
         is_draft=is_draft,
         pr_state=pr_state,
     )
+
+
+# -- Stale-only grace window (mirror of the #1469 poll loop) -------------------
+#
+# The verdict step RACES the run that posts the verdict comment — they live in
+# DIFFERENT workflow runs. On an autobase push the verdict evaluates while the
+# real review (triggered by the prior non-bot push) is still writing its
+# comment: on PR #1492 (run 31375034566) the step failed closed at 09:33:39Z
+# and the clean verdict landed at 09:34:01Z, 22 seconds later. The bash now
+# re-fetches the comment selection while the state is STALE-ONLY (comments
+# exist, none fresh for the anchor), bounded by a deadline, and only then falls
+# through to the #993 fail-closed branch. total==0 and fresh-body states never
+# poll — the window widens WHEN the verdict is read, never WHAT passes it.
+
+# 300s window / 20s sleep — the number of re-fetches the bash window allows.
+GRACE_MAX_POLLS = 15
+
+
+def grace_window_selection(
+    snapshots: list[list[tuple[str, str]]],
+    anchor: str,
+    *,
+    max_polls: int = GRACE_MAX_POLLS,
+) -> tuple[list[tuple[str, str]], int]:
+    """Mirror of the #1469 grace-window poll around the comment selection.
+
+    Args:
+        snapshots: successive comment lists (``(body, created_at)`` pairs) as
+            the issue-comments API would return them on each poll, first fetch
+            first. The last snapshot repeats if the window outlasts the list
+            (the world stopped changing).
+        anchor: freshness anchor (ISO-8601 UTC), per ``anchor_time``.
+        max_polls: bounded window — re-fetches allowed after the first.
+
+    Returns ``(selection, polls)``: the comment list the verdict ladder
+    actually evaluates, and how many re-fetches the window consumed. Polling
+    continues ONLY while the state is stale-only; a fresh comment, an empty
+    selection (total==0), or window exhaustion each stop it.
+    """
+    comments = snapshots[0]
+    polls = 0
+    while True:
+        review = [(b, t) for (b, t) in comments if TITLE_RE.search(b)]
+        fresh = [b for (b, t) in review if t >= anchor]
+        if not review or fresh:
+            return comments, polls  # not stale-only — no (further) polling
+        if polls >= max_polls:
+            return comments, polls  # window exhausted — fail closed downstream
+        polls += 1
+        comments = snapshots[polls] if polls < len(snapshots) else snapshots[-1]
+
+
+def verdict_fresh_grace(
+    snapshots: list[list[tuple[str, str]]],
+    anchor: str,
+    **kwargs,
+) -> str:
+    """``verdict_fresh`` fed through the #1469 grace-window poll."""
+    final, _ = grace_window_selection(snapshots, anchor)
+    return verdict_fresh(final, anchor, **kwargs)
 
 
 # The literal shape that false-passed the gate on PR #957: MAJOR + MINOR
@@ -590,56 +667,46 @@ SIMPLIFICATION_COMMENT = """\
 2. Collapse branch Y
 """
 
-# --- #1456: the structured findings block ---------------------------------
-# The verbatim shape that auto-merged PR #1452: numbered-list prose, no severity
-# heading anywhere, and both MEDIUMs living ONLY inside the machine-readable
-# block. Under the prose-only ladder this hit the "Found N issues:" branch and
-# exited 0 — a required check passing a PR it was meant to block. Kept verbatim
-# (permalinks trimmed) as the regression fixture: it must now FAIL.
+# --- #1816: the structured verdict block -----------------------------------
+# The verbatim shape that auto-merged PR #1452 under the OLD prose+severity
+# ladder: numbered-list prose, no severity heading anywhere, both real findings
+# living ONLY inside the machine-readable block. Under the #1816 rebuild Layer B
+# never emits ambiguous prose at all — this fixture now carries the new binary
+# ``{blocking, findings}`` shape directly and must FAIL.
 PR_1452_COMMENT = """\
 ### Code review
 
 Found 2 issues:
 
-1. **`.claude-userlevel/settings.json:9`** — the blanket `Read/Edit(**/.env.*)`
-   deny reverts the `.env.example` carve-out and blocks the `/wizard` skill's
-   documented Phase 1 read.
-2. **`tests/ci/test_context_extraction_guard.py:3`** — the PR body names files
+1. **`.claude-userlevel/settings.json`** — the blanket `Read/Edit(**/.env.*)`
+   deny reverts the `.env.example` carve-out and blocks a skill's documented
+   Phase 1 read.
+2. **`tests/ci/test_context_extraction_guard.py`** — the PR body names files
    under "Files Changed" that carry no diff hunk.
 
 <!-- code-review-findings
 {
-  "schema_version": 1,
+  "blocking": true,
   "findings": [
-    {"severity": "MEDIUM", "rule": "git-blame-context",
-     "file": ".claude-userlevel/settings.json", "line": 9,
-     "description": "Blanket dotenv deny reverts the .env.example carve-out"},
-    {"severity": "MEDIUM", "rule": "diff-coherence",
-     "file": "tests/ci/test_context_extraction_guard.py", "line": 3,
-     "description": "PR body names files with no diff hunk"}
+    {"class": "requirement-semantics", "file": ".claude-userlevel/settings.json"},
+    {"class": "requirement-semantics", "file": "tests/ci/test_context_extraction_guard.py"}
   ]
 }
 -->
 """
 
-# Same prose, but the block carries only advisory severities. Must fall through
-# to the prose ladder — where "Found N issues:" passes it, as before.
-FINDINGS_BLOCK_MINOR_ONLY = """\
+# Same prose, but the block is explicitly non-blocking (empty findings) — the
+# new schema's clean shape.
+FINDINGS_BLOCK_NONBLOCKING = """\
 ### Code review
 
-Found 2 issues:
+Found 2 issues, neither merge-blocking:
 
 1. Naming drift
 2. Stale comment
 
 <!-- code-review-findings
-{
-  "schema_version": 1,
-  "findings": [
-    {"severity": "MINOR", "rule": "naming", "file": "a.py", "line": 1},
-    {"severity": "LOW", "rule": "comment", "file": "b.py", "line": 2}
-  ]
-}
+{"blocking": false, "findings": []}
 -->
 """
 
@@ -652,9 +719,9 @@ No issues found.
 
 <!-- code-review-findings
 {
-  "schema_version": 1,
+  "blocking": false,
   "findings": [
-    {"severity": "MEDIUM", "rule": "truncated
+    {"class": "truncated
 -->
 """
 
@@ -784,6 +851,12 @@ class TestVerdictLogic:
         # skip) — no execution_file at all. Legitimate skip — pass.
         assert verdict([], ran=False) == "pass"
 
+    def test_no_comments_ran_and_draft_passes(self):
+        # #1733: the plugin declines drafts by design (no comment posted) —
+        # a clean run with zero comments on a draft is expected, not a silent
+        # no-review. Must not fail closed merely because ran=True.
+        assert verdict([], ran=True, is_draft=True) == "pass"
+
     def test_unrelated_comments_only_passes(self):
         assert verdict(["LGTM!", RETRY_EXHAUSTED_COMMENT, "merge train queued"]) == "pass"
 
@@ -813,32 +886,43 @@ class TestVerdictLogic:
         # Non-review comments in between don't affect selection.
         assert verdict([BLOCKING_COMMENT, "thanks, reworking", CANONICAL_CLEAN_SPEC]) == "pass"
 
-    # --- #1456: structured findings block is authoritative -------------------
+    # --- #1816: structured verdict block is authoritative both ways ----------
     def test_pr_1452_structured_medium_findings_fail(self):
-        # The regression fixture. Prose says only "Found 2 issues:", so the old
-        # ladder passed it and the PR auto-merged; the JSON says MEDIUM twice.
+        # The regression fixture. Under the binary schema this is unambiguous:
+        # blocking: true with two findings.
         assert verdict([PR_1452_COMMENT]) == "fail"
 
-    def test_structured_block_blocks_every_blocking_severity(self):
-        for sev in ("CRITICAL", "MAJOR", "BLOCKING", "MEDIUM", "medium", "Major"):
+    def test_structured_block_blocks_every_finding_class(self):
+        for cls in (
+            "regression",
+            "exception-handling",
+            "intent-vs-logic",
+            "breaking-contract",
+            "concurrency",
+            "requirement-semantics",
+            "design-modularity",
+            "performance",
+        ):
             body = (
                 "### Code review\n\nFound 1 issue:\n\n1. x\n\n"
                 "<!-- code-review-findings\n"
-                '{"findings": [{"severity": "%s"}]}\n'
-                "-->\n" % sev
+                '{"blocking": true, "findings": [{"class": "%s", "file": "x.py"}]}\n'
+                "-->\n" % cls
             )
-            assert verdict([body]) == "fail", sev
+            assert verdict([body]) == "fail", cls
 
-    def test_structured_block_with_only_advisories_falls_through(self):
-        # Non-blocking severities do not block; the prose ladder still decides.
-        assert verdict([FINDINGS_BLOCK_MINOR_ONLY]) == "pass"
+    def test_structured_block_nonblocking_passes_even_with_prose_findings(self):
+        # A well-formed blocking:false block is directly authoritative — no
+        # fallthrough to the prose ladder under the binary schema.
+        assert verdict([FINDINGS_BLOCK_NONBLOCKING]) == "pass"
 
-    def test_structured_block_advisory_does_not_shadow_prose_block(self):
-        # A MINOR-only JSON block must not green-light a real "### MAJOR".
+    def test_structured_block_blocking_shadows_clean_prose(self):
+        # A blocking:true JSON block must not be shadowed by clean-sounding
+        # prose above it.
         body = (
-            "### Code review\n\n### MAJOR\n\n1. real bug\n\n"
+            "### Code review\n\nNo issues found.\n\n"
             "<!-- code-review-findings\n"
-            '{"findings": [{"severity": "MINOR"}]}\n'
+            '{"blocking": true, "findings": [{"class": "regression", "file": "x.py"}]}\n'
             "-->\n"
         )
         assert verdict([body]) == "fail"
@@ -849,7 +933,7 @@ class TestVerdictLogic:
         assert verdict([FINDINGS_BLOCK_MALFORMED]) == "fail"
 
     def test_absent_block_leaves_every_prose_branch_unchanged(self):
-        # The additive guarantee: no marker ⇒ identical to pre-#1456 behavior.
+        # The additive guarantee: no marker ⇒ identical to pre-#1816 behavior.
         for body, want in (
             (CANONICAL_FINDINGS, "pass"),
             (CANONICAL_CLEAN_SPEC, "pass"),
@@ -869,10 +953,33 @@ class TestVerdictLogic:
         body = (
             "### Code review\n\nNo issues found.\n\n"
             "<!-- code-review-findings\n"
-            '{"schema_version": 1, "findings": []}\n'
+            '{"blocking": false, "findings": []}\n'
             "-->\n"
         )
         assert verdict([body]) == "pass"
+
+    def test_missing_blocking_field_fails_closed(self):
+        # blocking is required — a payload that only carries findings (old
+        # pre-#1816 shape, or a malformed emission) must fail, not silently
+        # infer intent from array length.
+        body = (
+            "### Code review\n\nNo issues found.\n\n"
+            "<!-- code-review-findings\n"
+            '{"findings": []}\n'
+            "-->\n"
+        )
+        assert verdict([body]) == "fail"
+
+    def test_blocking_true_with_empty_findings_fails_closed(self):
+        # Schema-inconsistent payload — blocking:true asserts a defect exists
+        # but names none. Fail closed rather than trust it.
+        body = (
+            "### Code review\n\n"
+            "<!-- code-review-findings\n"
+            '{"blocking": true, "findings": []}\n'
+            "-->\n"
+        )
+        assert verdict([body]) == "fail"
 
     # --- fail-closed ---
     def test_unrecognized_review_comment_fails_closed(self):
@@ -926,6 +1033,10 @@ class TestFreshnessLogic:
     def test_no_review_comment_and_not_ran_passes(self):
         assert verdict_fresh([], self.HEAD, ran=False) == "pass"
 
+    def test_no_review_comment_ran_and_draft_passes(self):
+        # #1733: a draft PR's clean-but-silent run must not fail closed.
+        assert verdict_fresh([], self.HEAD, ran=True, is_draft=True) == "pass"
+
     def test_comment_at_exactly_head_time_is_fresh(self):
         # created_at == head_time is treated as fresh (>=), not stale.
         assert verdict_fresh([(CANONICAL_CLEAN_SPEC, self.HEAD)], self.HEAD) == "pass"
@@ -964,7 +1075,7 @@ class TestFreshnessLogic:
 
 
 class TestAutobaseAnchorLogic:
-    """#1134: on the autobase (jarvis-ci[bot] update-branch) push the verdict
+    """#1134: on the autobase (osasuwu-ci[bot] update-branch) push the verdict
     step now RUNS and anchors freshness on the last non-bot head — not the bot's
     2-parent merge commit. Anchoring on the merge commit is an anchor-trap (no
     review comment is newer than a just-made merge commit → a clean PR would
@@ -1032,6 +1143,15 @@ class TestAutobaseAnchorLogic:
             )
             == "pass"
         )
+
+    def test_autobase_no_review_comment_ran_and_draft_passes(self):
+        # #1733: same draft carve-out on the autobase path.
+        commits = [
+            ("2026-07-01T10:00:00Z", "Osasuwu"),
+            ("2026-07-01T11:00:00Z", AUTOBASE_BOT),
+        ]
+        head = "2026-07-01T11:00:00Z"
+        assert verdict_autobase([], commits, head, autobase=True, ran=True, is_draft=True) == "pass"
 
     # --- AC4 / CRITIC Risk #1: stale clean before the last real head → fail ---
     def test_autobase_stale_clean_before_last_real_head_fails_closed(self):
@@ -1131,7 +1251,7 @@ class TestNeverReviewedLineageLogic:
           permission denials) — the PR was never reviewed, block.
 
     PR #1226 (2026-07-21) is case (b): all three plugin runs failed on
-    permission_denials, then an jarvis-ci[bot] auto-rebase push skipped review
+    permission_denials, then an osasuwu-ci[bot] auto-rebase push skipped review
     as designed, the gate found no comment, concluded "likely skipped → pass",
     went green, and auto-merge shipped the PR un-reviewed. No admin bypass —
     the gate genuinely passed on a PR nothing had ever reviewed.
@@ -1296,20 +1416,20 @@ def workflow_text() -> str:
 @pytest.fixture(scope="module")
 def verdict_step(workflow_text) -> dict:
     workflow = yaml.safe_load(workflow_text)
-    steps = workflow["jobs"]["review"]["steps"]
+    steps = workflow["jobs"]["code-gate"]["steps"]
     return next(s for s in steps if s.get("name") == "Verify review verdict")
 
 
 @pytest.fixture(scope="module")
 def review_step(workflow_text) -> dict:
     workflow = yaml.safe_load(workflow_text)
-    steps = workflow["jobs"]["review"]["steps"]
-    return next(s for s in steps if s.get("name") == "Run /code-review")
+    steps = workflow["jobs"]["code-gate"]["steps"]
+    return next(s for s in steps if s.get("name") == "Run code review (Layer B)")
 
 
 @pytest.fixture(scope="module")
 def review_job(workflow_text) -> dict:
-    return yaml.safe_load(workflow_text)["jobs"]["review"]
+    return yaml.safe_load(workflow_text)["jobs"]["code-gate"]
 
 
 def branch_slice(run: str, marker: str) -> str:
@@ -1336,7 +1456,7 @@ class TestReviewStepBotGate:
         # merge-train.yml's update-branch (synchronize as the App token). With
         # this unset, every retried / merge-train-updated PR jams the gate.
         assert review_step["with"].get("allowed_bots") == "*", (
-            "Run /code-review must set allowed_bots: '*' — otherwise bot-"
+            "Run code review (Layer B) must set allowed_bots: '*' — otherwise bot-"
             "triggered runs (retry dispatch, merge-train synchronize) fail at "
             "the action level and the `review` check goes permanently red."
         )
@@ -1397,36 +1517,49 @@ class TestVerdictStepWiring:
             "— minors never block merge."
         )
 
-    # --- #1456: the structured-findings check must exist in the bash ---------
+    # --- #1816: the structured-verdict check must exist in the bash ----------
     # Without these the Python mirror above can stay green while the workflow
     # loses the check entirely — the mirror is only evidence if it mirrors
     # something. Same reason the prose-ladder wiring tests exist.
     def test_structured_findings_block_is_extracted(self, verdict_step):
         run = verdict_step["run"]
         assert "code-review-findings" in run, (
-            "The verdict step must read the plugin's machine-emitted "
+            "The verdict step must read Layer B's machine-emitted "
             "<!-- code-review-findings --> block. Prose shape alone missed two "
-            "MEDIUM findings on PR #1452 and auto-merged it (#1456)."
+            "MEDIUM findings on PR #1452 and auto-merged it under the old "
+            "prose ladder (#1456, superseded by #1816)."
         )
         assert re.search(r"sed -n '/<!-- \*code-review-findings/,/-->/p'", run), (
             "Extraction must slice from the marker to the closing --> so the "
             "payload can be handed to jq."
         )
 
-    def test_structured_check_blocks_on_blocking_severities(self, verdict_step):
+    def test_structured_check_is_authoritative_both_ways(self, verdict_step):
         run = verdict_step["run"]
-        for sev in ("CRITICAL", "MAJOR", "BLOCKING", "MEDIUM"):
-            assert f'== "{sev}"' in run, (
-                f"The structured severity filter must treat {sev} as blocking "
-                "— it is the same blocking set the prose ladder uses (#1385)."
-            )
-        assert "ascii_upcase" in run, (
-            "Severity comparison must be case-normalized; the plugin has "
-            "emitted title-case severities before (#1050)."
+        assert ".blocking == ((.findings | length) > 0)" in run, (
+            "The verdict must be the binary {blocking, findings} shape (#1816) "
+            "— not a severity ladder — and must fail closed on a schema-"
+            "inconsistent payload (blocking asserted with no findings, or vice "
+            "versa)."
         )
-        assert '== "MINOR"' not in run and '== "LOW"' not in run, (
-            "Advisory severities must NOT block — they fall through to the "
-            "prose ladder, preserving the two-gate model (#988)."
+        assert "jq -r '.blocking'" in run, (
+            "The block/pass decision must key off the .blocking boolean "
+            "directly, not off any severity string."
+        )
+        for sev in ("CRITICAL", "MAJOR", "BLOCKING", "MEDIUM", "MINOR", "LOW"):
+            assert f'== "{sev}"' not in run, (
+                f"The structured check must not filter on severity strings "
+                f"({sev}) — Layer B emits no severity field under #1816."
+            )
+
+    def test_structured_check_requires_blocking_and_findings_types(self, verdict_step):
+        run = verdict_step["run"]
+        assert '(.blocking | type) == "boolean"' in run, (
+            "A missing/non-bool 'blocking' field must fail closed, not be "
+            "inferred from findings length."
+        )
+        assert '(.findings | type) == "array"' in run, (
+            "A missing/non-array 'findings' field must fail closed."
         )
 
     def test_structured_check_fails_closed_on_bad_json(self, verdict_step):
@@ -1652,14 +1785,17 @@ class TestFreshnessGateWiring:
         )
 
     def test_stale_only_fails_closed(self, verdict_step):
-        # total > 0 but no fresh body ($body empty) → fail closed (#993).
+        # total > 0 but no fresh body ($body empty) → fail closed (#993). The
+        # #1469 grace window delays WHEN this branch is reached (the selection
+        # re-polls while a comment may still be posting) but must never change
+        # WHAT it decides once reached.
         run = verdict_step["run"]
         marker = 'if [ -z "$body" ]; then'
         assert marker in run, (
             "Must have a stale-only branch: review comment(s) exist but none "
             "is newer than the head commit."
         )
-        stale_branch = run[run.index(marker) : run.index(marker) + 600]
+        stale_branch = branch_slice(run, marker)
         assert "exit 1" in stale_branch and "exit 0" not in stale_branch, (
             "Stale-only (no comment fresh for the head SHA) must FAIL CLOSED "
             "(exit 1) — the latest review errored; do not consume a prior-SHA "
@@ -1668,7 +1804,7 @@ class TestFreshnessGateWiring:
 
 
 class TestAutobaseAnchorWiring:
-    """#1134: the verdict step must RUN on the jarvis-ci[bot] auto-rebase push
+    """#1134: the verdict step must RUN on the osasuwu-ci[bot] auto-rebase push
     (drop the skip gate from its `if:`) and, on that branch, anchor freshness on
     the last non-bot head instead of the bot's 2-parent merge commit. #1131
     auto-merged past a live CRITICAL because the step was skipped there and the
@@ -1702,8 +1838,8 @@ class TestAutobaseAnchorWiring:
             "Autobase anchor must key off commit author.login (null/unlinked "
             "author counts as real — safe default, #1134)."
         )
-        assert "jarvis-ci[bot]" in run, (
-            "Autobase anchor must filter out jarvis-ci[bot] commits so it walks "
+        assert "osasuwu-ci[bot]" in run, (
+            "Autobase anchor must filter out osasuwu-ci[bot] commits so it walks "
             "back to the last real head (#963: 28 consecutive rebases; "
             "parents[0] alone breaks)."
         )
@@ -1728,7 +1864,7 @@ class TestNeverReviewedLineageWiring:
     code-review runs instead of reading comment-absence as "plugin skipped".
 
     PR #1226 (2026-07-21): three plugin runs died on permission_denials, an
-    jarvis-ci[bot] auto-rebase push then skipped review as designed, the gate
+    osasuwu-ci[bot] auto-rebase push then skipped review as designed, the gate
     found no comment, passed, and auto-merge shipped an un-reviewed PR. The
     mirror bug is run 29986227927 — a workflow_dispatch on the already-merged
     #1226 where the plugin correctly declined and the guard failed closed.
@@ -2011,10 +2147,11 @@ class TestPR1435Timeline:
         )
 
     def test_gate_passes_once_a_real_verdict_lands(self):
-        # The self-healing path: code-review-retry re-dispatches the failed run
-        # as a workflow_dispatch (which bypasses the autobase skip and performs
-        # a genuine review), a verdict comment lands, and the next evaluation
-        # carries it forward on the last-non-bot anchor (#1134).
+        # The self-healing path: code-review-retry reruns the failed run in
+        # place (#1325); the autobase step's own github.run_attempt == 1 gate
+        # (#1523) disarms the skip on that rerun and performs a genuine
+        # review, a verdict comment lands, and the next evaluation carries it
+        # forward on the last-non-bot anchor (#1134).
         assert (
             verdict_autobase(
                 [("## Code Review -- PR #1435\n\nNo issues found.", "2026-08-07T13:50:00Z")],
@@ -2108,4 +2245,160 @@ class TestInFlightWiring:
             "The fall-through pass notice must state which signal it relied on, "
             "so a pass is auditable from the log without re-deriving it "
             "(#1434 AC3)."
+        )
+
+    def test_draft_is_carved_out_of_the_exec_file_gate(self, zero_branch):
+        # #1733: the ran-but-silent (EXEC_FILE-present) check must ALSO respect
+        # IS_DRAFT, not just the later HAS_CODE gate — the plugin declines
+        # drafts by design, so a clean run with zero comments on a draft is a
+        # legitimate skip, not silent failure (PR #1726 was blocked by this).
+        exec_file_line = next(
+            line for line in zero_branch.splitlines() if "EXEC_FILE" in line and "-f" in line
+        )
+        assert "IS_DRAFT" in exec_file_line, (
+            'The `[ -n "$EXEC_FILE" ] && [ -f "$EXEC_FILE" ]` condition must '
+            "also require IS_DRAFT != true before failing closed (#1733) — a "
+            "draft PR's clean-but-silent run must fall through to the "
+            "genuine-skip pass, not hard-fail before the IS_DRAFT carve-out "
+            "that only ever guarded the later HAS_CODE check."
+        )
+
+
+class TestStaleGraceWindowLogic:
+    """#1469: the verdict step races the run that posts the verdict comment.
+
+    They live in DIFFERENT workflow runs: on an autobase push the verdict
+    evaluates while the real review (triggered by the prior non-bot push) is
+    still writing its comment. On PR #1492 (run 31375034566, 2026-08-10) the
+    step failed closed at 09:33:39Z against anchor 09:23:45Z and the clean
+    "No issues found" verdict landed at 09:34:01Z — 22 seconds later. The
+    error said "re-run", but in AFK operation nobody is there to re-run, so
+    the race silently stalls auto-merge. The fix polls the stale-only state
+    for a bounded window; fail-closed semantics after the window are
+    unchanged (#993).
+    """
+
+    ANCHOR = "2026-08-10T09:23:45Z"
+    STALE = ("## Code Review — PR #1492\n\nNo issues found.", "2026-08-10T09:15:00Z")
+    FRESH_CLEAN = ("## Code Review — PR #1492\n\nNo issues found.", "2026-08-10T09:34:01Z")
+    FRESH_MAJOR = (
+        "## Code Review — PR #1492\n\n### MAJOR\n\n1. Bug.",
+        "2026-08-10T09:34:01Z",
+    )
+
+    # --- poll-trigger rule: only stale-only re-fetches --------------------
+    def test_fresh_at_first_read_does_not_poll(self):
+        _, polls = grace_window_selection([[self.STALE, self.FRESH_CLEAN]], self.ANCHOR)
+        assert polls == 0
+
+    def test_total_zero_does_not_poll(self):
+        # No comment at all is NOT the racy state — it has its own lineage
+        # probes (#1228/#1434) and self-heals via code-review-retry. Polling
+        # it would add the full window to every legitimate skip.
+        _, polls = grace_window_selection([[]], self.ANCHOR)
+        assert polls == 0
+
+    def test_non_review_comments_do_not_poll(self):
+        # Ordinary discussion comments never enter the selection, so they must
+        # not hold the window open either.
+        chatter = [("Looks good to me!", "2026-08-10T09:30:00Z")]
+        _, polls = grace_window_selection([chatter], self.ANCHOR)
+        assert polls == 0
+
+    def test_stale_only_polls_until_window_exhausted(self):
+        _, polls = grace_window_selection([[self.STALE]], self.ANCHOR)
+        assert polls == GRACE_MAX_POLLS
+
+    # --- outcome rules ----------------------------------------------------
+    def test_pr_1492_timeline_comment_landing_mid_window_passes(self):
+        # The reproducing case: stale-only at first read, clean verdict lands
+        # on a later poll → pass, no human re-run needed.
+        snapshots = [[self.STALE], [self.STALE], [self.STALE, self.FRESH_CLEAN]]
+        assert verdict_fresh_grace(snapshots, self.ANCHOR) == "pass"
+        _, polls = grace_window_selection(snapshots, self.ANCHOR)
+        assert polls == 2
+
+    def test_late_comment_carrying_blockers_still_blocks(self):
+        # The window widens WHEN the verdict is read, never WHAT passes it: a
+        # verdict that arrives mid-window is classified by the unchanged
+        # two-gate ladder.
+        snapshots = [[self.STALE], [self.STALE, self.FRESH_MAJOR]]
+        assert verdict_fresh_grace(snapshots, self.ANCHOR) == "fail"
+
+    def test_no_comment_ever_arriving_still_fails_closed(self):
+        # #993 preserved: window exhausts stale-only → fail closed.
+        assert verdict_fresh_grace([[self.STALE]], self.ANCHOR) == "fail"
+
+    def test_stale_plus_empty_total_zero_snapshot_is_impossible_but_safe(self):
+        # If comments were deleted mid-window the state flips to total==0 and
+        # the poll stops — handing over to the total==0 decision table rather
+        # than spinning on a vanished comment.
+        final, polls = grace_window_selection([[self.STALE], []], self.ANCHOR)
+        assert final == [] and polls == 1
+
+
+class TestStaleGraceWindowWiring:
+    """#1469: the bash must carry the bounded poll around the selection."""
+
+    def test_selection_runs_inside_the_grace_loop(self, verdict_step):
+        run = verdict_step["run"]
+        assert "GRACE_DEADLINE" in run, (
+            "The comment selection must sit inside a bounded grace-window "
+            "poll — the verdict step races the run that posts the comment "
+            "(PR #1492: verdict landed 22s after the step failed closed, "
+            "#1469)."
+        )
+        assert run.index("GRACE_DEADLINE") < run.index(
+            'gh api "repos/$REPO/issues/$PR/comments"'
+        ), (
+            "The deadline must be set before the first selection fetch so the "
+            "window bounds every re-fetch, not just later ones."
+        )
+
+    def test_window_is_bounded_by_a_deadline(self, verdict_step):
+        run = verdict_step["run"]
+        assert "SECONDS + 300" in run, (
+            "The grace window must be a bounded deadline (~5 min) — an "
+            "unbounded poll would hang the required check forever on a "
+            "genuinely dead review (#1469 keeps fail-closed, just later)."
+        )
+        assert '"$SECONDS" -ge "$GRACE_DEADLINE"' in run, (
+            "The loop must compare elapsed time against the deadline and stop "
+            "polling once it passes."
+        )
+
+    def test_only_the_stale_only_state_retries(self, verdict_step):
+        # The loop must break immediately on total==0 (lineage probes own that
+        # state, #1228/#1434) and on a fresh body (verdict ready) — BEFORE the
+        # sleep, or every legitimate skip pays the full window.
+        run = verdict_step["run"]
+        breaker = 'if [ "$total" -eq 0 ] || [ -n "$body" ]; then'
+        assert breaker in run, (
+            "The poll loop must break on total==0 and on a fresh body — only "
+            "the stale-only state (comments exist, none fresh) may retry."
+        )
+        assert run.index(breaker) < run.index("sleep "), (
+            "The non-stale break must precede the sleep, or non-racy states pay the polling delay."
+        )
+
+    def test_grace_loop_precedes_the_stale_fail_closed_branch(self, verdict_step):
+        run = verdict_step["run"]
+        assert run.index("GRACE_DEADLINE") < run.index('if [ -z "$body" ]; then'), (
+            "The poll must run BEFORE the stale-only fail-closed branch — "
+            "polling after exit 1 is dead code."
+        )
+
+    def test_retry_notice_is_visible_in_the_log(self, verdict_step):
+        # An AFK operator debugging a slow gate must be able to see the window
+        # working from the run log alone.
+        run = verdict_step["run"]
+        loop_start = run.index("GRACE_DEADLINE")
+        # Anchor on the loop-closing `done` keyword at line start, not the
+        # substring (comments say "done" too — same drift class branch_slice
+        # exists for).
+        loop = run[loop_start : run.index("\ndone", loop_start)]
+        assert "::notice::" in loop and "sleep 20" in loop, (
+            "Each retry must log a ::notice:: naming the wait, and the "
+            "interval must stay coarse (20s) — the comments endpoint is "
+            "paginated and polled repeatedly (#1469)."
         )

@@ -1,27 +1,27 @@
 {
-  "_comment": "Per-repo path-list consumed by /to-issues AFK-fit checklist. Replace the placeholder repo slugs below with your own owner/repo. Adding a new repo MUST NOT require editing any SKILL.md — only this file. Paths are gitignore-style globs evaluated against an issue's declared-changed file list; an intersection => AFK-no => slice does NOT receive the `sandcastle` label and routes via interactive /implement. The first entry lists the framework's own Tier-2 sensitive files (mirrors docs/security/agent-boundaries.md — sync manually when that changes). The second entry is an example of protecting safety-critical zones in a second repo.",
-  "your-username/your-repo": [
-    ".mcp.json",
-    "config/SOUL.md",
-    "CLAUDE.md",
-    "mcp-memory/server.py",
-    "mcp-memory/client.py",
-    "mcp-memory/embeddings.py",
-    "mcp-memory/tools_schema.py",
-    "mcp-memory/classifier.py",
-    "mcp-memory/episode_extractor.py",
-    "mcp-memory/handlers/**",
-    ".claude/settings.json",
-    ".gitleaks.toml",
-    ".pre-commit-config.yaml",
-    ".claude-userlevel/settings.json",
-    ".claude-userlevel/.mcp.json",
-    ".claude-userlevel/CLAUDE.md",
-    ".claude-userlevel/SOUL.md"
-  ],
-  "your-username/your-second-repo": [
-    "driver/**",
-    "planning/**",
-    "mujoco/**"
-  ]
+  "_comment": "Per-repo path buckets consumed by /to-tickets AFK-fit classification (#642, split per #1708). Adding a new repo MUST NOT require editing any SKILL.md — only this file. Paths are gitignore-style globs evaluated against an issue's declared-changed file list. Two buckets per repo: `hitl` = identity/security config, a categorical security boundary — any match is class 3 (afk:3-human), hard refusal. `guarded` = shared surfaces with off-repo consumers — any match is class 2 (afk:2-plan), AFK-eligible once a plan locks. No match in either bucket falls through to Q2-Q4 LLM judgement. For jarvis, hitl mirrors the identity/security subset of docs/security/agent-boundaries.md; guarded covers supabase/** (schema is a shared surface per docs/reference/mcp-and-environment.md — kept in sync with config/plan_review.yaml's class_2.shared_surface_globs, commit 481c938b), whose consumers (redrobot, future jarvis-oss operators) sit outside this repo. (`mcp-memory/**` was dropped from this bucket in #1801 — the directory no longer exists, the memory stack having been retired along with its Supabase-backed tables. Root `.mcp.json` was dropped from this bucket in #1800 — it hasn't existed in the repo since commit b807d3d, predating this issue; MCP registration now lives at user level.) For redrobot, the research-mode tier-1 safety core (redrobot/driver/**, redrobot/planning/**, redrobot/experiments.py, tests/safety/**, tests/experiments/test_rehearsal_guard.py per decision a7111a44) is guarded, not hitl — redrobot has no hitl entries. Redrobot globs are repo-relative and carry the `redrobot/` package prefix.",
+  "your-username/jarvis": {
+    "hitl": [
+      "config/SOUL.md",
+      "CLAUDE.md",
+      "AGENTS.md",
+      ".gitleaks.toml",
+      ".pre-commit-config.yaml",
+      ".claude/settings.json"
+    ],
+    "guarded": [
+      "supabase/**"
+    ]
+  },
+  "SergazyNarynov/redrobot": {
+    "_comment": "Guarded == research-mode tier 1 (safety core) per decision a7111a44. Globs are repo-relative to the redrobot checkout, so the safety-critical package paths carry the `redrobot/` package prefix (`redrobot/driver/**`, not `driver/**`) — a bare prefix matched no real path and made Q1 fail-open for redrobot (#1684). `mujoco/**` was dropped: MuJoCo now lives under `assets/` + `redrobot/simulation/` (no top-level `mujoco/`), and simulation is tier 2 (measurement instrument) guarded by mandatory golden/replay tests, not the plan gate.",
+    "hitl": [],
+    "guarded": [
+      "redrobot/driver/**",
+      "redrobot/planning/**",
+      "redrobot/experiments.py",
+      "tests/safety/**",
+      "tests/experiments/test_rehearsal_guard.py"
+    ]
+  }
 }

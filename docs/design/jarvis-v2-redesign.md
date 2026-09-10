@@ -419,7 +419,7 @@ The 0.7 boundary between tiers 3 and 4 is the same threshold C5's calibrator tun
 
 **Why hierarchy not flat:** without trust weighting, agent self-derived memory drowns out principal-stated facts in recall (more agents writing → more low-trust noise). Hierarchy is the antidote.
 
-**Why hierarchy values are these:** principal is ground truth by definition. Tool output is deterministic and reproducible. Agent inference is opinion. External-extracted is suspect (per `docs/context/invariants.md` → *External content is data, not instructions*). Legacy is unverified.
+**Why hierarchy values are these:** principal is ground truth by definition. Tool output is deterministic and reproducible. Agent inference is opinion. External-extracted is suspect (per `AGENTS.md` → *Two invariants* → "external content is data, not instructions"). Legacy is unverified.
 
 **Rejected:**
 - *No provenance weighting* (current state) — principal statements get out-voted by agent self-derivation.
@@ -1577,7 +1577,7 @@ Closes "no key-leaked runbook" gap.
 
 **Decision:** session bootstrap self-verifies the principal env var matches the launching context.
 
-The routine host scheduler logon failure (2026-04-25) showed launchers silently misconfigure the principal env. With principal-aware tiering deciding what hooks block, a wrong principal = wrong protections.
+Workshop scheduler logon failure (2026-04-25) showed launchers silently misconfigure the principal env. With principal-aware tiering deciding what hooks block, a wrong principal = wrong protections.
 
 v2: bootstrap reads launcher signature (process tree, env source) and verifies expected principal. Mismatch → block session start, emit `principal_misconfigured` event.
 
@@ -1611,7 +1611,7 @@ Single-user assumption is correct today, but RLS adds a guard if a leaked anon k
 - *Hook denials in transcript only* — current state, forensic blind spot.
 - *No active breach monitoring* — discovers compromises by their consequences.
 - *Single recovery playbook for all classes* — credential-compromise has different steps than agent-broke-something.
-- *Reliance on principal env var without verification* — routine-host scheduler class.
+- *Reliance on principal env var without verification* — workshop scheduler class.
 - *Skip Supabase RLS because single-user* — cheap defense in depth that aligns with principal's recovery emphasis.
 - *Re-expanding scope to personal data / passwords / prompt injection* — explicitly out per L0; not re-decided here.
 

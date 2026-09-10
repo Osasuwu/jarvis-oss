@@ -1,7 +1,7 @@
 """One-time backfill: classify ~/.cache/jarvis-comms-analysis/* and write rows.
 
 The cache holds previously-extracted (trigger, correction) pairs from the
-old regex-driven /reflect pipeline. We re-classify each example through
+old regex-driven comms-audit pipeline. We re-classify each example through
 the new Ollama classifier and write rows with
 ``source_provenance="backfill:reflect"``.
 
@@ -203,7 +203,10 @@ def run(
                 break
             except Exception as e:
                 stats["classifier_errors"] += 1
-                print(f"[backfill] classifier error on {fp}#{idx}: {type(e).__name__}", file=sys.stderr)
+                print(
+                    f"[backfill] classifier error on {fp}#{idx}: {type(e).__name__}",
+                    file=sys.stderr,
+                )
                 continue
             if not classified or classified.get("primary_label") is None:
                 stats["no_pattern"] += 1
@@ -228,15 +231,17 @@ def run(
     print(f"[backfill] {stats}")
     if stats["connection_errors"] > 0:
         print(
-            f"[backfill] WARNING: Ollama unavailable — run aborted after first connection failure. "
-            f"Re-run after starting Ollama; results in this run are partial.",
+            "[backfill] WARNING: Ollama unavailable — run aborted after first connection failure. "
+            "Re-run after starting Ollama; results in this run are partial.",
             file=sys.stderr,
         )
     return stats
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Backfill comm_patterns from ~/.cache/jarvis-comms-analysis")
+    ap = argparse.ArgumentParser(
+        description="Backfill comm_patterns from ~/.cache/jarvis-comms-analysis"
+    )
     ap.add_argument("--dry-run", action="store_true", help="Don't hit Supabase; print plan only.")
     ap.add_argument(
         "--cache-root",

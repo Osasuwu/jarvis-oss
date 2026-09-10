@@ -40,12 +40,12 @@
 
 #### P1: MCP конфиг ломается на другом компьютере
 **Симптом**: `.mcp.json` работает на одном ПК, не работает на другом.
-**Причина**: Захардкоженные пути (`C:/Users/<you>/...`) и API ключи прямо в конфиге.
+**Причина**: Захардкоженные пути (`C:/Users/you/...`) и API ключи прямо в конфиге.
 **Решение**: Переменные окружения + `.env` файл.
 
 ```json
 // БЫЛО (сломано):
-{ "command": "python", "args": ["C:/Users/<you>/GitHub/mcp-memory/server.py"] }
+{ "command": "python", "args": ["C:/Users/you/GitHub/mcp-memory/server.py"] }
 
 // СТАЛО (портабельно):
 { "command": "python", "args": ["mcp-memory/server.py"],

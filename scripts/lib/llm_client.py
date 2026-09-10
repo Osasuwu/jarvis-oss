@@ -23,7 +23,7 @@ import urllib.request
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_OLLAMA_MODEL = (
-    "qwen2.5-coder:14b"  # routine host primary
+    "qwen2.5-coder:14b"  # Workshop primary (docs/agents/ollama-workshop-bench-538.md)
 )
 DEFAULT_OLLAMA_TIMEOUT_S = 120
 

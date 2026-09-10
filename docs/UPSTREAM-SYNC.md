@@ -12,7 +12,8 @@ diffs upstream from the previous anchor to the new one.
 | Template release | Template commit | Upstream anchor |
 |---|---|---|
 | v0.5.0 (root) | `54e38f27` | `9bd4b1a` |
-| v0.6.0 | *(this release)* | `961aae13a147f9f01bd2e81d12f0b0ed1b97d803` |
+| v0.6.0 | `dd4f9bc5` | `961aae13a147f9f01bd2e81d12f0b0ed1b97d803` |
+| v0.7.0 | *(this release)* | `4f3ad22a5f8f8245ece6288891ab90d6f0a30a36` |
 
 ## Recipe (graft + merge, squash finalize)
 

@@ -9,27 +9,6 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-  # .sandcastle/prompt.md guard — sandcastle's PromptPreprocessor matches the
-  # regex /!`([^`]+)`/g against the raw template. Any non-leading bang-backtick
-  # (e.g. inline code like `!` mid-prose) is greedily parsed as a shell block
-  # and crashes prompt preprocessing with a sh syntax error. See #611 for the
-  # root cause and the chain #607→608→610→611.
-  #
-  # Rule: in .sandcastle/prompt.md the sequence `!\`` may appear ONLY at the
-  # start of a line (legitimate shell-substitution block). Mid-line `!\`` is
-  # forbidden. The pygrep regex below matches any non-newline char followed
-  # by bang-backtick — by default pygrep fails the file when the regex matches.
-  #
-  # Meta-test: tests/ci/test_sandcastle_prompt_md_guard.py (runs in ci-meta.yml).
-  - repo: local
-    hooks:
-      - id: sandcastle-prompt-md-no-mid-line-bang-backtick
-        name: ".sandcastle/prompt.md: !` only at line start (#611)"
-        language: pygrep
-        entry: '.!`'
-        files: '^\.sandcastle/prompt\.md$'
-        stages: [pre-commit]
-
   # Commit-message hook — commit should reference a GitHub issue (#NNN)
   # so `git log` stays navigable. Escape hatch: include [no-issue] in the
   # message. Install: `pre-commit install --hook-type commit-msg`.

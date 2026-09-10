@@ -13,8 +13,13 @@ Patterns redacted:
     ``/Users/<name>/…``, Linux ``/home/<name>/…`` → ``<USER_PATH>/…``)
 
 Consumed by:
-  - Slice 4 (MCP write-path scrubber in ``mcp-memory/server.py``)
-  - Slice 6 (SessionEnd hook for Deriver input sanitisation)
+  - Slice 6 (SessionEnd hook for Deriver input sanitisation,
+    ``.claude/hooks/secret-scanner.py``)
+
+Slice 4's MCP write-path scrubber (``mcp-memory/server.py``) was retired along
+with the rest of the memory stack (#1801); ``scripts/comm_patterns/scrubber.py``
+carries an independent ``scrub()`` for the comm-patterns extractor rather than
+importing this module.
 """
 
 from __future__ import annotations

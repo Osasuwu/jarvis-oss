@@ -6,6 +6,7 @@ Output: merged_patterns.json — all patterns with confidence scores, sorted by 
 Confidence score = weighted_frequency × n_devices_present
 where weighted_frequency = sum(n_sessions_with_pattern) / sum(total_sessions_across_devices)
 """
+
 from __future__ import annotations
 import json, sys
 from collections import defaultdict
@@ -19,19 +20,21 @@ def load(fp: Path) -> dict:
 
 def merge(files: list[Path]) -> dict:
     all_data = [load(fp) for fp in files]
-    devices = [d.get("device", fp.stem) for d, fp in zip(all_data, files)]
+    devices = [d.get("device", fp.stem) for d, fp in zip(all_data, files, strict=False)]
     total_sessions_global = sum(d.get("total_sessions", 0) for d in all_data)
     n_devices = len(all_data)
 
     # --- Corrective categories ---
-    cat_stats: dict[str, dict] = defaultdict(lambda: {
-        "n_sessions_by_device": {},
-        "freq_pct_by_device": {},
-        "devices_present": [],
-        "examples": [],
-    })
+    cat_stats: dict[str, dict] = defaultdict(
+        lambda: {
+            "n_sessions_by_device": {},
+            "freq_pct_by_device": {},
+            "devices_present": [],
+            "examples": [],
+        }
+    )
 
-    for data, device in zip(all_data, devices):
+    for data, device in zip(all_data, devices, strict=False):
         for cat, cat_data in data.get("correctives", {}).items():
             entry = cat_stats[cat]
             entry["n_sessions_by_device"][device] = cat_data.get("n_sessions", 0)
@@ -47,29 +50,33 @@ def merge(files: list[Path]) -> dict:
         weighted_freq = (
             sum(
                 entry["freq_pct_by_device"].get(dev, 0) * data.get("total_sessions", 1)
-                for dev, data in zip(devices, all_data)
-            ) / total_sessions_global
-            if total_sessions_global else 0
+                for dev, data in zip(devices, all_data, strict=False)
+            )
+            / total_sessions_global
+            if total_sessions_global
+            else 0
         )
         confidence_score = round(weighted_freq * n_devices_present, 2)
 
-        corrective_patterns.append({
-            "category": cat,
-            "confidence_score": confidence_score,
-            "frequency_pct": round(weighted_freq, 1),
-            "total_sessions_with_pattern": total_with_pattern,
-            "n_devices_present": n_devices_present,
-            "devices_present": sorted(set(entry["devices_present"])),
-            "n_sessions_by_device": entry["n_sessions_by_device"],
-            "examples": entry["examples"][:6],
-        })
+        corrective_patterns.append(
+            {
+                "category": cat,
+                "confidence_score": confidence_score,
+                "frequency_pct": round(weighted_freq, 1),
+                "total_sessions_with_pattern": total_with_pattern,
+                "n_devices_present": n_devices_present,
+                "devices_present": sorted(set(entry["devices_present"])),
+                "n_sessions_by_device": entry["n_sessions_by_device"],
+                "examples": entry["examples"][:6],
+            }
+        )
 
     corrective_patterns.sort(key=lambda x: x["confidence_score"], reverse=True)
 
     # --- Affirmatives ---
     aff_total = 0
     aff_examples: list[dict] = []
-    for data, device in zip(all_data, devices):
+    for data, device in zip(all_data, devices, strict=False):
         aff = data.get("affirmatives", {})
         aff_total += aff.get("total", 0)
         for ex in aff.get("examples", [])[:3]:
@@ -81,8 +88,16 @@ def merge(files: list[Path]) -> dict:
     style_samples: list[str] = []
     for data in all_data:
         s = data.get("style", {})
-        for key in ("p50_len", "p10_len", "p90_len", "short_pct", "long_pct",
-                    "ru_pct", "en_pct", "mixed_pct"):
+        for key in (
+            "p50_len",
+            "p10_len",
+            "p90_len",
+            "short_pct",
+            "long_pct",
+            "ru_pct",
+            "en_pct",
+            "mixed_pct",
+        ):
             v = s.get(key)
             if v is not None:
                 style_agg[key].append(v)
@@ -102,7 +117,8 @@ def merge(files: list[Path]) -> dict:
             "total_sessions": total_sessions_global,
             "date_range": overall_range,
             "date_ranges_by_device": {
-                dev: data.get("date_range", []) for dev, data in zip(devices, all_data)
+                dev: data.get("date_range", [])
+                for dev, data in zip(devices, all_data, strict=False)
             },
         },
         "corrective_patterns": corrective_patterns,
@@ -147,9 +163,11 @@ def main(input_files: list[str], out_path: str) -> None:
         # confidence*2 bar can run to hundreds of columns.
         bar = "#" * min(int(p["confidence_score"] * 2), 40)
         print(f"  {p['category']:<30} conf={p['confidence_score']:.2f} {bar}")
-        print(f"  {'':30} freq={p['frequency_pct']}%  "
-              f"sessions={p['total_sessions_with_pattern']}  "
-              f"devices={p['n_devices_present']}/{meta['n_devices']}")
+        print(
+            f"  {'':30} freq={p['frequency_pct']}%  "
+            f"sessions={p['total_sessions_with_pattern']}  "
+            f"devices={p['n_devices_present']}/{meta['n_devices']}"
+        )
     print()
     print(f"affirmatives: {result['affirmatives']['total_moments']} moments")
     print(f"out: {out}  size: {out.stat().st_size / 1024:.1f} KB")

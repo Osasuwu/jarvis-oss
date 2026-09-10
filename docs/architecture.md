@@ -1,14 +1,14 @@
 # Jarvis Architecture
 
-Version: 4.1
-Date: 2026-04-24
+Version: 5.0
+Date: 2026-09-10
 Status: Active
 
 ## 1. System Overview
 
 Jarvis is a personal AI agent built on top of **Claude Code** — not a custom Python application. Claude Code is the runtime; Jarvis adds identity, memory, and skills on top of it.
 
-Since EPIC #335 (2026-04-23), Jarvis is **federated** to user level: the SOUL, the core skills, the hooks, and the MCP servers live at `~/.claude/` and load regardless of which project Claude Code was launched in. Project repos only carry project-specific additions.
+Since EPIC #335 (2026-04-23), Jarvis is **federated** to user level: the SOUL, the core skills, and the hooks live at `~/.claude/` and load regardless of which project Claude Code was launched in. Since #1800 (2026-09-08), there is no installer and no `.claude-userlevel/` mirroring step — user-level files are edited/registered directly, one device at a time. Project repos only carry project-specific additions.
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -17,35 +17,34 @@ Since EPIC #335 (2026-04-23), Jarvis is **federated** to user level: the SOUL, t
 │  ~/.claude/SOUL.md       ← Jarvis identity            │
 │  ~/.claude/skills/       ← universal slash commands   │
 │  ~/.claude/settings.json ← hooks (SessionStart, ...)  │
-│  ~/.claude/.mcp.json     ← MCP servers (user-level)   │
+│  ~/.claude.json          ← MCP registrations (user)   │
 │                                                       │
 │  <project>/CLAUDE.md     ← project rules              │
 │  <project>/.claude/      ← project-specific skills    │
 │                            + agents (e.g. coding.md)  │
 │                                                       │
-│  MCP Servers:                                         │
-│  ├── memory   ← Supabase (this repo)                  │
+│  MCP Servers (registered per-device by hand via       │
+│  `claude mcp add --scope user`):                      │
 │  ├── github   ← official MCP                          │
-│  └── context7 ← live library docs                     │
+│  └── obsidian ← only where a vault exists              │
 └──────────────────────┬───────────────────────────────┘
                        │
-                  Supabase DB
-           (memory syncs across all devices)
+              ~/.claude/projects/<project>/memory/
+              (file-based, per-machine, no sync)
 ```
 
 ## 2. What lives where
 
-### User-level (universal, one install per device)
+### User-level (universal, one device at a time — no installer)
 
-Installed to `~/.claude/` by `scripts/install/installer.py` (entry points `install.ps1` / `install.sh`). Source of truth for most of it lives in this repo under `.claude-userlevel/`; SOUL stays canonical at `config/SOUL.md`.
+There is no automated propagation to `~/.claude/`. Skills are kept in sync by hand: edit the source under `.claude-userlevel/skills/`, get it reviewed and merged, then manually copy the changed `SKILL.md` into `~/.claude/skills/` on each device. SOUL and CLAUDE.md are edited the same way. MCP servers are registered per-device with `claude mcp add --scope user` — there is no `.mcp.json` file being deep-merged.
 
-| Component | Source in repo | Installed to | Purpose |
+| Component | Source in repo | Kept in sync at | Purpose |
 |-----------|----------------|--------------|---------|
-| Identity | `config/SOUL.md` | `~/.claude/SOUL.md` | Personality, tone, behavior rules (loaded via a **bare, line-start** `@SOUL.md` import in CLAUDE.md — #1328 introduced it, #1426 made it actually resolve) |
-| Universal skills | `.claude-userlevel/skills/*/SKILL.md` | `~/.claude/skills/*/SKILL.md` | Core slash commands: `implement`, `delegate`, `verify`, `status`, `reflect`, `end` (with `--quick` flag), `research`, `goals`, `self-improve`, `setup-tasks`. (`autonomous-loop` retained on disk but SUPERSEDED 2026-05-26 — do not invoke for new flows.) |
-| Hooks | `.claude-userlevel/settings.json` | `~/.claude/settings.json` (deep-merged) | SessionStart, PreCompact, PreToolUse secret/dedup/protected-file scans, UserPromptSubmit memory recall |
-| MCP servers | `.claude-userlevel/.mcp.json` | `~/.claude/.mcp.json` (deep-merged) | memory, github, context7, etc. |
-| Version pin | — | `~/.claude/.jarvis-version` | Current applied jarvis SHA (for no-op detection) |
+| Identity | `config/SOUL.md` | `~/.claude/SOUL.md` (manual copy) | Personality, tone, behavior rules (loaded via a **bare, line-start** `@SOUL.md` import in CLAUDE.md — #1328 introduced it, #1426 made it actually resolve) |
+| Universal skills | `.claude-userlevel/skills/*/SKILL.md` | `~/.claude/skills/*/SKILL.md` (manual copy) | Core slash commands: `implement`, `dispatch`, `diagnose`, `file-issue`, `grill`, `improve-codebase-architecture`, `research`, `to-tickets`, `triage`, `weekly-release`, `end` |
+| Hooks | — (no repo-side source; edited directly) | `~/.claude/settings.json` | SessionStart, PreCompact, PreToolUse protected-file scan |
+| MCP servers | — (no repo-side source file) | `~/.claude.json` `mcpServers` block, via `claude mcp add --scope user` | github, obsidian (device-dependent), etc. |
 
 ### Project-level (jarvis repo)
 
@@ -61,37 +60,29 @@ Installed to `~/.claude/` by `scripts/install/installer.py` (entry points `insta
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Memory server | `mcp-memory/server.py` | Cross-device Supabase memory via MCP |
-| Installer | `scripts/install/installer.py` | Seeds `~/.claude/` from this repo; idempotent, backup-first |
-| Hook scripts | `scripts/*.py` | SessionStart context, PreCompact backup, secret scanner, protected-file guard, memory recall |
+| Hook scripts | `.claude/hooks/*.py`, `scripts/*.py` | SessionStart context, PreCompact backup, secret scanner, protected-file guard |
 | Risk scanner | `src/risk_radar.py` | Deterministic pattern scan, no LLM |
 
-Everything else (Telegram, scheduling, background tasks) uses Anthropic-native features — not custom code.
+Everything else (Telegram, scheduling, background tasks, and — since #1800 — user-level provisioning) uses Anthropic-native features or manual per-device steps, not a custom installer.
 
 ## 3. Memory architecture
 
-Cross-device memory is the core value-add over vanilla Claude Code.
+Memory is native and file-based, per machine, per project — not a custom service. The
+Supabase-backed `mcp-memory` MCP server (semantic search via VoyageAI, keyword fallback) was
+retired in [#1801](https://github.com/Osasuwu/jarvis/issues/1801) in favor of this, per
+[#1790](https://github.com/Osasuwu/jarvis/issues/1790).
 
 ```
-Device A (home)          Device B (work)          Device C (laptop)
-     │                        │                        │
-     └────────────────────────┼────────────────────────┘
-                              │
-                    mcp-memory/server.py
-                    (runs in .venv, stdio)
-                              │
-                         Supabase DB
-                    (pgvector + VoyageAI)
+~/.claude/projects/<project>/memory/
+  MEMORY.md         ← always-loaded index, one line per fact, points at topic files
+  decisions.md       ← dated decision journal
+  <topic>.md         ← detail files MEMORY.md lines point at
 ```
 
-**How it works:**
-- `memory_store` — upsert by `(project, name)`, overwrites on conflict
-- `memory_recall` — semantic search via VoyageAI embeddings; falls back to ILIKE keyword search if `VOYAGE_API_KEY` not set
-- `memory_list` / `memory_get` / `memory_delete` — standard CRUD
+There is no memory service and no recall tool — reading a file is the recall. Memory is
+per-machine: nothing syncs it across devices.
 
 **Memory types:** `user`, `project`, `decision`, `feedback`, `reference`
-
-**Scoping:** `project=null` for cross-project (owner preferences, agent rules), `project="jarvis"` or `project="redrobot"` for project-specific context.
 
 ## 4. Agent model
 
@@ -125,21 +116,21 @@ Claude Code (Sonnet — default)
 
 ## 5. Skills
 
-Universal skills live at `~/.claude/skills/` (source of truth: `.claude-userlevel/skills/`) and are invoked as `/skill-name` from any CWD. The routing table in `CLAUDE.md` describes when each is used.
+Universal skills live at `~/.claude/skills/` (source of truth: `.claude-userlevel/skills/`, kept in sync by hand — no installer) and are invoked as `/skill-name` from any CWD. The routing table in `AGENTS.md` describes when each is used.
 
 | Skill | Purpose |
 |-------|---------|
 | `/implement` | Deliver a single GitHub issue in this session |
-| `/delegate` | Dispatch multiple issues to parallel coding subagents |
-| `/verify` | Check pending outcomes: PRs merged, tests pass, extract lessons |
-| `/status` | Project dashboard: git, PRs, issues, CI, risks, goal alerts |
-| `/reflect` | Learning loop — review decisions, check outcomes via PRs |
-| `/end` (with `--quick`) | Session closure (full reconciliation / 30-sec checkpoint with `--quick`) |
+| `/dispatch` | Dispatch issues to a coding subagent |
+| `/diagnose` | Investigate a bug/incident without necessarily fixing it |
+| `/file-issue` | Open a single well-formed tracking issue |
+| `/to-tickets` | Break a plan/PRD into multiple end-to-end tracking issues |
+| `/grill` | Cross-context CRITIC pass on a consequential decision before it's ratified |
+| `/triage` | Sweep issues/PRs for stale metadata, labels, milestones |
 | `/research` | Topic investigation, option comparison, autonomous discovery |
-| `/goals` | View / set / update strategic goals |
-| `/self-improve` | Health check + gap analysis + auto-apply low-risk fixes |
-| `/setup-tasks` | Bootstrap scheduled tasks on a new device (idempotent) |
-| ~~`/autonomous-loop`~~ | **SUPERSEDED 2026-05-26.** No live cron. Retained as opt-in pre-M44 catch-up only; will be deleted when reactive-core M44 ships. |
+| `/improve-codebase-architecture` | Architecture health check + gap analysis |
+| `/weekly-release` | Weekly release-notes digest (gated — never sends under the operator's own identity) |
+| `/end` | Session closure |
 
 Project-specific skills stay under `<project>/.claude/skills/`. In this repo the only one is `/sprint-report` (redrobot release flow).
 
@@ -149,7 +140,7 @@ Telegram via **Claude Code Channels** (official Anthropic plugin) — no custom 
 
 Setup: `claude --channels plugin:telegram@claude-plugins-official`
 
-See `docs/telegram-setup.md` for full guide.
+See `docs/setup.md` §8 for full guide.
 
 ## 7. Scheduling
 
@@ -161,66 +152,38 @@ Nightly research runs at 03:00, topics configured in `config/research-topics.yam
 
 - Coder subagent: branch + PR only, never direct push to `main`
 - Human review required before merge
-- Protected-file list — canonical in `docs/security/agent-boundaries.md`; enforced at runtime by `scripts/protected-files.py` (PreToolUse hook for Edit/Write/NotebookEdit)
+- Protected-file list — canonical in `docs/security/agent-boundaries.md`; enforced at runtime by `.claude/hooks/protected-files.py` (PreToolUse hook for Edit/Write/NotebookEdit)
 - Cost default: Haiku; escalate to Sonnet only when reasoning required
-- Secrets never touched — PreToolUse `scripts/secret-scanner.py` blocks Bash, GitHub writes, memory_store calls, and file writes (Edit/Write/NotebookEdit) that contain credential values; credential paths themselves are denied by `permissions.deny` globs in `~/.claude/settings.json`
+- Secrets never touched — PreToolUse `.claude/hooks/secret-scanner.py` blocks Bash, GitHub writes, and file writes (Edit/Write/NotebookEdit) that contain credential values; credential paths themselves are denied by `permissions.deny` globs in `~/.claude/settings.json`
 
 ## 9. Project structure
 
 ```
 jarvis/
 ├── config/
-│   ├── SOUL.md              ← Jarvis personality (canonical; installed to ~/.claude/SOUL.md)
-│   ├── SETUP.md             ← First-time device setup
-│   └── repos.conf           ← Repos scanned by risk-radar (and historically by autonomous-loop, superseded)
-├── .claude-userlevel/       ← SOURCE OF TRUTH for user-level install
-│   ├── settings.json        ← Hooks (installed to ~/.claude/settings.json)
-│   ├── .mcp.json            ← MCP servers (installed to ~/.claude/.mcp.json)
-│   └── skills/              ← 12 universal skills (installed to ~/.claude/skills/)
-├── scripts/
-│   ├── install/
-│   │   ├── installer.py     ← Seeds ~/.claude/ from this repo
-│   │   └── install-manifest.yaml  ← Whitelist of what ships
-│   ├── session-context.py   ← SessionStart: load memory + goals
-│   ├── memory-recall-hook.py  ← UserPromptSubmit: topic-aware recall
-│   ├── secret-scanner.py    ← PreToolUse: block credential values
-│   ├── protected-files.py   ← PreToolUse: block edits to protected files
-│   ├── pre-compact-backup.py  ← PreCompact: snapshot before summarization
-│   └── device-info.py       ← SessionStart: banner
-├── mcp-memory/
-│   ├── server.py            ← MCP memory server (Supabase)
-│   ├── schema.sql           ← Supabase table + vector index
-│   └── requirements.txt
+│   └── SOUL.md              ← Jarvis personality (canonical; copied by hand to ~/.claude/SOUL.md)
+├── .claude-userlevel/       ← SOURCE OF TRUTH for universal skills only (no installer)
+│   └── skills/              ← universal skills, copied by hand to ~/.claude/skills/
+├── scripts/                 ← project-local automation (gates, reports, hooks not tied to Edit/Write)
 ├── src/
 │   └── risk_radar.py        ← Standalone risk scanner (no LLM)
-├── tests/                   ← pytest suite (800+ tests)
+├── tests/                   ← pytest suite
 ├── docs/
-│   ├── PROJECT_PLAN.md      ← Vision, milestones
 │   ├── architecture.md      ← This file
 │   ├── security/
 │   │   └── agent-boundaries.md  ← Protected-file + scope rules (single source)
 │   └── design/              ← Design notes per pillar
-├── .claude/                 ← Project-scoped (tombstoned — see .claude/README.md)
-│   ├── README.md            ← Tombstone pointer
-│   ├── settings.json        ← `{}` — reserved for project-local hooks
+├── .claude/                 ← Project-scoped (see .claude/README.md)
+│   ├── README.md            ← Points to .claude-userlevel/ for universal-skill source
+│   ├── hooks/                ← secret-scanner.py, protected-files.py, device-info.py
+│   ├── settings.json        ← PreToolUse/SessionStart hook registrations
 │   ├── agents/coding.md     ← Project-scoped coding subagent
 │   └── skills/sprint-report/  ← Only non-universal skill
-├── install.ps1              ← Windows entry point to installer.py
-├── install.sh               ← POSIX entry point
-├── CLAUDE.md                ← Jarvis-project session rules
+├── CLAUDE.md                ← Jarvis-project session rules (@AGENTS.md import)
+├── AGENTS.md                ← Process rules (cross-tool standard)
 ├── .github/workflows/       ← CI
-├── .mcp.json                ← Project MCP registry (repo-scoped extras)
 ├── .env.example
 └── pyproject.toml
 ```
 
-After `install.ps1 -Apply` (or `install.sh --apply`), user-level artefacts land under:
-
-```
-~/.claude/
-├── SOUL.md                  ← copied from config/SOUL.md
-├── settings.json            ← deep-merged from .claude-userlevel/settings.json
-├── .mcp.json                ← deep-merged from .claude-userlevel/.mcp.json
-├── skills/                  ← 12 universal skills
-└── .jarvis-version          ← git SHA of applied jarvis version
-```
+There is no installer and no `.mcp.json` anywhere in this layout. MCP servers are registered per-device directly against Claude Code with `claude mcp add --scope user <name> ...`; a fresh device gets the SOUL/skills/hooks by copying the files above into `~/.claude/` by hand.

@@ -23,6 +23,7 @@ that actually keeps climbing as the session degrades. Written by the PreCompact
 hook (`scripts/pre-compact-backup.py` -> `_bump_compaction_count`); suppressed
 when K is 0 so fresh sessions stay clean.
 """
+
 import json
 import subprocess
 import sys

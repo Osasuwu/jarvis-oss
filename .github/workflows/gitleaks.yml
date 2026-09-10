@@ -25,7 +25,6 @@ permissions:
 jobs:
   gitleaks:
     runs-on: ubuntu-latest
-    name: Detect secrets with gitleaks
 
     steps:
       - name: Checkout code

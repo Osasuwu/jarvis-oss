@@ -5,8 +5,10 @@ Skills covered: caveman, diagnose, grill-me, grill-with-docs,
 improve-codebase-architecture, tdd, to-issues, to-prd, triage,
 write-a-skill, zoom-out.
 
-Adaptation log + per-skill mapping to upstream paths:
-.claude-userlevel/skills/AIHERO_CREDIT.md
+Adaptation log + per-skill mapping to upstream paths previously lived at
+.claude-userlevel/skills/AIHERO_CREDIT.md — removed when the unused imported
+skills below were deleted (#1795); this license notice is kept regardless,
+since it covers code that was part of the repo's history.
 
 ----------------------------------------------------------------------
 

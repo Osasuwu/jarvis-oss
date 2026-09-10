@@ -37,7 +37,9 @@ Interview the user relentlessly about every aspect of their plan until we reach 
 
 **No numeric cap.** Rounds are not capped in size. When the frontier is large, order `design-forming` questions first — the questions most likely to reshape everything downstream get resolved before the refining questions that depend on that shape.
 
-**Round summary — display ceiling only.** Each round closes with a summary of at most two lines: settled / next frontier. This is a hard ceiling on the *displayed* summary — `record_decision` emission and inline `CONTEXT.md` capture remain per-resolution and uncapped, per the standing "do not batch capture" rule. The two-line cap constrains what the user reads, not what gets recorded.
+**Round summary — display ceiling only.** Each round closes with a summary of at most two lines: settled / next frontier. This is a hard ceiling on the *displayed* summary — the decision-log entry described below and inline `CONTEXT.md` capture remain per-resolution and uncapped, per the standing "do not batch capture" rule. The two-line cap constrains what the user reads, not what gets recorded.
+
+A **decision-log entry** is an entry appended to whatever persistent, git-tracked decision record the current project already keeps — its own `CONTEXT.md`, a `docs/decisions/*.md` shard, or `docs/adr/`. Which of those a project uses is project-specific; this skill never hardcodes a filename for it.
 
 **Answer-vs-answer conflict rule.** A later answer that contradicts a settled one explicitly reopens the earlier question — the same reflex already used for glossary conflicts (see "Challenge against the glossary" below) and code contradictions (see "Cross-reference with code" below), extended here to the user's own prior answers.
 
@@ -59,24 +61,36 @@ They are carried **verbatim**. Paraphrasing them into general wording is exactly
 
 Question 2 ships with a heuristic: **прогон без единого непонятного результата подозрителен**. A clean sheet is more often a reporting artefact than a clean run — press for what was seen and waved off. The heuristic points one way only, and deliberately so: it says a spotless run is suspicious, and it says nothing about what a count of anomalies implies. Do not extend it into a claim that more of them reported means the work is in better shape.
 
-### Research-pass gate (precondition to Phase 3)
+### Research-pass-gate (precondition to Phase 3)
 
-Before entering the CRITIC subagent phase, check whether a recent 4-channel
-research artifact exists for the current topic. The gate fires only for
+Before entering the CRITIC subagent phase, check whether a recent research
+artifact exists for the current topic. The gate fires only for
 **high-stakes** decisions — those whose `reversibility` is `{hard, irreversible}`
-OR `confidence < 0.7`.
+OR `confidence < 0.7`. Low-stakes decisions (reversible AND confidence >= 0.7)
+skip this gate entirely.
 
-**Procedural source: [`../_shared/research-pass-gate.md`](../_shared/research-pass-gate.md).**
-
-Load and execute the procedure there. If the gate blocks:
-- Propose running `/research` on the current topic first
-- Do not proceed to Phase 3 until research completes or owner explicitly waives
-
-Low-stakes decisions (reversible AND confidence >= 0.7) skip this gate entirely.
+1. **Extract topic keywords** — assemble >=3 keyword sets: the issue/PRD title
+   verbatim, the skill-area tag (e.g. `area:infrastructure`, `area:skills`),
+   and the primary entity/concept name the decision concerns.
+2. **Check for a research artifact** — look for a file under
+   `docs/research/<topic-slug>-*.md` in the current repo whose slug matches
+   one of the topic keywords and whose date is within 60 days of today. First
+   match passes the gate.
+3. **Resolve**:
+   - Artifact found → gate passes silently, continue with the skill flow.
+   - No artifact AND known infrastructure outage (Firecrawl/WebSearch
+     unreachable) → note the waiver in the decision-log entry's rationale,
+     then proceed.
+   - No artifact AND owner explicitly waives → note the waiver in the
+     decision-log entry's rationale, then proceed.
+   - No artifact AND autonomous mode → **HALT.** Do not auto-waive. Leave a
+     note on the issue that research is needed before continuing.
+   - No artifact AND no waiver → **BLOCK.** Propose invoking `/research` with
+     the extracted topic keywords.
 
 ### Phase 3: Cross-context review (CRITIC subagents)
 
-Single-agent self-critique grades its own exam. Personalisation measurably increases sycophancy (MIT 2026, ICLR 2026); same-session self-review has a 64.5% blind-spot rate across 14 models (arXiv 2506.04907); fresh-context review measurably beats same-session (CCR F1 28.6 vs 24.6, arXiv 2603.12123). Phase 3 dispatches sibling subagent(s) — each operating as a **role-isolated critic** without SOUL.md, always_load memory, or project calibration in its prompt — to critique the proposal cold.
+Single-agent self-critique grades its own exam. Personalisation measurably increases sycophancy (MIT 2026, ICLR 2026); same-session self-review has a 64.5% blind-spot rate across 14 models (arXiv 2506.04907); fresh-context review measurably beats same-session (CCR F1 28.6 vs 24.6, arXiv 2603.12123). Phase 3 dispatches sibling subagent(s) — each operating as a **role-isolated critic** without SOUL.md, cross-session recall content, or project calibration in its prompt — to critique the proposal cold.
 
 Two tiers exist; they target different blind-spot classes and may both run on the same AC-lock:
 
@@ -89,8 +103,8 @@ When both tiers fire on the same AC-lock, dispatch in **parallel** (independent 
 
 **Sampling tier (CRITIC.md) — exactly two** (decision c29c2b00-e9e1-43d1-93ff-ada5820c434c):
 
-1. **AC-lock gate** — immediately before the grill session would commit acceptance criteria to the issue body / CONTEXT.md / record_decision chain. This is the highest-leverage gate; most critique value lands here.
-2. **`record_decision` with `reversibility ∈ {hard, irreversible}`** — every hard or irreversible decision the grill is about to emit. Catches architectural calls the AC-lock gate alone would miss when the decision precedes AC formation.
+1. **AC-lock gate** — immediately before the grill session would commit acceptance criteria to the issue body / CONTEXT.md / decision-log chain. This is the highest-leverage gate; most critique value lands here.
+2. **A decision-log entry with `reversibility ∈ {hard, irreversible}`** — every hard or irreversible decision the grill is about to emit. Catches architectural calls the AC-lock gate alone would miss when the decision precedes AC formation.
 
 WHY→HOW and HOW→AC mid-session checkpoints were considered and **rejected as ceremony** in the same decision — they add critique cost without distinct leverage past the two triggers above. Do not add them as triggers.
 
@@ -103,11 +117,11 @@ Single-axis touch or lone slices ⇒ sampling tier only. Owner may invoke covera
 
 #### Context scrubbing — behavioural, not structural
 
-Dispatch each critic via the `Agent` tool with `subagent_type: general-purpose`. **Do not** pass `isolation: "worktree"` — that would block the codebase + memory tools the critic needs to ground its critique. Instead, scrub by **what you put in the prompt**, mirroring the precedent in [`reason/NEUTRAL-RESEARCHER.md`](../reason/NEUTRAL-RESEARCHER.md):
+Dispatch each critic via the `Agent` tool with `subagent_type: general-purpose`. **Do not** pass `isolation: "worktree"` — that would block the codebase + memory tools the critic needs to ground its critique. Instead, scrub by **what you put in the prompt**:
 
 - Forward: the problem statement, the owner's proposed direction (verbatim), the acceptance criteria as drafted. **For the coverage tier additionally**: the node enumeration (see CRITIC-COVERAGE.md "Node enumeration" section).
 - Omit: which side of any disagreement the operator favours, prior memory hits used to shape the proposal, SOUL.md / CLAUDE.md / CONTEXT.md content, any "I think…" framing.
-- The behavioural nudge in each critic's system block does the rest. Isolation here is **behavioural, not structural** — a known limitation, sufficient for routine bias prevention (same trade-off as NEUTRAL-RESEARCHER; worktree isolation would lose access to project memory the critic still needs for grounded critique).
+- The behavioural nudge in each critic's system block does the rest. Isolation here is **behavioural, not structural** — a known limitation, sufficient for routine bias prevention (worktree isolation would lose access to project memory the critic still needs for grounded critique).
 
 #### Loopback — forced per-item disposition blocks AC-lock
 
@@ -121,7 +135,7 @@ For **each FINDING** across both critics — every item the sampling critic retu
 
 N/A cells in coverage grids do NOT require disposition — they are silent evidence the cell was considered. (Owner may promote an N/A to FINDING if they disagree.)
 
-Per-item disposition is **mandatory** and **blocks AC-lock**: the grill cannot proceed to commit AC, write CONTEXT.md updates, or emit `record_decision` until every FINDING across both critics has a recorded disposition. Bulk "accept all" / "reject all" sweeps are not permitted — the per-item discipline is what keeps the loopback from collapsing back into sycophancy at the wording layer.
+Per-item disposition is **mandatory** and **blocks AC-lock**: the grill cannot proceed to commit AC, write CONTEXT.md updates, or write a decision-log entry until every FINDING across both critics has a recorded disposition. Bulk "accept all" / "reject all" sweeps are not permitted — the per-item discipline is what keeps the loopback from collapsing back into sycophancy at the wording layer.
 
 Cross-critic hits (sampling and coverage both surface the same risk) are higher-confidence signal but are NOT automatically promoted in severity — owner's judgement applies. Dedup is the owner's job, not the critics'.
 

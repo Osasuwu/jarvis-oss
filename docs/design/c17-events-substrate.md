@@ -142,7 +142,7 @@ Not implemented in Sprint 35. Listed here so #476 implementer doesn't accidental
 
 Sprint 35 creates a **new** table named `events_canonical` (NOT an `ALTER` of the existing `events` table). Reasons:
 
-1. The existing `events` table (current [`mcp-memory/schema.sql`](../../mcp-memory/schema.sql)) is GH-Actions-perception-shaped: `event_type` enum, `severity` check constraint, `repo`, `source`, `processed`/`processed_at`/`processed_by`/`action_taken` workflow fields. None of these fit the canonical actor/action/trace_id shape, and the columns have NOT-NULL constraints that an in-place ALTER cannot retrofit safely.
+1. The existing `events` table (current [`supabase/schema.sql`](../../supabase/schema.sql)) is GH-Actions-perception-shaped: `event_type` enum, `severity` check constraint, `repo`, `source`, `processed`/`processed_at`/`processed_by`/`action_taken` workflow fields. None of these fit the canonical actor/action/trace_id shape, and the columns have NOT-NULL constraints that an in-place ALTER cannot retrofit safely.
 2. `fok_judgments.recall_event_id` references `events(id) ON DELETE CASCADE` (Sprint #34 [#443](https://github.com/Osasuwu/jarvis/issues/443)). An in-place rename or schema-rewrite breaks the FK.
 3. Two-mode coexistence per [`jarvis-v2-redesign.md` §Bootstrap protocol & migration order](jarvis-v2-redesign.md#bootstrap-protocol--migration-order) explicitly calls for new and legacy paths running in parallel until C3 path-parity proves cutover safety.
 

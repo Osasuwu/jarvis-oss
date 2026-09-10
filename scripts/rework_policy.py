@@ -12,32 +12,36 @@ where `decision` is one of:
     - CONVERGED: findings targets met, loop may terminate successfully
     - STUCK_ATTEMPTS: ≥3 attempts reached without convergence
     - STUCK_SCOPE: LOC delta >50% or files outside initial diff
-    - STUCK_NO_CONVERGENCE: critical+major not strictly decreasing
+    - STUCK_NO_CONVERGENCE: finding fingerprint set unchanged across two
+      consecutive blocking attempts
     - STUCK_CONFLICT: same file:line touched in multiple attempts
 
 The policy evaluates all guards independently; any single guard firing
 triggers a STUCK verdict. Convergence is checked last — if no guard fires
 and findings targets are met, the loop converged.
 
-Strictly decreasing: (n_critical, n_major) lex-decreases per attempt.
-Specifically: comparing attempt t to attempt t-1, both components must
-strictly decrease: (n_critical_t < n_critical_{t-1}) AND
-(n_major_t < n_major_{t-1}).
+Findings model (code-gate #1816): each attempt's `findings` is a list of
+{"class": str, "file": str} dicts — the same shape as Layer B's verdict
+`findings` array (`{blocking, findings}`), no severity ladder, no line
+number. `fingerprint(findings)` reduces that list to a frozenset of
+"<class>|<file>" strings (deduped), mirroring the `finding_fingerprint`
+computation in event-dispatch.yml's review-negative-claude-bot job.
 
-Convergence target (two-gate model, #989): n_critical == 0 AND n_major == 0.
-This mirrors the MERGE gate in code-review.yml, which blocks on any
-CRITICAL/MAJOR/BLOCKING severity heading. A PR is "rework-done" only when no
-merge-blocking finding remains. MINOR findings never gate either side — they
-are swept best-effort while /rework is already in context for a bug-triggered
-round, never as a convergence requirement (was n_major <= 2 before #989, which
-let a PR self-declare done while the merge gate still rejected its majors —
-the #976 ping-pong).
+No-convergence guard: fires when two consecutive attempts have the exact
+same non-empty fingerprint set — the rework round touched the diff but did
+not change *which* findings the reviewer would raise, so no real progress
+was made. A shrinking, growing, or otherwise-different set is progress (or
+regression caught by other guards) and does not fire this guard.
 
-Constants (per #634, target revised #989):
+Convergence target (#1816, supersedes the #989 n_critical/n_major target):
+findings == [] on the latest attempt. This mirrors the MERGE gate in
+code-review.yml, which blocks on Layer B's `blocking: true` verdict. A PR is
+"rework-done" only when no finding remains — there is no severity ladder to
+partially satisfy.
+
+Constants:
     MAX_ATTEMPTS_THRESHOLD = 3
     LOC_DELTA_THRESHOLD = 50 (percent)
-    TARGET_CRITICAL = 0
-    TARGET_MAJOR = 0
 """
 
 from __future__ import annotations
@@ -52,10 +56,6 @@ from enum import Enum
 
 MAX_ATTEMPTS_THRESHOLD = 3
 LOC_DELTA_THRESHOLD_PERCENT = 50
-TARGET_CRITICAL = 0
-# Two-gate model (#989): convergence requires ZERO majors, matching the merge
-# gate's CRITICAL/MAJOR/BLOCKING block. Was MAX_MAJOR_FINDINGS = 2.
-TARGET_MAJOR = 0
 
 
 # ============================================================================
@@ -104,9 +104,7 @@ def _check_max_attempts(attempts: int) -> tuple[bool, str]:
     return False, ""
 
 
-def _check_scope_creep(
-    history: list[dict], initial_files: set[str]
-) -> tuple[bool, str]:
+def _check_scope_creep(history: list[dict], initial_files: set[str]) -> tuple[bool, str]:
     """Guard: LOC delta >50% OR files outside initial diff → stuck_scope.
 
     LOC delta is measured as a percentage of the first attempt's LOC count.
@@ -146,11 +144,22 @@ def _check_scope_creep(
     return False, ""
 
 
-def _check_no_convergence(history: list[dict]) -> tuple[bool, str]:
-    """Guard: n_critical + n_major not strictly decreasing → stuck_no_convergence.
+def fingerprint(findings: list[dict]) -> frozenset[str]:
+    """Reduce a findings list to a deduped frozenset of "<class>|<file>" strings.
 
-    Strictly decreasing: (n_critical, n_major) as a lexicographic pair
-    must have both components strictly decrease between consecutive attempts.
+    Mirrors the `finding_fingerprint` computation in event-dispatch.yml's
+    review-negative-claude-bot job (`jq -c '[.[] | "\\(.class)|\\(.file)"] | unique'`).
+    """
+    return frozenset(f"{item['class']}|{item['file']}" for item in findings)
+
+
+def _check_no_convergence(history: list[dict]) -> tuple[bool, str]:
+    """Guard: finding fingerprint set unchanged across two consecutive
+    blocking attempts → stuck_no_convergence.
+
+    A blocking attempt is one whose findings list is non-empty. If two
+    consecutive blocking attempts have the exact same fingerprint set, the
+    rework round made no measurable progress.
 
     Returns:
         (fired: bool, reason: str)
@@ -162,17 +171,15 @@ def _check_no_convergence(history: list[dict]) -> tuple[bool, str]:
         prev = history[i - 1]
         curr = history[i]
 
-        prev_critical = prev.get("n_critical", 0)
-        prev_major = prev.get("n_major", 0)
-        curr_critical = curr.get("n_critical", 0)
-        curr_major = curr.get("n_major", 0)
+        prev_fp = fingerprint(prev.get("findings", []))
+        curr_fp = fingerprint(curr.get("findings", []))
 
-        # Both must strictly decrease
-        if not (curr_critical < prev_critical and curr_major < prev_major):
+        if prev_fp and curr_fp and prev_fp == curr_fp:
             reason = (
-                f"Findings not strictly decreasing: "
-                f"attempt {prev.get('attempt', '?')} ({prev_critical}c, {prev_major}m) → "
-                f"attempt {curr.get('attempt', '?')} ({curr_critical}c, {curr_major}m)"
+                f"Finding fingerprint set unchanged: "
+                f"attempt {prev.get('attempt', '?')} and "
+                f"attempt {curr.get('attempt', '?')} both raised "
+                f"{sorted(curr_fp)}"
             )
             return True, reason
 
@@ -217,19 +224,16 @@ def _check_conflict(history: list[dict]) -> tuple[bool, str]:
 def _check_convergence(history: list[dict]) -> bool:
     """Check if convergence target is met.
 
-    Convergence target (two-gate, #989): n_critical == 0 AND n_major == 0.
+    Convergence target (#1816): findings == [] on the latest attempt.
 
     Returns:
-        True if the latest attempt meets both targets.
+        True if the latest attempt has no findings.
     """
     if not history:
         return False
 
     latest = history[-1]
-    n_critical = latest.get("n_critical", 0)
-    n_major = latest.get("n_major", 0)
-
-    return n_critical == TARGET_CRITICAL and n_major == TARGET_MAJOR
+    return len(latest.get("findings", [])) == 0
 
 
 # ============================================================================
@@ -249,8 +253,7 @@ def decide(
         history: List of attempt records. Each record should have:
             {
                 "attempt": int,
-                "n_critical": int,
-                "n_major": int,
+                "findings": list[dict],  # [{"class": str, "file": str}, ...]
                 "files_touched": set[str],
                 "loc_delta": int,
                 "conflicts": dict[str, set[int]],  # {file: {line_nums}}
@@ -268,11 +271,7 @@ def decide(
     """
     # Check convergence first — convergence takes precedence
     if _check_convergence(history):
-        reason = (
-            f"Convergence target met: "
-            f"n_critical={history[-1].get('n_critical', 0)} (target={TARGET_CRITICAL}), "
-            f"n_major={history[-1].get('n_major', 0)} (target={TARGET_MAJOR})"
-        )
+        reason = "Convergence target met: findings=[] on latest attempt"
         return PolicyResult(decision=LoopDecision.CONVERGED, reason=reason)
 
     # Check guards in order (after convergence check).

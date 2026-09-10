@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Advance global task sources — tick due rows into events queue.
 
-Intended to run every 5 min via Task Scheduler (the routine host only).
+Intended to run every 5 min via Task Scheduler (Workshop only).
 
 Idempotent single-transaction advancer:
 - SELECT due rows WHERE enabled AND (next_run IS NULL OR next_run <= now()) FOR UPDATE SKIP LOCKED
@@ -64,9 +64,7 @@ def digest_sha256(data: str) -> str:
     return hashlib.sha256(data.encode()).hexdigest()
 
 
-def compute_dedup_key(
-    source_id: str, next_run_epoch: float, mode: str = "coalesce"
-) -> str:
+def compute_dedup_key(source_id: str, next_run_epoch: float, mode: str = "coalesce") -> str:
     """Compute dedup_key = sha256('global_task:'||mode||':'||source_id||':'||epoch).
 
     ``mode`` ('coalesce' | 'fire') namespaces the key so a coalesce event and a
@@ -116,9 +114,7 @@ def _intervals_lapsed(cur: Any, next_run: Any, cadence: Any) -> int:
     return max(1, int(intervals_missed) + 1)
 
 
-def _insert_event(
-    cur: Any, *, title: str, event_payload: dict[str, Any], dedup_key: str
-) -> int:
+def _insert_event(cur: Any, *, title: str, event_payload: dict[str, Any], dedup_key: str) -> int:
     """INSERT one global_task_due event, deduped on dedup_key.
 
     Returns the number of rows ACTUALLY inserted: 1 on insert, 0 when ON CONFLICT
@@ -238,9 +234,7 @@ def _advance_due_rows(cur: Any) -> int:
                 fire_count = 1
                 cadence_seconds = 0.0
             else:
-                fire_count = min(
-                    FIRE_PER_INTERVAL_CAP, _intervals_lapsed(cur, next_run, cadence)
-                )
+                fire_count = min(FIRE_PER_INTERVAL_CAP, _intervals_lapsed(cur, next_run, cadence))
                 cadence_seconds = cadence.total_seconds()
 
             if fire_count >= FIRE_PER_INTERVAL_CAP:

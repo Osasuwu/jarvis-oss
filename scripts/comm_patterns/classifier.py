@@ -1,6 +1,6 @@
 """Classifier — call local Ollama, parse JSON, validate against ADR 0004 enum.
 
-Default model is ``qwen3:4b`` — only model that fits a 6 GB VRAM GPU
+Default model is ``qwen3:4b`` — only model that fits Main PC's RTX 3050 6GB
 fully in VRAM at ~27 tok/s. ``think:false`` is required for qwen3 or the
 response field comes back empty (memory ``qwen3_think_false_required``).
 

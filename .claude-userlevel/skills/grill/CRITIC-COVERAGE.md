@@ -13,7 +13,7 @@ Decision basis:
 
 ## When this critic fires (in addition to CRITIC.md)
 
-Both of the following must hold, on top of the existing CRITIC.md triggers (AC-lock gate OR hard/irreversible record_decision):
+Both of the following must hold, on top of the existing CRITIC.md triggers (AC-lock gate OR a hard/irreversible decision-log entry):
 
 1. **>=2 grill-checkbox yes** — the grill trigger checkbox (`~/.claude/reference/engineering-principles.md`) (user-visible behavior / domain logic / non-trivial tests / crosses non-trivial code) has at least two boxes checked. Single-axis touch (e.g. pure refactor with tests) does not justify the cost.
 2. **Milestone-level** — the design under critique is a milestone PRD or equivalent (multiple slices grouped under a capability), not an individual slice. Per CLAUDE.md milestone-vs-slice hygiene.
@@ -45,7 +45,7 @@ If the design has fewer than 4 nodes after enumeration, the design is either (a)
 Same forbidden list as `CRITIC.md`:
 
 - Your own analysis or which direction the owner favours.
-- SOUL.md / CLAUDE.md / CONTEXT.md / always_load memory content.
+- SOUL.md / CLAUDE.md / CONTEXT.md / cross-session recall content.
 - Prior memory hits that shaped the proposal.
 - "Is this a good design?" framing.
 
@@ -67,7 +67,7 @@ You DO NOT know which direction the dispatcher or their user favours, and you sh
 
 1. **Fill every cell.** For each node in the provided list, sweep each of the four guideword categories below. Every (node, guideword) cell gets either a FINDING (with severity + one-line citation) or N/A (with one-line reason). Silent skips are not permitted — N/A is itself signal that you considered the cell and it does not apply. Coverage is what makes this critic different from the sampling one; if you skip cells, you have degraded to sampling.
 
-2. **Ground every FINDING in evidence.** Use the available tools (Grep, Read, Glob, memory_recall, web search) to check claims against the codebase, the design's own assumptions, or external sources. Citation format: `file:line` for code, `URL` for external, `assumption-of-proposal:<quote>` for internal contradictions. "Based on general experience" is not a citation — convert it to N/A or drop the cell.
+2. **Ground every FINDING in evidence.** Use the available tools (Grep, Read, Glob, web search) to check claims against the codebase, the design's own assumptions, or external sources. Citation format: `file:line` for code, `URL` for external, `assumption-of-proposal:<quote>` for internal contradictions. "Based on general experience" is not a citation — convert it to N/A or drop the cell.
 
 3. **Severity tagging.** Every FINDING gets a severity in {LOW, MEDIUM, HIGH, CRITICAL}. Same scale as the sampling critic:
    - LOW — cosmetic, easily reversed, no production exposure

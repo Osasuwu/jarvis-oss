@@ -2,7 +2,7 @@
 
 **Purpose.** This document is the queryable architectural narrative for the Sandcastle subsystem. It points at the load-bearing decisions; rationale lives in the `decision_made` episodes referenced by UUID. When a future session asks "why does sandcastle work this way?" — `memory_get` the cited episode.
 
-**Scope.** Docker-isolated AFK coding-agent loop that picks `sandcastle`-labelled issues, works one at a time on local Ollama inside a sterile container, and opens PRs without ever merging. Production target is the routine host (always-on physical host; AFK loop runs inside safe-hours window — no persistent software daemon).
+**Scope.** Docker-isolated AFK coding-agent loop that picks `sandcastle`-labelled issues, works one at a time on local Ollama inside a sterile container, and opens PRs without ever merging. Production target is the Workshop PC (always-on physical host; AFK loop runs inside safe-hours window — no persistent software daemon).
 
 **Read order.** `CONTEXT.md` glossary (Sandcastle / Watchdog / Safe-hours window / Threat-model duality) → this doc → cited decision episodes for rationale.
 
@@ -32,25 +32,35 @@ These are the non-negotiable invariants that shape every other slice. Each commi
 6. **Failure modes are observable, not silenced.** Every iteration writes an `outcome_record` row (success / partial / failure). Telegram fires only when infrastructure cannot come up — not for agent failures, which are signal, not noise.
    - Decision: `0c3017c6-01ec-4392-86a1-6a1522e4c5ef` (Failure modes).
 
-7. **The routine host is the production target; Main PC is the dev/test bench.** The routine host (always-on physical machine; no persistent software daemon) runs the safe-hours-bound AFK loop; the developer bench reproduces the runtime for iteration without touching prod data.
+7. **Workshop PC is the production target; Main PC is the dev/test bench.** The Workshop host (always-on physical machine; no persistent software daemon) runs the safe-hours-bound AFK loop; the developer bench reproduces the runtime for iteration without touching prod data.
    - Decision: `4890aa35-07ae-4e4c-8c4b-ec37e749d751` (Deployment shape).
 
 8. **Model escalation chain, Ollama-first.** Default model is local Ollama; the escalation chain (per-iteration retry on a stronger model on parse/hard-failure, with API/Sonnet as the final escape hatch) preserves the cost profile of the AFK loop while keeping a path through hard issues.
    - Decision: `f8e27d53-db5c-4aac-9dee-c3290a53c49a` (Model escalation chain, Q5 addendum).
+
+9. **Supervisor spawn is the default execution path, with an explicit opt-in kill-switch back to bare spawn (#1121).** `task_queue` rows carry a `substrate` column (`c5e2e14a-4750-4e9d-bb26-9d44b9ef5b02`, defaulted from `config/sandcastle.yaml`'s `operator_default_substrate` for pre-slice rows); a `"worktree"` value routes the drain loop onto `agents/sandcastle_supervisor.py`'s `supervisor_spawn` instead of `agents/executor.py`'s bare `claude -p`. The supervisor path re-derives the sterile-container and provenance-gate guarantees above (commitments 2-3) at the process-spawn boundary: it validates the forwarded `SUPABASE_KEY` by role (anon only) and strips billing-override env vars (`config/sandcastle.yaml`'s `billing_key_denylist`, decision `70f25333-b4f4-454e-903b-ab2d32b125c8`) before launch. The bare path is not deleted — it stays reachable behind `JARVIS_DISABLE_BARE_SPAWN` (unset by default; `#1121` plan step 9), a rollback switch flipped only once step 23's live Workshop-host verification confirms the supervisor path works end-to-end. A per-row `substrate` value always wins over the operator default, so this is a routing default, not a hardcoded path.
+   - The container substrate additionally attaches to a dedicated docker network, `sandcastle-jarvis` (`config/sandcastle.yaml`'s `network` key; `#1121` plan step 13) — segmentation only (no reachability to other containers/services on the default bridge), explicitly not egress filtering. Created once via `docker network create sandcastle-jarvis` on the host before first run.
+   - Quota gate: a per-row tier-aware throttle (decision `cc5f9c2c-4371-4cec-bd54-79b7163c398c`) skips a throttled row at drain time rather than halting the drain.
 
 ---
 
 ## Component shape
 
 ```
-host (the routine host, safe-hours window)
+host (Workshop PC, safe-hours window)
 └── Watchdog (scripts/sandcastle/Run-Sandcastle.ps1)
     ├── Pre-flight — Docker up, Ollama up, runtime-dir sweep
-    ├── Invoke iteration ─────────►  sandcastle:jarvis container
-    │                                ├── Claude Code CLI (sterile)
-    │                                ├── Skills + .mcp.json (baked)
-    │                                ├── Memory MCP (anon → Supabase)
-    │                                └── Local Ollama (host loopback)
+    ├── drain_tasks — row.substrate == "worktree"? ──► supervisor_spawn (#1121)
+    │                                                   ├── SUPABASE_KEY role check (anon only)
+    │                                                   ├── billing-key-denylist strip
+    │                                                   └── npm run sandcastle ─►  sandcastle:jarvis
+    │                                                        container, network=sandcastle-jarvis
+    │                                                        ├── Claude Code CLI (sterile)
+    │                                                        ├── Skills + .mcp.json (baked)
+    │                                                        ├── Memory MCP (anon → Supabase)
+    │                                                        └── Local Ollama (host loopback)
+    │                        else (or JARVIS_DISABLE_BARE_SPAWN unset) ──► bare `claude -p`
+    │                                                   (agents/executor.py:spawn, legacy path)
     ├── Parse result.json
     ├── Write-OutcomeRecord ────────► task_outcomes (PostgREST + service key)
     └── Telegram on infra-down ONLY
@@ -122,9 +132,12 @@ Explicitly out of scope for this subsystem.
 | `b8f7de1d-1214-4e36-a566-516fe1dc26bc` | Parallelism cap (N=1 per host, future capacity documented) |
 | `894ac658-67da-4f32-a0a2-5b5ebefac8ee` | Runtime: Claude Code CLI + local Ollama |
 | `0c3017c6-01ec-4392-86a1-6a1522e4c5ef` | Failure modes (outcome_record always; Telegram on infra only) |
-| `4890aa35-07ae-4e4c-8c4b-ec37e749d751` | Deployment shape (routine host = prod, Main = bench) |
+| `4890aa35-07ae-4e4c-8c4b-ec37e749d751` | Deployment shape (Workshop = prod, Main = bench) |
 | `228a2d9b-b57a-4d0f-8771-662482386b8a` | Memory bridge inside container |
 | `f8e27d53-db5c-4aac-9dee-c3290a53c49a` | Model escalation chain (Ollama-first, API escape hatch) |
+| `c5e2e14a-4750-4e9d-bb26-9d44b9ef5b02` | `substrate` queue-row column + operator-default fallback (#1119/#1121) |
+| `70f25333-b4f4-454e-903b-ab2d32b125c8` | Shared billing-key denylist (TS guard + Python spawn-env guard, #1121) |
+| `cc5f9c2c-4371-4cec-bd54-79b7163c398c` | Per-row tier-aware quota gate (#1121) |
 
 `memory_get(name=<slug>)` or `memory_get` by UUID retrieves the full rationale, alternatives, and confidence for each.
 

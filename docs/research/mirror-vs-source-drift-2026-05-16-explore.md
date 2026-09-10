@@ -87,7 +87,7 @@ Implementation note: this script is owned by hooks (`SessionStart` hook calls it
 ### L3 — CI + git hook layer (Phase 2, ~4h)
 
 - **Pre-commit hook**: assert `install-manifest.yaml` `skills.include` is a subset of source dirs under `.claude-userlevel/skills/`. Catches #655 class at commit time.
-- **CI meta-test** (`tests/ci/test_install_manifest_consistency.py`): same assertion, runs on every PR. Co-located with `.github/workflows/ci-meta.yml` per CLAUDE.md rule #326.
+- **CI meta-test** (`tests/ci/test_install_manifest_consistency.py`): same assertion, runs on every PR. Co-located with `.github/workflows/ci-meta.yml` per `docs/reference/ci-guard-meta-tests.md` (#326).
 - **post-merge git hook**: when `install-manifest.yaml` or `.claude-userlevel/skills/**` changes between old and new HEAD, print a banner reminding to run `install.ps1 -Apply`. (Cannot auto-run — owner-gated.)
 - **Move `.scratch/afk-chain.sh` → `scripts/afk-chain.sh`** with the quota-detection patch as the first commit (#648 mitigation #1). One-shot move with PR review.
 - **Memory→tracker job**: nightly (or `/self-improve`) scan that queries `memory_list(type=feedback)` for `recurring`/`repeat` tags, joins against open GH issues, files a consolidated tracker when N≥3 unattached recurrence-tagged lessons surface (mirrors #654's filed-as-consolidated-batch pattern). This is the part of #654 that automates the human chain step.

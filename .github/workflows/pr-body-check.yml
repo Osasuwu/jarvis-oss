@@ -17,6 +17,7 @@ jobs:
             const repo = { owner: context.repo.owner, repo: context.repo.repo };
             const pr = context.payload.pull_request;
             const body = pr.body || '';
+            const title = pr.title || '';
             const labels = (pr.labels || []).map(l => l.name);
 
             // Bot bypass: dependabot/renovate cannot author linked issues. Paperwork-only — pytest, gitleaks, meta-tests still gate.
@@ -33,11 +34,12 @@ jobs:
               return;
             }
 
-            // Fix-inline escape: [no-issue] body marker bypasses the requirement.
-            // Mirrors the commit-msg convention in .pre-commit-config.yaml (#329) and
-            // matches CLAUDE.md "Fix > track for trivial reversible (#428)" — drive-by
+            // Fix-inline escape: [no-issue] marker bypasses the requirement.
+            // Checked in both body and title — mirrors the commit-msg convention in
+            // .pre-commit-config.yaml (#329) where the marker lives in the commit title.
+            // Matches CLAUDE.md "Fix > track for trivial reversible (#428)" — drive-by
             // fixes shouldn't require filing a tracker just to satisfy paperwork.
-            if (/\[no-issue\]/i.test(body)) {
+            if (/\[no-issue\]/i.test(body) || /\[no-issue\]/i.test(title)) {
               console.log('[no-issue] marker present — skipping linked-issue requirement (fix-inline per #428).');
               return;
             }
@@ -46,7 +48,6 @@ jobs:
             // bypasses the requirement. Refactors are usually structural cleanup with
             // no parent feature/bug issue; the [no-issue] marker is redundant paperwork
             // for this class. Same posture as #428 but auto-detected from title prefix.
-            const title = pr.title || '';
             if (/^refactor(\([^)]*\))?:/i.test(title)) {
               console.log('refactor: title prefix — skipping linked-issue requirement.');
               return;

@@ -1,6 +1,6 @@
 """Carrier-2 gate for the path-filtered-guard convention (#326, mechanized by #1418).
 
-The rule, from `CLAUDE.md`: any workflow under `.github/workflows/` with a `paths:`
+The rule, from `docs/reference/ci-guard-meta-tests.md`: any workflow under `.github/workflows/` with a `paths:`
 filter **that blocks PRs** must ship a co-located meta-test under `tests/ci/`, and
 that meta-test must name every path pattern the filter uses.
 
@@ -48,10 +48,7 @@ PR_BLOCKING_TRIGGERS = ("pull_request", "pull_request_target")
 
 #: Workflow stem -> meta-test filename, for cases where the derived name is wrong.
 #: Keep this short and justified; it is the exception record, not a catch-all.
-WORKFLOW_TEST_OVERRIDES: dict[str, str] = {
-    # `schema-drift-check.yml`'s meta-test predates the naming convention.
-    "schema-drift-check": "test_schema_drift_guard.py",
-}
+WORKFLOW_TEST_OVERRIDES: dict[str, str] = {}
 
 
 def _on_block(doc: dict) -> dict:
@@ -113,14 +110,12 @@ FILTERED = [(wf, p) for wf, doc in _workflow_docs() if (p := path_filters(doc))]
 class TestPathFilteredWorkflowsHaveMetaTests:
     def test_workflows_dir_is_populated(self):
         """Guard the guard: an empty glob would make every test below vacuous."""
-        assert len(_workflow_docs()) >= 10, (
+        assert len(_workflow_docs()) >= 4, (
             f"expected the workflow corpus under {WORKFLOWS_DIR}; found "
             f"{len(_workflow_docs())} parseable files"
         )
 
-    @pytest.mark.parametrize(
-        "workflow,patterns", FILTERED, ids=[wf.name for wf, _ in FILTERED]
-    )
+    @pytest.mark.parametrize("workflow,patterns", FILTERED, ids=[wf.name for wf, _ in FILTERED])
     def test_meta_test_exists(self, workflow: Path, patterns: list[str]):
         names = candidate_test_names(workflow.stem)
         found = [n for n in names if (CI_TESTS_DIR / n).exists()]
@@ -134,9 +129,7 @@ class TestPathFilteredWorkflowsHaveMetaTests:
             "docs/reference/ci-guard-meta-tests.md"
         )
 
-    @pytest.mark.parametrize(
-        "workflow,patterns", FILTERED, ids=[wf.name for wf, _ in FILTERED]
-    )
+    @pytest.mark.parametrize("workflow,patterns", FILTERED, ids=[wf.name for wf, _ in FILTERED])
     def test_meta_test_names_the_filtered_paths(self, workflow: Path, patterns: list[str]):
         """The 'config' half of the convention: the test pins the canonical path.
 
@@ -197,9 +190,7 @@ class TestDetector:
     """
 
     def test_detects_paths_on_bare_on_key(self):
-        doc = yaml.safe_load(
-            "on:\n  pull_request:\n    paths:\n      - 'mcp-memory/schema.sql'\n"
-        )
+        doc = yaml.safe_load("on:\n  pull_request:\n    paths:\n      - 'mcp-memory/schema.sql'\n")
         assert path_filters(doc) == ["mcp-memory/schema.sql"]
 
     def test_detects_paths_on_quoted_on_key(self):
@@ -224,9 +215,7 @@ class TestDetector:
 
     def test_push_only_filter_is_out_of_scope(self):
         """The gitleaks shape: filtered where it gates nothing, open where it does."""
-        doc = yaml.safe_load(
-            "on:\n  pull_request:\n  push:\n    paths-ignore:\n      - docs/**\n"
-        )
+        doc = yaml.safe_load("on:\n  pull_request:\n  push:\n    paths-ignore:\n      - docs/**\n")
         assert path_filters(doc) == []
         assert path_filters(doc, ("push",)) == ["docs/**"]
 
@@ -244,13 +233,9 @@ class TestDetector:
             "test_pr_body_check.py",
         ]
 
-    def test_override_wins_over_derivation(self):
-        assert candidate_test_names("schema-drift-check") == ["test_schema_drift_guard.py"]
-
     def test_every_override_target_exists(self):
         """A stale override silently re-admits the workflow it claims to cover."""
         for stem, name in WORKFLOW_TEST_OVERRIDES.items():
             assert (CI_TESTS_DIR / name).exists(), (
-                f"WORKFLOW_TEST_OVERRIDES maps '{stem}' to tests/ci/{name}, "
-                "which does not exist"
+                f"WORKFLOW_TEST_OVERRIDES maps '{stem}' to tests/ci/{name}, which does not exist"
             )

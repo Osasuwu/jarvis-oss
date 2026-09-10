@@ -54,7 +54,7 @@ See `docs/security/mcp-audit.md` for per-server analysis. Summary:
 |--------|------|--------------------|
 | .env file read by agent | High | `permissions.deny` globs in `~/.claude/settings.json` (`Read`/`Edit` on `**/.env*`) — a Read deny also blocks Edit |
 | Home directory dotfile access | Medium | `permissions.deny` globs on `~/.ssh/**`, `~/.aws/**`, `~/.gnupg/**`, `**/id_rsa*`, `**/*.pem` |
-| Cross-device config divergence | Low | Portable .mcp.json (no hardcoded paths) |
+| Cross-device config divergence | Low | ~~Portable .mcp.json (no hardcoded paths)~~ — no longer applies; MCP servers are registered per-device by hand now (`claude mcp add --scope user`), not via a portable repo file (#1801) |
 
 ## Data Flow
 

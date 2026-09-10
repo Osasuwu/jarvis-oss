@@ -65,7 +65,9 @@ class SupabaseStore:
             return -1
         return int(rows[0].get("last_message_idx", -1))
 
-    def set_watermark(self, device: str, session_id: str, last_message_idx: int) -> None:  # pragma: no cover
+    def set_watermark(
+        self, device: str, session_id: str, last_message_idx: int
+    ) -> None:  # pragma: no cover
         # Composite-key upsert — schema PRIMARY KEY(device, session_id).
         self.client.table("comm_patterns_watermark").upsert(
             {

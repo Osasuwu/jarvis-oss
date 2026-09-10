@@ -348,7 +348,7 @@ Each bullet is one test. Three fields force the agent to consider state, action,
 ### 9.3 PowerShell / shell / YAML (jarvis-relevant)
 
 - Pester for PowerShell — works but agent fluency is lower; tests need more handholding.
-- For GH Actions YAML guards: jarvis already has the `tests/ci/test_<name>_guard.py` pattern (per CLAUDE.md #326) — keep this as the canonical pattern for path-filtered workflows.
+- For GH Actions YAML guards: jarvis already has the `tests/ci/test_<name>_guard.py` pattern (per `docs/reference/ci-guard-meta-tests.md`, #326) — keep this as the canonical pattern for path-filtered workflows.
 - For shell scripts: Bats (Bash Automated Testing System) — viable; document the convention before agents invent ad-hoc test scripts.
 
 ### 9.4 Snapshot testing — friend or foe?
@@ -392,7 +392,7 @@ The split is sharp; don't conflate. The same skill file may have both: unit test
 | Skill prompt | "Given session X with state Y, when user invokes the skill, expected output contains Z and excludes W" | Binary: Z present AND W absent |
 | CLAUDE.md change | "Given prompt P with new CLAUDE.md, does Claude do action A?" | Binary: action A observable in transcript |
 | Hook | "Given trigger event E, hook fires AND output matches schema S; given non-trigger E', hook does not fire" | Two binaries: fires correctly + idle correctly |
-| Workflow YAML | Reuse existing `tests/ci/test_<name>_guard.py` pattern (already in CLAUDE.md #326) | Two dimensions: config (paths filter), logic (block/allow) |
+| Workflow YAML | Reuse existing `tests/ci/test_<name>_guard.py` pattern (already in `docs/reference/ci-guard-meta-tests.md`, #326) | Two dimensions: config (paths filter), logic (block/allow) |
 | AGENTS.md / SOUL.md | "Given identity-conflict situation X, does the model resolve consistently with stated rule R?" | Binary: alignment with rule |
 
 The cost question: each row above is 10-20 minutes of human work to author one scenario, then ~zero per run. Pocock-style "PRD is for shared understanding, not for documentation" applies — these scenarios are the **shared understanding artifact** of what the skill/CLAUDE.md/hook does. They earn their keep by surfacing drift the next time the artifact changes.
