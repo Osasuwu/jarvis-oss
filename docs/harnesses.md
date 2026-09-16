@@ -1,7 +1,7 @@
 ---
 applies_when: setup skill needs to resolve a harness's rules-file name, skills directory, or include support
 applies_when_not: choosing which harness to use, or judging a harness's overall capability
-signed_off: 2026-09-16
+signed_off:
 ---
 
 # Harness table
