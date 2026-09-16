@@ -8,6 +8,8 @@ on:
       - ready_for_review
       - review_requested
       - review_request_removed
+      - labeled
+      - unlabeled
   pull_request_review:
     types:
       - submitted
