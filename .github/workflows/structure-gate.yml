@@ -1,0 +1,17 @@
+name: Structure gate
+
+on:
+  pull_request:
+
+jobs:
+  structure-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run structure gate test
+        run: python -m pytest tests/test_structure_gate.py -v
