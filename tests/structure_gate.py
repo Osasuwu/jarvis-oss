@@ -1,18 +1,24 @@
 """Structure gate: validates the docs/examples/resources bucket frontmatter contract.
 
-Schema source: Osasuwu/jarvis docs/decisions/2026-Q3.md (D18, D21, D24, D32, D34;
-AC — jarvis-oss shape, locked 2026-09-15). The sign-off ledger check (D26) is a later
-slice and is intentionally not implemented here.
+Schema source: Osasuwu/jarvis docs/decisions/2026-Q3.md (D18, D21, D24, D26, D32, D34;
+AC — jarvis-oss shape, locked 2026-09-15). D26's "floor and expiry" behavior (a body change
+after signed_off clears sign-off) is out of scope here — tracked separately.
 """
 
 from __future__ import annotations
 
 import re
+import subprocess
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
 
 STALE_AFTER_DAYS = 180
+
+SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"
+
+# Ledger entry line: "- `<repo-relative doc path>`: <signed_off date>"
+_SIGNOFF_ENTRY_RE = re.compile(r"^-\s*`([^`]+)`:\s*(\d{4}-\d{2}-\d{2})\s*$")
 
 # D24 describes the cap qualitatively ("the two-hour unit") with no numeric value recorded
 # anywhere in the decision record. 20000 bytes (~roughly a 10-15 minute read) is a placeholder
@@ -68,9 +74,11 @@ def _check_docs(root: Path) -> list[Violation]:
         return []
     violations: list[Violation] = []
     for doc_path in sorted(docs_dir.rglob("*.md")):
+        rel = _rel(doc_path, root)
+        if rel == SIGNOFF_LEDGER_PATH:
+            continue
         text = doc_path.read_text(encoding="utf-8")
         fields = _parse_frontmatter(text)
-        rel = _rel(doc_path, root)
         size = len(text.encode("utf-8"))
         if size > DOC_SIZE_CAP_BYTES:
             violations.append(
@@ -101,6 +109,94 @@ def _check_docs(root: Path) -> list[Violation]:
                         message=f"{rel} references '{link}', which does not resolve to a file",
                     )
                 )
+    return violations
+
+
+def _git(root: Path, *args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), *args],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    return result.stdout
+
+
+def _last_commit_for(root: Path, rel_path: str) -> str | None:
+    output = _git(root, "log", "-n", "1", "--format=%H", "--", rel_path)
+    if not output:
+        return None
+    return output.strip() or None
+
+
+def _commit_for_ledger_entry(root: Path, doc_rel: str) -> str | None:
+    needle = f"`{doc_rel}`:"
+    output = _git(root, "log", f"-S{needle}", "--format=%H", "--", SIGNOFF_LEDGER_PATH)
+    if not output:
+        return None
+    hashes = [line for line in output.splitlines() if line.strip()]
+    if not hashes:
+        return None
+    return hashes[0]
+
+
+def _parse_signoff_ledger(text: str) -> dict[str, str]:
+    entries: dict[str, str] = {}
+    for line in text.splitlines():
+        match = _SIGNOFF_ENTRY_RE.match(line.strip())
+        if match:
+            entries[match.group(1)] = match.group(2)
+    return entries
+
+
+def _check_signoff(root: Path) -> list[Violation]:
+    docs_dir = root / "docs"
+    if not docs_dir.is_dir():
+        return []
+    ledger_path = root / SIGNOFF_LEDGER_PATH
+    ledger_entries = (
+        _parse_signoff_ledger(ledger_path.read_text(encoding="utf-8"))
+        if ledger_path.is_file()
+        else {}
+    )
+    violations: list[Violation] = []
+    for doc_path in sorted(docs_dir.rglob("*.md")):
+        rel = _rel(doc_path, root)
+        if rel == SIGNOFF_LEDGER_PATH:
+            continue
+        fields = _parse_frontmatter(doc_path.read_text(encoding="utf-8"))
+        signed_off = fields.get("signed_off")
+        if not signed_off:
+            continue
+        if ledger_entries.get(rel) != signed_off:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="signoff_missing_entry",
+                    message=(
+                        f"{rel} has signed_off '{signed_off}' with no matching "
+                        f"{SIGNOFF_LEDGER_PATH} entry"
+                    ),
+                )
+            )
+            continue
+        doc_commit = _last_commit_for(root, rel)
+        ledger_commit = _commit_for_ledger_entry(root, rel)
+        if doc_commit is not None and doc_commit == ledger_commit:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="signoff_same_commit",
+                    message=(
+                        f"{rel}'s {SIGNOFF_LEDGER_PATH} entry was added in the same "
+                        f"commit ({doc_commit[:8]}) as the doc body; it must be a "
+                        "separate commit"
+                    ),
+                )
+            )
     return violations
 
 
@@ -184,6 +280,7 @@ def check_tree(root: Path) -> list[Violation]:
     root = Path(root)
     violations: list[Violation] = []
     violations.extend(_check_docs(root))
+    violations.extend(_check_signoff(root))
     violations.extend(_check_examples(root))
     violations.extend(_check_resources(root))
     return violations
