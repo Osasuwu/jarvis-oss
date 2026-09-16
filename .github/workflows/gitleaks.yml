@@ -1,0 +1,28 @@
+name: Gitleaks & personal-literal scrub
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scrub personal literals
+        env:
+          PERSONAL_LITERALS: ${{ secrets.PERSONAL_LITERALS }}
+        run: python scripts/scrub_personal_literals.py
