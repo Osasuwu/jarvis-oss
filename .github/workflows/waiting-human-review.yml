@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Check review hold
         uses: actions/github-script@v7
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
             const { owner, repo } = context.repo;
@@ -38,7 +40,13 @@ jobs:
             const hasLabel = pr.labels.some((l) => l.name === "waiting-human-review");
 
             const action = context.payload.action;
-            const isFreshOpen = action === "opened" || action === "ready_for_review";
+            // A "Re-run jobs" replays the same stored event payload, so `action` still
+            // reads "opened" on attempt 2+ even though nothing about the PR changed. Gate
+            // on run_attempt too, or clearing the label by hand and re-running the check
+            // just puts the label straight back.
+            const isFreshOpen =
+              (action === "opened" || action === "ready_for_review") &&
+              process.env.RUN_ATTEMPT === "1";
 
             // At one developer a PR author can't request review from themselves, so
             // nothing else will ever set hasRequestedReview. Carry the hold with a label
