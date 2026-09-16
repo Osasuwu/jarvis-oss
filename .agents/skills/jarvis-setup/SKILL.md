@@ -92,3 +92,8 @@ so (currently Claude Code):
 
 Skipping both extras must still leave a fully working rules file — they are conveniences, not
 requirements of this skill's core path.
+
+## See also
+
+Why §3's delta-only approach was chosen over a full overwrite or a blind append:
+[`docs/setup-delta-only.md`](../../../docs/setup-delta-only.md).

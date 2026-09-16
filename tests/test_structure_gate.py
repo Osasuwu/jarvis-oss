@@ -136,6 +136,10 @@ def test_real_signoff_ledger_exists_with_documented_entry_format():
     assert entry_lines, "docs/SIGNOFF.md must document the `- `<path>`: <date>` entry format"
 
 
+def test_real_tree_passes_structure_gate():
+    assert check_tree(REPO_ROOT) == []
+
+
 def test_ci_workflow_fetches_enough_history_for_signoff_check():
     workflow_path = REPO_ROOT / ".github" / "workflows" / "structure-gate.yml"
     text = workflow_path.read_text(encoding="utf-8")
