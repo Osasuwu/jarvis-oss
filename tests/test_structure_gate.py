@@ -114,6 +114,14 @@ def test_signoff_entry_in_same_commit_as_doc_fails(tmp_path):
     assert ("docs/guide.md", "signoff_same_commit") in codes
 
 
+def test_empty_signed_off_is_drafted_not_yet_signed_and_not_a_violation():
+    # #53: `signed_off:` present but empty is the intentional "drafted, not yet signed"
+    # state, not a violation and not the same as omitting the key. Pinned here so a future
+    # edit to `_check_signoff` can't turn this into a `signoff_missing_entry` regression
+    # without a test noticing.
+    assert check_tree(FIXTURES / "signoff_empty_value") == []
+
+
 def test_signoff_entry_in_separate_commit_passes(tmp_path):
     _init_repo(tmp_path)
     _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
@@ -132,8 +140,12 @@ def test_real_signoff_ledger_exists_with_documented_entry_format():
     ledger_path = REPO_ROOT / "docs" / "SIGNOFF.md"
     assert ledger_path.is_file(), "docs/SIGNOFF.md must exist"
     text = ledger_path.read_text(encoding="utf-8")
-    entry_lines = [line for line in text.splitlines() if _SIGNOFF_ENTRY_RE.match(line.strip())]
-    assert entry_lines, "docs/SIGNOFF.md must document the `- `<path>`: <date>` entry format"
+    entry_lines = [
+        line for line in text.splitlines() if _SIGNOFF_ENTRY_RE.match(line.strip())
+    ]
+    assert entry_lines, (
+        "docs/SIGNOFF.md must document the `- `<path>`: <date>` entry format"
+    )
 
 
 def test_real_tree_passes_structure_gate():

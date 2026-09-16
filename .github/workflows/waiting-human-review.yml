@@ -1,0 +1,79 @@
+name: Waiting on human review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - ready_for_review
+      - review_requested
+      - review_request_removed
+      - labeled
+      - unlabeled
+  pull_request_review:
+    types:
+      - submitted
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  waiting-human-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check review hold
+        uses: actions/github-script@v7
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            // Always re-fetch: pull_request_review/review_requested payloads carry the
+            // PR as it was at event time, not necessarily the current requested_reviewers.
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+
+            const hasRequestedReview =
+              (pr.requested_reviewers && pr.requested_reviewers.length > 0) ||
+              (pr.requested_teams && pr.requested_teams.length > 0);
+            const hasLabel = pr.labels.some((l) => l.name === "waiting-human-review");
+
+            const action = context.payload.action;
+            // A "Re-run jobs" replays the same stored event payload, so `action` still
+            // reads "opened" on attempt 2+ even though nothing about the PR changed. Gate
+            // on run_attempt too, or clearing the label by hand and re-running the check
+            // just puts the label straight back.
+            const isFreshOpen =
+              (action === "opened" || action === "ready_for_review") &&
+              process.env.RUN_ATTEMPT === "1";
+
+            // At one developer a PR author can't request review from themselves, so
+            // nothing else will ever set hasRequestedReview. Carry the hold with a label
+            // instead. This also covers N>1 PRs opened without picking a reviewer yet.
+            if (isFreshOpen && !hasRequestedReview && !hasLabel) {
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: pull_number,
+                labels: ["waiting-human-review"],
+              });
+              core.setFailed(
+                "Human review is owed — waiting-human-review label applied. " +
+                  "A human clears it by hand after reading the PR; nothing removes it automatically."
+              );
+              return;
+            }
+
+            if (hasRequestedReview || hasLabel) {
+              core.setFailed(
+                "Human review is owed" +
+                  (hasRequestedReview ? " (review requested, not yet given)" : "") +
+                  (hasLabel ? " (waiting-human-review label present)" : "") +
+                  "."
+              );
+            } else {
+              core.info("No human review owed.");
+            }
