@@ -24,3 +24,4 @@ The date must match the doc's own `signed_off` frontmatter value exactly.
 ## Entries
 
 - `docs/harnesses.md`: 2026-09-16
+- `docs/setup-delta-only.md`: 2026-09-16
