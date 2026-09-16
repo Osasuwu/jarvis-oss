@@ -14,4 +14,4 @@ jobs:
       - name: Install pytest
         run: pip install pytest
       - name: Run structure gate test
-        run: python -m pytest tests/test_structure_gate.py -v
+        run: python -m pytest tests/test_structure_gate.py tests/test_jarvis_setup_skill.py -v
