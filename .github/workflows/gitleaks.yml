@@ -38,3 +38,17 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
           GITLEAKS_ENABLE_COMMENTS: false
+
+      # Personal-literal scrub (#23, D25): a newline-separated list of private
+      # literals lives only in the PERSONAL_LITERALS secret, never in the tree.
+      # A hit fails the job; the log names only the file path, never the
+      # matched literal, so a match is not re-leaked into CI output.
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Scrub personal literals
+        env:
+          PERSONAL_LITERALS: ${{ secrets.PERSONAL_LITERALS }}
+        run: python scripts/scrub_personal_literals.py
