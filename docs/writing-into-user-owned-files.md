@@ -155,9 +155,8 @@ without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/do
 between versions.
 
 **Cost.** The include line itself is written with option 2, 3 or 5, and it can fail without a sound:
-- git skips a missing include target silently — re-checked: `git config -f main.cfg --includes
-  --get` with `include.path` pointing at a nonexistent file returns the other keys and exit 0
-  (git 2.44).
+- git skips a missing include target silently and still exits 0. See
+  [`git-include-missing-target-silent.md`](../examples/git-include-missing-target-silent.md).
 - Claude Code: two `@path` imports written inside a sentence, each with a comma glued on, loaded
   nothing for 4–9 days while a substring guard stayed green. The docs allow mid-sentence imports,
   so the comma may be the cause. See
