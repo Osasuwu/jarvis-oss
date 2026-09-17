@@ -77,14 +77,39 @@ def test_main_sources_literals_only_from_personal_literals_env_var(tmp_path, mon
     assert exit_code == 1
 
 
-def test_main_with_no_personal_literals_env_var_is_clean(tmp_path, monkeypatch):
-    """No secret set → no literals to check for → clean pass, never a crash or a leaked default."""
+def test_main_with_no_personal_literals_env_var_fails_closed(tmp_path, monkeypatch):
+    """No secret set → nothing was checked, so the step must fail, not report clean (#41).
+
+    The first version passed here, and the repository secret was never set: every PR's scrub
+    printed "Scrub clean" while checking zero literals."""
     (tmp_path / "notes.txt").write_text("alice@example.com\n", encoding="utf-8")
     monkeypatch.delenv("PERSONAL_LITERALS", raising=False)
     monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        exit_code = main()
+    assert exit_code == 1
+    assert "PERSONAL_LITERALS" in buf.getvalue()
+
+
+def test_blank_only_personal_literals_fails_closed(tmp_path, monkeypatch):
+    (tmp_path / "notes.txt").write_text("nothing here\n", encoding="utf-8")
+    monkeypatch.setenv("PERSONAL_LITERALS", "  \n\n ")
+    monkeypatch.setenv("GITHUB_WORKSPACE", str(tmp_path))
     with redirect_stdout(io.StringIO()):
         exit_code = main()
-    assert exit_code == 0
+    assert exit_code == 1
+
+
+def test_clean_run_reports_how_many_literals_it_checked(tmp_path):
+    """A clean pass must show it checked something, without printing any literal."""
+    (tmp_path / "notes.txt").write_text("nothing here\n", encoding="utf-8")
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        run(["alice@example.com", "555-0100"], tmp_path)
+    output = buf.getvalue()
+    assert "2 literal" in output
+    assert "alice@example.com" not in output
 
 
 # --- AC3: job output never contains the matched literal, only the file path ------------------

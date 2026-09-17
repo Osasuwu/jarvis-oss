@@ -1,6 +1,7 @@
 ---
 fit: works when you want a real signoff_same_commit violation and its two-commit fix, not just the rule's abstract description
 last_seen: 2026-09-16
+pairs_with: docs/publishing-discipline.md
 ---
 
 # A real `signoff_same_commit` violation, and its fix

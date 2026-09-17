@@ -2,7 +2,8 @@
 
 Reads a newline-separated list of private literals from the ``PERSONAL_LITERALS``
 repository secret and fails the check if any literal appears anywhere in the
-working tree. The list itself never lands in the tree, and matched output
+working tree. An empty or unset list fails the check: it would otherwise report
+clean while checking nothing. The list itself never lands in the tree, and matched output
 names only the file path — never the literal value that matched, so a hit is
 not re-leaked into the job log.
 
@@ -37,13 +38,20 @@ def find_literal_hits(literals: list[str], root: Path) -> list[str]:
 
 
 def run(literals: list[str], root: Path) -> int:
+    if not literals:
+        # An empty list checks nothing; reporting "clean" here is a gate that cannot fail (#41).
+        print(
+            "No personal literals configured: set the PERSONAL_LITERALS repository secret "
+            "(one literal per line). Nothing was checked, so this step fails."
+        )
+        return 1
     hits = find_literal_hits(literals, root)
     if hits:
         print("Personal literal(s) found in the following files (values withheld):")
         for path in hits:
             print(f"  {path}")
         return 1
-    print("Scrub clean — no personal literals found in the tree.")
+    print(f"Scrub clean — checked {len(literals)} literal(s); none found in the tree.")
     return 0
 
 
