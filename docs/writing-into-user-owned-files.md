@@ -76,7 +76,7 @@ Status: sourced. We do not use it for `jarvis-setup`: a rules file is the person
   `match_for_absence => true`
   ([file_line](https://github.com/puppetlabs/puppetlabs-stdlib/blob/main/lib/puppet/type/file_line.rb)).
 
-**Best pick when** your content is one line: a single setting, a `source` line. By substring only if
+**Best pick when** your content is a line or two: a setting, a `source` line. By substring only if
 the line will never change or be removed.
 
 **Cost.** A substring guard counts any line holding the substring as present, a commented-out
@@ -301,29 +301,30 @@ First, in order:
 missing items. It has no place of its own; the option that carries them decides update and
 uninstall.
 
-**Where.** No rule picks one option. Several usually fit, and the choice between them is the
-trade-off each option's *best pick when* and *cost* describe. These checkable facts rule options
-out; weigh what is left.
+**Where.** No rule picks one option; several usually fit, and the choice is the trade-off each
+option's *best pick when* and *cost* describe. These checkable facts rule options out.
 
 | Option | Fits only if |
 |---|---|
 | 1, split | the format loads a second file that the person edits |
 | 1, seed-once | you will never update or remove what you wrote |
-| 2 | your content is one line |
+| 2 | your content is a line or two |
 | 3 | the format has comments to use as markers |
-| 4 | the format has an include or drop-in that loads where yours is not overridden, or a program slot you can wrap |
+| 4 | the format has an include or drop-in, or a program slot you can wrap |
 | 5 | a parser for the format keeps comments, order and formatting |
 | 6 | you ship the whole file and can store a base the person does not touch |
 
-Showing first fits every option. Among what is left: 2 and 3 keep everything in the one file the
-person sees; 4 lets your content grow and change without touching theirs, but the include can load
-nothing without a sound; 5 touches only your keys whatever the layout, but uninstall needs a record
-of them; 6 keeps edits to a file you ship, at the price of a base and conflicts someone resolves.
+For 2, 3 and 4, check where yours loads: in `sshd_config` the first value wins. Among what is
+left: 2 and 3 keep all in the file the person sees; 4 lets yours grow without touching theirs, but
+the include can fail silently; 5 sets only your keys in any layout, but can overwrite theirs and
+needs a record to uninstall; 6 keeps edits to a file you ship, at the price of a base and
+conflicts to resolve. Showing first fits every option. If nothing is left: seed once, print, or
+several one-line edits and a record of them.
 
 A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
 passes 2 and 5.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
-elsewhere. The skill today does 7 with show-before-writing and a plain append, or on Claude Code an `@import` of
-its own file, and has no update or uninstall step in either. Closing that gap is #57.
+elsewhere. Today it shows first, then appends plainly or, on Claude Code, `@import`s its own file;
+neither has an update or uninstall step. Closing that gap is #57.
