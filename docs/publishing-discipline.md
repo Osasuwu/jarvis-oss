@@ -1,7 +1,7 @@
 ---
 applies_when: publishing agent-drafted docs/examples/resources that must clear a human review point before shipping
 applies_when_not: internal process notes that are never meant to leave draft status
-signed_off: 2026-09-16
+signed_off:
 ---
 
 # Publishing discipline: gate what agents draft, not what they write

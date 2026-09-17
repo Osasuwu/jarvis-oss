@@ -1,7 +1,7 @@
 ---
 applies_when: adopting Jarvis in a repo that already has some rules-file content
 applies_when_not: repo has no rules file at all
-signed_off: 2026-09-16
+signed_off:
 ---
 
 # Setup writes only the delta

@@ -24,9 +24,11 @@ date and adds the matching ledger line below.
 The two-commit rule above stops a single commit from claiming its own review, but a same-commit
 check inside one PR is satisfied just as mechanically if the doc body and the ledger line land in
 two different commits of that *same* PR — nothing here diffs against `main`, only against the
-doc's own git history. The actual control against that is `waiting-human-review` (a required
-status check, see `.github/workflows/waiting-human-review.yml`): it holds any PR, sign-off or
-not, until a human has looked at it. Given that hold, the practice — not a mechanical gate — is
+doc's own git history. The intended control against that is `waiting-human-review` (see
+`.github/workflows/waiting-human-review.yml`): it holds any PR, sign-off or not, until a human has
+looked at it. **It holds nothing until it is a required status check on `main`** — while it is
+only a status check, a red run does not block the merge button (#55 merged 57 seconds after the
+hold label went on, with the check red). Given that hold, the practice — not a mechanical gate — is
 to re-sign a doc through a PR that touches only the `docs/SIGNOFF.md` line, with no other change
 to that doc's body, merged by the author after actually reading it.
 
@@ -42,6 +44,7 @@ The date must match the doc's own `signed_off` frontmatter value exactly.
 
 ## Entries
 
-- `docs/harnesses.md`: 2026-09-16
-- `docs/publishing-discipline.md`: 2026-09-16
-- `docs/setup-delta-only.md`: 2026-09-16
+None. Every entry this ledger has ever carried was written by the agent that drafted the doc it
+signed, in a PR that merged with zero reviews — see #41 and #53. They were removed rather than
+left standing, because a ledger that records signatures nobody gave is worse than an empty one.
+Entries return one at a time, each in its own PR, merged by the author after reading the body.

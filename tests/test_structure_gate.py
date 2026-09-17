@@ -140,12 +140,19 @@ def test_real_signoff_ledger_exists_with_documented_entry_format():
     ledger_path = REPO_ROOT / "docs" / "SIGNOFF.md"
     assert ledger_path.is_file(), "docs/SIGNOFF.md must exist"
     text = ledger_path.read_text(encoding="utf-8")
-    entry_lines = [
-        line for line in text.splitlines() if _SIGNOFF_ENTRY_RE.match(line.strip())
-    ]
-    assert entry_lines, (
+    assert "- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>" in text, (
         "docs/SIGNOFF.md must document the `- `<path>`: <date>` entry format"
     )
+    # An empty Entries section is a valid state, not a broken ledger: nothing has been signed
+    # yet, or every signature was withdrawn (#41 — all three were agent self-signatures in
+    # unreviewed PRs). This test previously required at least one live entry, which made
+    # "no doc is signed" indistinguishable from "the ledger is malformed". What must hold is
+    # that whatever entries are listed use the documented format.
+    entries_body = text.split("## Entries", 1)[1]
+    for line in entries_body.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- "):
+            assert _SIGNOFF_ENTRY_RE.match(stripped), f"malformed ledger entry: {stripped}"
 
 
 def test_real_tree_passes_structure_gate():
