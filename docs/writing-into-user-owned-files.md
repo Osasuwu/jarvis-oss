@@ -136,7 +136,8 @@ file) and the person's file carries one line that loads it:
   the location of the include directive" ([git-config](https://git-scm.com/docs/git-config)).
 - *Code-derived:* rustup adds `. "$HOME/.cargo/env"` to shell profiles, or the `CARGO_HOME`
   path when it is not the default
-  ([shell.rs](https://github.com/rust-lang/rustup/blob/master/src/cli/self_update/shell.rs)).
+  ([shell.rs](https://github.com/rust-lang/rustup/blob/master/src/cli/self_update/shell.rs),
+  [unix.rs](https://github.com/rust-lang/rustup/blob/master/src/cli/self_update/unix.rs)).
 - The loaded content can be a command's output instead of a file: starship's setup is
   `eval "$(starship init bash)"` ([starship](https://starship.rs/)), so the content updates with
   the binary.
@@ -144,8 +145,8 @@ file) and the person's file carries one line that loads it:
   relative to the importing file, up to four hops deep
   ([memory docs](https://code.claude.com/docs/en/memory)).
 
-A **drop-in directory** is this option with the include built in. systemd reads `.d/` files that
-"will be merged in the alphanumeric order and parsed after the main unit file"
+A **drop-in directory** is this option with the include built in. systemd reads `.conf` files in
+`.d/` that "will be merged in the alphanumeric order and parsed after the main unit file"
 ([systemd.unit](https://github.com/systemd/systemd/blob/main/man/systemd.unit.xml)). For agent
 rules, Claude Code's `.claude/rules/`: "All `.md` files are discovered recursively", and rules
 without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/docs/en/memory)).
@@ -154,9 +155,9 @@ without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/do
 between versions.
 
 **Cost.** The include line itself is written with option 2 or 3, and it can fail without a sound:
-- git skips a missing include target silently — tried: `git config -f main.cfg --includes --get`
-  with `include.path` pointing at a nonexistent file returns the other keys and exit 0 (git
-  2.44).
+- git skips a missing include target silently — re-checked: `git config -f main.cfg --includes
+  --get` with `include.path` pointing at a nonexistent file returns the other keys and exit 0
+  (git 2.44).
 - Claude Code: two `@path` imports written inside a sentence, each with a comma glued on, loaded
   nothing for 4–9 days while a substring guard stayed green. The docs allow mid-sentence imports,
   so the comma may be the cause. See
@@ -194,7 +195,7 @@ than editing text. `git config --file <f> <key> <value>` ("query/set/replace/uns
 own tool: jsonc-parser's "*modify* API computes edits to insert, remove or replace a property or
 value in a JSON document" ([jsonc-parser](https://github.com/microsoft/node-jsonc-parser)).
 Augeas covers other formats (`sshd_config`, `/etc/hosts`): it "parses configuration files in
-their native formats and transforms them into a tree" ([Augeas](https://augeas.net/)).
+their native formats and transforms them into a tree" ([Augeas](https://augeas.net/), [lenses](https://augeas.net/stock_lenses.html)).
 
 **Best pick when** a parser can edit the file and your contribution is a handful of keys,
 and the editor keeps what the person keeps: comments, order, formatting.
@@ -259,9 +260,8 @@ two phrasings of one rule would drift apart.
 - **No update, no uninstall** when appended plainly (follows from the run: nothing marks what it
   wrote). A re-run finds the old wording already stated in substance and writes nothing.
 
-**Update / uninstall.** Only through the option that carries the delta: 3 or 4. Then the judge
-reads the person's file minus the tool's block or file, and the tool rewrites that block or file
-whole on every run.
+**Update / uninstall.** Those of the option that carries the delta. With 3 or 4, the judge reads
+the person's file minus the tool's block or file, and the tool rewrites that block or file whole.
 
 Status: tried.
 
@@ -280,7 +280,7 @@ starts the reader itself can skip the file: VS Code activates shell integration 
 arguments and/or environment variables when the shell session launches"
 ([shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)).
 
-Before replacing a file, validate the result and keep a backup, as Ansible's `template` does:
+Before replacing a file, validate the result and keep a backup, as Ansible's `template` can:
 `validate` runs "before copying the updated file into the final destination"
 ([template](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/template_module.html)).
 
@@ -294,33 +294,36 @@ First, in order:
 
 1. **Is the file managed by other means (dotfiles repo, Nix), or did the person opt out?** Yes →
    **print, do not write**.
-2. **Does anyone besides the tool edit it?** No → **option 1**. If a file you did not create is
-   already there, back it up first or show first.
+2. **Is your tool the only one that edits it?** Yes → **option 1**. If a file you did not create
+   is already there, back it up or show first.
 
-**What to write.** Prose the person may already state their own way, where two phrasings would
-drift apart → **option 7** picks the missing items. It has no place of its own: carry its output
-with the option the table picks.
+**What to write.** Prose the person may already state their own way → **option 7** picks the
+missing items. It has no place of its own; the option that carries them decides update and
+uninstall.
 
-**Where.** Go down the table and stop at the first row whose condition holds. Each condition is a
-fact about the file, its format or your tool, so one setup lands on one row.
+**Where.** No rule picks one option. Several usually fit, and the choice between them is the
+trade-off each option's *best pick when* and *cost* describe. These checkable facts rule options
+out; weigh what is left.
 
-| # | If | Option |
-|---|---|---|
-| a | The person takes the file over after the first write, and you never update it | 1, seed-once |
-| b | You ship the file, and the format loads an override file the person edits | 1, split |
-| c | You ship the file, people edit it in place, and you keep what you shipped last time | 6 |
-| d | You fill a program slot, such as a git hook | 4, call their program |
-| e | The format has an include or drop-in, and it can sit where your content is not overridden | 4 |
-| f | A parser edits the format keeping comments and order, and you record which keys are yours | 5 |
-| g | Your content is one line | 2; by pattern if it may change or go |
-| h | The format has comments to use as markers | 3 |
-| – | None of the above | show first; the person places it |
+| Option | Fits only if |
+|---|---|
+| 1, split | the format loads a second file that the person edits |
+| 1, seed-once | you will never update or remove what you wrote |
+| 2 | your content is one line |
+| 3 | the format has comments to use as markers |
+| 4 | the format has an include or drop-in that loads where yours is not overridden, or a program slot you can wrap |
+| 5 | a parser for the format keeps comments, order and formatting |
+| 6 | you ship the whole file and can store a base the person does not touch |
 
-Examples: a `PATH` line in `~/.bashrc` → e (`source` exists), as rustup does; conda's block would
-land there too. A changing key in `package.json` → f. A static line in `sshd_config` on a system
-whose `Include` of `sshd_config.d/` comes first → e. A key in a JSON file with no such parser → –.
+Showing first fits every option. Among what is left: 2 and 3 keep everything in the one file the
+person sees; 4 lets your content grow and change without touching theirs, but the include can load
+nothing without a sound; 5 touches only your keys whatever the layout, but uninstall needs a record
+of them; 6 keeps edits to a file you ship, at the price of a base and conflicts someone resolves.
+
+A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
+passes 2 and 5.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
-rules a person already has, so it lands on 7, carried by 4 on Claude Code and by 3 elsewhere. The
-skill today does 7 with show-before-writing and a plain append, or on Claude Code an `@import` of
+rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
+elsewhere. The skill today does 7 with show-before-writing and a plain append, or on Claude Code an `@import` of
 its own file, and has no update or uninstall step in either. Closing that gap is #57.
