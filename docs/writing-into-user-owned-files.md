@@ -154,7 +154,7 @@ without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/do
 **Best pick when** the format supports includes or drop-ins and the tool's content changes
 between versions.
 
-**Cost.** The include line itself is written with option 2 or 3, and it can fail without a sound:
+**Cost.** The include line itself is written with option 2, 3 or 5, and it can fail without a sound:
 - git skips a missing include target silently — re-checked: `git config -f main.cfg --includes
   --get` with `include.path` pointing at a nonexistent file returns the other keys and exit 0
   (git 2.44).
@@ -290,12 +290,8 @@ has to read, or paste.
 
 ## How to choose
 
-First, in order:
-
-1. **Is the file managed by other means (dotfiles repo, Nix), or did the person opt out?** Yes →
-   **print, do not write**.
-2. **Is your tool the only one that edits it?** Yes → **option 1**. If a file you did not create
-   is already there, back it up or show first.
+**First.** Is the file already declared in a dotfiles manager or Nix config, or did the person
+say they manage it elsewhere? Yes → **print, do not write**.
 
 **What to write.** Prose the person may already state their own way → **option 7** picks the
 missing items. It has no place of its own; the option that carries them decides update and
@@ -306,25 +302,25 @@ option's *best pick when* and *cost* describe. These checkable facts rule option
 
 | Option | Fits only if |
 |---|---|
-| 1, split | the format loads a second file that the person edits |
-| 1, seed-once | you will never update or remove what you wrote |
-| 2 | your content is a line or two |
+| 1, split | the format loads a second file, and the person accepts editing there |
+| 2 | your content is a line or two, and a bare line stays valid (not JSON) |
 | 3 | the format has comments to use as markers |
 | 4 | the format has an include or drop-in, or a program slot you can wrap |
 | 5 | a parser for the format keeps comments, order and formatting |
-| 6 | you ship the whole file and can store a base the person does not touch |
+| 6 | you ship the whole file and keep its base outside what the person edits |
 
-For 2, 3 and 4, check where yours loads: in `sshd_config` the first value wins. Among what is
-left: 2 and 3 keep all in the file the person sees; 4 lets yours grow without touching theirs, but
-the include can fail silently; 5 sets only your keys in any layout, but can overwrite theirs and
-needs a record to uninstall; 6 keeps edits to a file you ship, at the price of a base and
-conflicts to resolve. Showing first fits every option. If nothing is left: seed once, print, or
-several one-line edits and a record of them.
+For 2, 3, 4 and 5, check where yours loads: `sshd_config` uses the first value; `git config`
+errors on multiple matches. Among what is left: 2 and 3 keep all in the file the person sees;
+4's include grows without touching theirs, though a program slot can replace theirs, and the
+include can fail silently; 5 sets only your keys, keeping the rest if the parser models it, but
+can overwrite theirs and needs a record to uninstall; 6 keeps edits to a file you ship, at the
+price of a base and conflicts to resolve. Showing first fits every option. If nothing is left:
+option 1, shown first and backed up.
 
 A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
-passes 2 and 5.
+passes 5, not 2: a bare line can break JSON.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
-rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
-elsewhere. Today it shows first, then appends plainly or, on Claude Code, `@import`s its own file;
-neither has an update or uninstall step. Closing that gap is #57.
+rules a person already has, so it takes 7, carried by 4 where the harness has includes and 2
+unguarded elsewhere. Today it shows first, then appends plainly or, on Claude Code, `@import`s
+its own file; neither has an update or uninstall step. Closing that gap is #57.
