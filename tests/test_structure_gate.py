@@ -105,7 +105,7 @@ def test_signoff_missing_ledger_entry_fails():
 def test_signoff_entry_in_same_commit_as_doc_fails(tmp_path):
     _init_repo(tmp_path)
     _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16\n")
+    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-q", "-m", "add doc and ledger entry together")
 
@@ -128,7 +128,7 @@ def test_signoff_entry_in_separate_commit_passes(tmp_path):
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-q", "-m", "add doc body")
 
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16\n")
+    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
     _git(tmp_path, "add", "-A")
     _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
 
@@ -136,13 +136,44 @@ def test_signoff_entry_in_separate_commit_passes(tmp_path):
     assert violations == []
 
 
+def test_signoff_entry_without_facts_fails(tmp_path):
+    # #59: a signature must say who checked facts and completeness, so an entry that names
+    # only a date is a violation even when it is otherwise valid.
+    _init_repo(tmp_path)
+    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "add doc body")
+    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16\n")
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
+
+    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
+    assert ("docs/guide.md", "signoff_missing_facts") in codes
+
+
+def test_signoff_entry_with_report_url_passes(tmp_path):
+    _init_repo(tmp_path)
+    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "add doc body")
+    _write(
+        tmp_path / "docs" / "SIGNOFF.md",
+        "- `docs/guide.md`: 2026-09-16; facts: https://github.com/o/r/pull/1#issuecomment-1\n",
+    )
+    _git(tmp_path, "add", "-A")
+    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
+
+    assert check_tree(tmp_path) == []
+
+
 def test_real_signoff_ledger_exists_with_documented_entry_format():
     ledger_path = REPO_ROOT / "docs" / "SIGNOFF.md"
     assert ledger_path.is_file(), "docs/SIGNOFF.md must exist"
     text = ledger_path.read_text(encoding="utf-8")
-    assert "- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>" in text, (
-        "docs/SIGNOFF.md must document the `- `<path>`: <date>` entry format"
-    )
+    assert (
+        "- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>; facts: <human | report URL>"
+        in text
+    ), "docs/SIGNOFF.md must document the `- `<path>`: <date>; facts: <who>` entry format"
     # An empty Entries section is a valid state, not a broken ledger: nothing has been signed
     # yet, or every signature was withdrawn (#41 — all three were agent self-signatures in
     # unreviewed PRs). This test previously required at least one live entry, which made

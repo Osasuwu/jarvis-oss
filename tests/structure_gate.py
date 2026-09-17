@@ -17,8 +17,12 @@ STALE_AFTER_DAYS = 180
 
 SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"
 
-# Ledger entry line: "- `<repo-relative doc path>`: <signed_off date>"
-_SIGNOFF_ENTRY_RE = re.compile(r"^-\s*`([^`]+)`:\s*(\d{4}-\d{2}-\d{2})\s*$")
+# Ledger entry line: "- `<repo-relative doc path>`: <signed_off date>; facts: <human | report URL>"
+# The facts part says who checked facts and completeness (#59): the signer, or a review-doc
+# report. A line without it still parses, so it is reported as missing facts, not as absent.
+_SIGNOFF_ENTRY_RE = re.compile(
+    r"^-\s*`([^`]+)`:\s*(\d{4}-\d{2}-\d{2})\s*(?:;\s*facts:\s*(human|https://\S+))?\s*$"
+)
 
 # D24 describes the cap qualitatively ("the two-hour unit") with no numeric value recorded
 # anywhere in the decision record. 20000 bytes (~roughly a 10-15 minute read) is a placeholder
@@ -143,12 +147,12 @@ def _commit_for_ledger_entry(root: Path, doc_rel: str) -> str | None:
     return hashes[0]
 
 
-def _parse_signoff_ledger(text: str) -> dict[str, str]:
-    entries: dict[str, str] = {}
+def _parse_signoff_ledger(text: str) -> dict[str, tuple[str, str | None]]:
+    entries: dict[str, tuple[str, str | None]] = {}
     for line in text.splitlines():
         match = _SIGNOFF_ENTRY_RE.match(line.strip())
         if match:
-            entries[match.group(1)] = match.group(2)
+            entries[match.group(1)] = (match.group(2), match.group(3))
     return entries
 
 
@@ -171,7 +175,8 @@ def _check_signoff(root: Path) -> list[Violation]:
         signed_off = fields.get("signed_off")
         if not signed_off:
             continue
-        if ledger_entries.get(rel) != signed_off:
+        entry_date, facts = ledger_entries.get(rel, (None, None))
+        if entry_date != signed_off:
             violations.append(
                 Violation(
                     path=rel,
@@ -183,6 +188,17 @@ def _check_signoff(root: Path) -> list[Violation]:
                 )
             )
             continue
+        if facts is None:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="signoff_missing_facts",
+                    message=(
+                        f"{rel}'s {SIGNOFF_LEDGER_PATH} entry does not say who checked facts: "
+                        "end it with '; facts: human' or '; facts: <review-doc report URL>'"
+                    ),
+                )
+            )
         doc_commit = _last_commit_for(root, rel)
         ledger_commit = _commit_for_ledger_entry(root, rel)
         if doc_commit is not None and doc_commit == ledger_commit:

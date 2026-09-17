@@ -32,15 +32,31 @@ hold label went on, with the check red). Given that hold, the practice — not a
 to re-sign a doc through a PR that touches only the `docs/SIGNOFF.md` line, with no other change
 to that doc's body, merged by the author after actually reading it.
 
+## What a signature covers (#59)
+
+A signature covers two different checks, and the entry records who did each.
+
+- **Reading.** The signer read the doc as its reader would: does it make sense, is it useful, does
+  it match what they have tried themselves. The signer always does this. It is not delegated.
+- **Facts and completeness.** Every quote, number and tool behaviour matches its source, and no
+  approach a reader could need is missing. Either the signer checked this (`facts: human`), or a
+  [`review-doc`](../.agents/skills/review-doc/SKILL.md) report did (`facts: <report URL>`).
+  With a report, the signer reads its "read these closely" places and its mismatches, not every
+  line of the doc, and skims the rest.
+
+A report counts only if a context that did not write the doc produced it, against the commit
+being signed, and every mismatch and missing option in it was fixed or answered.
+
 ## Entry format
 
 One line per signed-off doc, alphabetical by path:
 
 ```
-- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>
+- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>; facts: <human | report URL>
 ```
 
-The date must match the doc's own `signed_off` frontmatter value exactly.
+The date must match the doc's own `signed_off` frontmatter value exactly. An entry without the
+`facts:` part fails the structure gate (`signoff_missing_facts`).
 
 ## Entries
 
