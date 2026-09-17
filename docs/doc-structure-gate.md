@@ -28,7 +28,7 @@ closes that gap, and brings its own ways to go wrong:
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
 from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
-the review on the pull request that added this doc.
+two review runs on the pull request that added this doc.
 
 ## The options
 
@@ -38,8 +38,8 @@ the review on the pull request that added this doc.
 and a reviewer compares. Our [`write-doc`](../.agents/skills/write-doc/SKILL.md) skill is this,
 and [log4brains](https://github.com/thomvaill/log4brains) generates architecture decision records
 from a "Customizable template (default: MADR)"; its README describes no validation. Editor
-extensions such as [Front Matter CMS](https://frontmatter.codes/) flag schema errors while you
-type, but fail nothing.
+extensions such as Front Matter CMS added "Schema and validation for front matter in markdown
+files" ([changelog](https://frontmatter.codes/changelog)) — in the editor, not in CI.
 
 **Best pick when** docs are few, one person reviews all of them, or the shape is still changing
 weekly.
@@ -78,8 +78,10 @@ field exists.
 
 **Best pick when** you want a freshness or review-date rule without writing code.
 
-**Cost.** Low to adopt. Giant Swarm's rules are "designed for Giant Swarm requirements"; flint
-says "This library is still experimental."
+**Cost.** Low to adopt. Giant Swarm's rules are "designed for Giant Swarm requirements" — its
+checks name their own fields (`NO_LAST_REVIEW_DATE`), and its README does not say the field names
+are configurable, so a different key may have no rule at all; flint says "This library is still
+experimental."
 
 **Lifecycle.** A binary or hook plus config. Status: sourced.
 
@@ -111,16 +113,18 @@ property in a collection schema as an entry from another collection"
 framework or library", with no site needed. [Markdoc](https://markdoc.dev/docs/validation)
 validates tags and attributes inside the body against its schema. Other
 generators check links rather than frontmatter: Docusaurus `onBrokenLinks` defaults to throwing
-([config](https://docusaurus.io/docs/api/docusaurus-config)), MkDocs has `--strict`
-([configuration](https://www.mkdocs.org/user-guide/configuration/)), Hugo fails the build on a
-template `errorf` ([errorf](https://gohugo.io/functions/fmt/errorf/)).
+([config](https://docusaurus.io/docs/api/docusaurus-config)) and MkDocs has `--strict`
+([configuration](https://www.mkdocs.org/user-guide/configuration/)). Hugo is in between: a
+template that calls [`errorf`](https://gohugo.io/functions/fmt/errorf/) "prints the result to the
+ERROR log and fails the build", so a required key can be checked in the layout you already build
+with — the documented example fails on a missing shortcode argument.
 
-**Best pick when** you already build the docs with Astro, Velite or Markdoc. The link-only
-generators are option 7 in practice.
+**Best pick when** you already build the docs with Astro, Velite or Markdoc, or with Hugo and can
+write the rule into a layout. Docusaurus and MkDocs are option 7 in practice.
 
 **Cost.** No extra tool, but every pull request needs a build in CI. A `reference()` says an
-example points at a doc; it does not say every doc has an example. Astro's schemas do not check
-links.
+example points at a doc; it does not say every doc has an example. A collection schema validates
+frontmatter, not links.
 
 **Lifecycle.** Part of the site config. Status: sourced. Dropped on merit: Contentlayer — its
 README says it "is no longer maintained due to lack of funding".
@@ -163,7 +167,9 @@ required check. GitHub Docs builds custom rules on markdownlint, including "GHD0
 must conform to the schema" and a cross-file one, "GHD063: Children frontmatter paths must exist"
 ([content linter](https://docs.github.com/en/contributing/collaborating-on-github-docs/using-the-content-linter)).
 Kubernetes' [`verify-toc-vs-template.sh`](https://github.com/kubernetes/enhancements/blob/master/hack/verify-toc-vs-template.sh)
-diffs each changed proposal's headings against the template's, so the template is the rule.
+diffs each changed proposal's headings against the template's, so the template is the rule — but
+it ends `# TODO(soltysh): for now this should not fail, but print problems` and `exit 0`, which is
+this doc's "Advisory only" failure mode written into the script.
 [Danger JS](https://danger.systems/js/) adds pull-request-level rules, such as failing when a doc
 changes and its companion file does not. [conftest](https://www.conftest.dev/options/)
 `--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
@@ -182,7 +188,8 @@ rule no tool above has.
 
 **How it works.** A prompt says what a good doc contains, and an agent reads each pull request's
 docs and reports a status check. [Continue checks](https://github.com/continuedev/checks) are
-markdown prompts in `.continue/checks/`, run on each pull request. It is the only option aimed at
+markdown prompts — the agent will "create tailored check files in `.checks/`" — run on each pull
+request by the workflow it ships. It is the only option aimed at
 substance: a key that is present and says nothing.
 
 **Best pick when** shape passes and content still fails, and a person reads what it flags.
@@ -204,48 +211,65 @@ alone never counts: it can be skipped. On a self-hosted forge a server-side `pre
 reject the push itself.
 
 Required checks need branch protection or rulesets. On GitHub Free, private repositories have
-neither, so every option there is advisory and a review hold is what blocks
-([`publishing-discipline.md`](publishing-discipline.md)). And if the pull request under check can
-also edit the check, only review stops it — see "At more than one developer".
+neither, so every option there reports and nothing blocks — and the review hold that replaces it
+is itself advisory, because a draft or a label only holds while whoever merges respects it
+([`publishing-discipline.md`](publishing-discipline.md)). Two cheap exits: GitHub Pro lists
+"Protected branches" among its tools for private repositories, and a public repository gets both
+protected branches and rulesets on Free. And if the pull request under check can also edit the
+check, only review stops it — see "At more than one developer".
 
 ## How to choose
+
+Most options below read markdown: 2, 3, 4 and 7's tools, and 6's MD043. For reStructuredText or
+AsciiDoc, what is left is Vale (6), a script (8), and whatever the generator's own build checks
+(5) — answer step 3 and 4 accordingly.
 
 First, in order:
 
 1. **Can a check be required on your repo?** No (a private repo on GitHub Free) → any option still
-   reports, but nothing below blocks a merge; pair it with a review hold.
+   reports, but nothing below blocks a merge; a review hold is the fallback, and it holds only as
+   far as whoever merges respects it. Paying for Pro, or making the repo public, turns this to
+   yes.
 2. **Do you need a rule across files?** "Every doc has an example" → 8 (a script, or conftest on
    extracted frontmatter). "This field names an entry" → also 5's `reference()`, if you build with
    Astro. "This field names a file" → also flint's Asset Existence (3).
 3. **Do docs of a kind share fixed headings?** Yes → 4, or 6's MD043 if you lint already. mdschema
    (4) also covers keys, word count and links; the Structured MADR action covers keys and
    sections only.
-4. **Does a build already validate content?** Astro, Velite, Markdoc → 5. MkDocs, Docusaurus and
-   Hugo check links only: count them as 7 and take keys from 2 or 3.
+4. **Does a build already validate content?** Astro, Velite, Markdoc → 5. Hugo → 5 too, if you
+   will write the rule into a layout with `errorf`; otherwise its link checking, and MkDocs' and
+   Docusaurus', counts as 7 and the keys come from 2 or 3.
 
 | Option | Fits only if |
 |---|---|
-| 1 | no check runs on pull requests yet, or the shape changes faster than a check could follow |
-| 2 | your rules are frontmatter keys, types and enums only |
-| 3 | every rule you need is in its built-in list (review dates; fields, dates, file paths) |
+| 1 | docs are few and one person reviews all of them, or the shape still changes weekly |
+| 2 | keys, types and enums are the part you want declared (pair it for headings) |
+| 3 | its built-in list covers your key rules — review dates; fields, dates, file paths |
 | 4 | each doc type has one fixed heading structure |
-| 5 | the docs build with Astro, Velite or Markdoc, and the build runs on pull requests |
-| 6 | you already run markdownlint or Vale; the rules are headings, a phrase or a word count |
+| 5 | the docs build with Astro, Velite or Markdoc, or with Hugo and a layout you will edit, and the build runs on pull requests |
+| 6 | you already run markdownlint or Vale, and it covers the headings, phrase or word count half |
 | 7 | combined with another option — links only |
-| 8 | someone can write and maintain a parser and its tests |
+| 8 | you need a rule no tool above has, and someone maintains it; a cross-file rule alone can be conftest `--combine` over `yq --front-matter=extract` output, with no parser of your own |
 | 9 | a person reads what it flags; never the only required check |
 
-If several are left, list your rules and count what each covers: mdschema (4) takes keys,
+Rows are not exclusive: 2 or 3 for keys plus 6's MD043 for headings is a normal pair, and so is
+3 plus a generator's `--strict`. If several are left, list your rules and count what each covers: mdschema (4) takes keys,
 headings, size and links in one config; 5 adds no tool if the build already runs; 8 takes
 anything and costs a parser; 2 and 3 take keys only. Add 7 unless the option already checks
 links (mdschema, Docusaurus, MkDocs `--strict`). If nothing fits, keep 1 and put the shape rules
 in the review checklist.
 
-**At more than one developer.** Make the check required and apply it to administrators, or
-someone will merge around it. Keep the rule out of reach of the pull request it fails: code
-owners on the check files, a ruleset that restricts those paths, an organization ruleset that
-requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow from
-the base branch (never run the pull request's code under it). Check only changed files —
+**At more than one developer.** One owner keeps the template, and the check changes in the same
+pull request as the template it encodes. The rest of this is about who can edit the check rather
+than headcount, and applies just as much to one developer whose agent opens every pull request.
+Make the check required and apply it to administrators, or someone will merge around it. Then:
+code owners on the check files, a ruleset that restricts those paths, an organization ruleset
+that requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow
+from the base repository's **default** branch — not the branch the pull request targets — and
+under which you must never run the pull request's code. All four are GitHub, and rulesets are
+"for customers on GitHub Team and GitHub Enterprise plans"; GitLab's code owners are "Premium,
+Ultimate". On GitLab Free, or a personal GitHub account, none of them is available and review is
+the only thing between a pull request and the check it fails. Check only changed files —
 [changed-files](https://github.com/tj-actions/changed-files) lists them,
 [reviewdog](https://github.com/reviewdog/reviewdog) `-filter-mode` filters findings — or, when
 adopting a check on a tree that already fails it, record a baseline and fail only on new offences

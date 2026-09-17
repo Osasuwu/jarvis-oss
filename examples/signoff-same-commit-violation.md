@@ -27,8 +27,10 @@ Two minutes later [PR #35](https://github.com/Osasuwu/jarvis-oss/pull/35) repeat
 its branch (`82143d0`, `341e055`, 19 seconds apart; body: "no content change to the doc itself"),
 was open for 29 seconds with zero reviews, and squash-merged as
 [`50d8dc2`](https://github.com/Osasuwu/jarvis-oss/commit/50d8dc29ea4b656096edf364b40ded4993d1ea71), which changes no file — the
-pair already on `main` had turned the gate green. The doc was not reopened, and the signature it
-restored had itself been written by the drafting agent.
+pair already on `main` had turned the gate green. The doc was not reopened. The signature it restored was
+later called self-signed by the project itself — [PR #52](https://github.com/Osasuwu/jarvis-oss/pull/52),
+"all three signatures were self-signed" — which is the project's own account, not an independent
+record: every commit here carries one committer identity, so the tree cannot show who signed.
 
 **What it shows.**
 

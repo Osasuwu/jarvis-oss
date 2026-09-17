@@ -29,7 +29,7 @@ completed it alone". What goes wrong:
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
 from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
-the review on the pull request that added this doc.
+two review runs on the pull request that added this doc.
 
 ## The options
 
@@ -71,10 +71,12 @@ pull request ([owners](https://github.com/kubernetes/community/blob/master/contr
 
 **Best pick when** there are two people, or the agent pushes as its own identity (option 3).
 
-**Cost.** Needs a second account that the agent cannot use. "Repository owners and administrators
-can merge a pull request even if it hasn't received an approving review" unless the rule is
+**Cost.** Needs a second account that the agent cannot use. The required-reviews page above adds
+that "Repository owners and administrators can merge a pull request even if it hasn't received an
+approving review" unless the rule is
 applied to administrators; a [ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
-names exactly who may bypass, and the list can be empty. On GitHub, protected branches on private
+instead names who may bypass — roles, teams or apps — but "Actors may only be added to bypass
+lists when the repository belongs to an organization". On GitHub, protected branches on private
 repos need a paid plan; on GitLab the author and committer rules are Premium. If Copilot code
 review is allowed to approve, its approval counts toward required approvals
 ([changelog, 2026-09-01](https://github.blog/changelog/2026-09-01-copilot-code-review-can-now-approve-pull-requests/)),
@@ -127,8 +129,8 @@ A label plus a required status check fails while the label is on
 if/unless a certain combination of labels are applied").
 
 **Best pick when** you have one account and want a pause the agent is told not to clear. Drafts
-work on any plan; a label with a required check needs required checks, which private repos on
-GitHub Free lack.
+need no repository settings; a label with a required check needs required checks, which private
+repos on GitHub Free lack.
 
 **Cost.** Anyone with write access can mark ready or remove a label — including an agent holding
 your token — and the event log shows the account, not the person. It records intent, not reading.
@@ -144,10 +146,11 @@ Drafts as the hold: sourced.
 hardware key with touch required, checked in CI: the key releases a result only "if the correct
 user PIN is provided and the YubiKey touch sensor is triggered"
 ([Yubico](https://developers.yubico.com/PGP/Card_edit.html)). GitLab's "Require user
-re-authentication to approve" (Premium). A deployment environment with required reviewers and
+re-authentication (password or SAML) to approve" (Premium). A deployment environment with required reviewers and
 "**Prevent self-review**"
 ([environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)),
-which gates a job rather than the merge. Keyless signing with
+which gates a job rather than the merge — for one developer that rule leaves nobody to approve,
+and without it your own token approves over the API. Keyless signing with
 [gitsign](https://github.com/sigstore/gitsign) ties a signature to an OIDC login instead of a key,
 but with its credential cache "you only need to auth once every 10 minutes" — inside that window an
 agent can sign.
@@ -155,11 +158,10 @@ agent can sign.
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
 **Cost.** A CI check you write (for example, "HEAD carries a tag signed by key X"), which blocks
-only where required checks exist; hardware — a software key the agent can reach proves nothing; a
-touch per sign-off. Environments: "If you are on a GitHub Free, GitHub Pro, or GitHub Team plan,
-other deployment protection rules, such as a wait timer or required reviewers, are only available
-for public repositories." Still proves presence, not
-reading.
+only where required checks exist and only while the agent's token cannot administer the repo or
+merge around it; hardware — a software key the agent can reach proves nothing; a
+touch per sign-off. Below Enterprise, required reviewers are "only available for public
+repositories". Still proves presence, not reading.
 
 **Lifecycle.** Enrol the key, add the check; remove the check to undo. Status: sourced.
 
@@ -194,17 +196,16 @@ the change checks facts against sources and lists what to read closely; the sign
 report. Our [`review-doc`](../.agents/skills/review-doc/SKILL.md) skill does this, and a ledger
 entry names it (`facts: <report URL>`). Two tools push toward evidence of reading:
 [Reviewable](https://docs.reviewable.io/files.html) tracks "the reviewed state of each file, at
-each revision, for each reviewer", and its completion condition can require it before merge;
+each revision, for each reviewer"; whether that blocks a merge is up to the repository's own
+completion condition;
 [pr-quiz](https://github.com/dkamm/pr-quiz) is "A GitHub Action that uses AI to generate a quiz
 from your pull request" — which an agent holding your token could also answer.
 
 **Best pick when** changes are long and fact-heavy, and rubber-stamping is the likely failure.
 
 **Cost.** Adds a model run per change and a report to keep. The reviewer can be wrong. It narrows
-what the person reads; it does not prove they read it. Evidence that review often does not happen:
-about 80% of AI-co-authored pull requests from non-owners "merged without any explicit review"
-([arXiv 2601.13754](https://arxiv.org/abs/2601.13754)); 96% of developers do not fully trust AI
-code, "only 48%" always check it
+what the person reads; it does not prove they read it. 96% of developers do not fully trust AI
+code and "only 48%" always check it
 ([Sonar](https://www.sonarsource.com/company/press-releases/sonar-data-reveals-critical-verification-gap-in-ai-coding/)).
 
 **Lifecycle.** A skill or CI job. Status: tried in this repo.
@@ -225,28 +226,33 @@ and a cheaper read (7).
 
 First, in order:
 
-1. **Is there a second person with write access?** Yes → 2, with most-recent-push approval, stale
-   approvals dismissed and no bypass. It proves who approved as long as the agent cannot use the
-   approver's credentials, even if it runs on the drafter's.
-2. **Can the agent use the credentials of whoever merges?** Check which token its `gh`, git remote
-   and signing key use. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
-   credentials away) or 5 (require something the agent lacks).
-3. **Can a check or approval be required on this repo?** Not on a private GitHub Free repo, and not
-   GitLab's approval rules below Premium. No → drafts (4) are the only hold; state the gap.
+1. **Is there a second person with write access, and can required approvals be turned on here?**
+   They exist on public repos and on paid private plans; GitLab's approval rules are Premium. Both
+   yes → 2, with most-recent-push approval, stale approvals dismissed and no bypass — as long as no
+   agent can use the approver's credentials. Two people each running an agent as themselves do not
+   satisfy that.
+2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the
+   `gh` login, the git credential helper, a loaded `ssh-agent` or `gpg-agent` — not only the token
+   the agent was given. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
+   credentials away) or 5 (require something the agent lacks). No → the merge click is the
+   person's, and 4 and 6 record who it was.
+3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
+   rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
+   required pipelines and can restrict merging to Maintainers, but no approval rules.
 
 | Option | Fits only if |
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
-| 2 | a second account the agent cannot use exists, and required approvals are available on this repo |
+| 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
 | 3 | the agent runs where your token, SSH key and signing key are absent: a hosted agent, an app in CI, or a separate OS user |
-| 4 | drafts: always; a label and required check: required checks are available |
-| 5 | required checks are available, and the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise) |
+| 4 | drafts: any repo; a label and required check: required checks are available |
+| 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
-| 7 | a model run per change is affordable, and a person reads the report before clearing the hold |
+| 7 | the review runs in a context that did not write the change, and a person reads its report |
 
 Among what is left: for two people, 2 is the proof. For one developer, 3 with a hosted agent that
-cannot merge makes the merge click yours, and costs an identity; 5 needs a hardware key and a check
-you maintain. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
+cannot merge makes the merge click yours, and costs an identity and sometimes a plan; 5 needs a
+hardware key and a check you maintain. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
 not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
 
 **At more than one developer.** The approval must come from someone other than the author and the
@@ -256,8 +262,9 @@ credential rule still applies: an agent shared by the team must not run as any o
 
 **Examples.** One developer whose agent runs as a GitHub App on a public repo: 3 plus 2 with
 most-recent-push approval, applied to administrators — the app cannot approve its own pull request
-and the person's approval is theirs, so a label adds nothing; this points away from our choice. A four-person team on
-a paid plan: 2 with code owners on `docs/` and stale approvals dismissed, plus 7 for long docs. One
+and the person's approval is theirs, so a label adds nothing; push to the branch yourself, though,
+and nobody is left who may approve. This points away from our choice. A four-person team on a paid
+plan: 2 with code owners on `docs/` and stale approvals dismissed, plus 7 for long docs. One
 developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI — or
 4 with the gap stated. A mailing-list project: 6's trailers, where the mailing-list reply, not the
 trailer, is the proof; see
@@ -275,8 +282,8 @@ separate-commit rule
 ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); we emptied the
 ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep 6 for its
 dates and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
-hardware-signed tag), either of which would close the first gap below. Open gaps: the same account can clear the label, and #70's was cleared by it with no way to
-tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
+hardware-signed tag), either of which would close the first gap below. Open gaps: the same account
+can clear the label, and #70's was cleared by it with no way to tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
 The hold, the ledger and its checks:
 [`review-hold-and-signoff-ledger.md`](../resources/review-hold-and-signoff-ledger.md). The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure

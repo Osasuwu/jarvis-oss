@@ -18,8 +18,8 @@ this repo runs them:
   `` - `docs/<doc>.md`: <date>; facts: <human | report URL> `` — plus the doc's own `signed_off:`
   field, empty on the drafting pull request.
 - **Ledger checks:** [`tests/structure_gate.py`](../tests/structure_gate.py) —
-  `signoff_missing_entry` (date set, no ledger line), `signoff_missing_facts` (line without
-  `facts:`), `signoff_same_commit` (line added in the commit that last changed the doc body). Run
+  `signoff_missing_entry` (date set, no ledger line), `signoff_missing_facts` (a line whose date matches and
+  which has no `facts:`), `signoff_same_commit` (line added in the commit that last changed the doc body). Run
   by [`structure-gate.yml`](../.github/workflows/structure-gate.yml).
 - **Review report (option 7):** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a
   context that did not write the doc; its report URL goes in the entry's `facts:`.

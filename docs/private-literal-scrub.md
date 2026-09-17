@@ -15,9 +15,9 @@ make this more likely to matter: an agent that has read private notes will reuse
 The ways it goes wrong:
 
 - **Public before the check** — the check runs in CI, but the branch it scans is already pushed
-  to a public repo; merged or not, the commit can be fetched.
-- **The list leaks** — it is committed, printed in a log, or held somewhere readable by more
-  jobs or people than the one check that needs it. A list is an index of what you wanted hidden.
+  to a public repo; merged or not, it can be fetched.
+- **The list leaks** — it is committed, printed in a log, or held somewhere readable by more jobs
+  or people than the one check that needs it. It is an index of what you wanted hidden.
 - **Empty list, green check** — the list is missing or empty, the scan finds nothing, and
   reports clean.
 - **Bypassed** — a local hook is skipped with `--no-verify` or `SKIP=`, or a push-protection
@@ -31,8 +31,8 @@ The ways it goes wrong:
 
 Each option is marked **tried** (we run or ran it; the example says where — running is not proof
 it catches anything) or **sourced** (read from the tool's documentation or a project's pull
-request). Quotes were checked against the linked pages on 2026-09-17, in the review on the pull
-request that added this doc.
+request). Quotes were checked against the linked pages on 2026-09-17, in two review runs on the
+pull request that added this doc.
 
 ## The options
 
@@ -49,8 +49,8 @@ applications: "Limit access to sensitive data based on the principle of least pr
 **Best pick when** the writer is an agent, the private material sits in files you can name, and
 the agent does not need it for the public work.
 
-**Cost.** Low to configure. It does not help a person, or an agent whose instructions themselves
-carry private context.
+**Cost.** Low to configure. It does not help a person, or an agent whose instructions carry
+private context.
 
 **Lifecycle.** Harness settings, per machine. Status: sourced — not in place for us (see our
 choice).
@@ -65,8 +65,8 @@ bypassed via prompt injection or other methods."
 
 **Cost.** Free. It is advice: nothing fails when it is ignored.
 
-**Lifecycle.** Instruction files. Status: sourced. We rely on it, but our rules sit in private
-instruction files, so there is no public trace.
+**Lifecycle.** Instruction files. Status: sourced. We rely on it, but our rules are private, so
+there is no public trace.
 
 ### 3. A local check before the commit or the write
 
@@ -77,11 +77,11 @@ provider command: `git secrets --add-provider -- cat /path/to/secret/file/patter
 `GITLEAKS_CONFIG` or `GITLEAKS_CONFIG_TOML` before a `.gitleaks.toml` in the repo, so the rules
 can live in your home directory. A pre-call hook in the agent's harness can grep what the agent
 is about to write, including pull request text, before the tool runs (option 4 of
-[`agent-safety-hooks.md`](agent-safety-hooks.md)) — it runs wherever the agent runs, a cloud
-sandbox included.
+[`agent-safety-hooks.md`](agent-safety-hooks.md)) — it lives in the harness, not in git, so
+`--no-verify` does not reach it.
 
-**Best pick when** the string must stop before it leaves the machine, and every place that
-writes — each laptop, or the agent's harness — can be set up with the hook and the list.
+**Best pick when** the string must stop before it leaves the machine, and every place that writes
+can be set up with the hook and the list.
 
 **Cost.** Free. Every machine and clone needs the setup and the list. Git's hooks are skipped with
 `--no-verify`; gitleaks' pre-commit hook with `SKIP=gitleaks`.
@@ -90,9 +90,10 @@ writes — each laptop, or the agent's harness — can be set up with the hook a
 
 ### 4. A server-side push block
 
-**How it works.** The host refuses the push. For a repository, GitHub custom patterns block
-pushes only if "you must ensure that Secret Protection is enabled on your repository"; for an
-organization, only in repositories that have push protection turned on
+**How it works.** The host refuses the push. GitHub custom patterns need Secret Protection
+enabled, and then a separate push-protection opt-in per pattern, "visible for published patterns
+only", which in an organization "will only apply to repositories … that have secret scanning as
+push protection enabled"
 ([custom patterns](https://docs.github.com/en/code-security/secret-scanning/using-advanced-secret-scanning-and-push-protection-features/custom-patterns/defining-custom-patterns-for-secret-scanning)).
 Secret Protection is $19 per active committer per month and needs GitHub Team or Enterprise
 ([plans](https://github.com/security/plans)). On a forge you run — GitHub Enterprise Server,
@@ -106,15 +107,15 @@ match commit messages, branch names, emails and a list of secret file names
 [GitGuardian](https://docs.gitguardian.com/secrets-detection/customize-detection/detector-settings)
 custom detectors are "only available for workspaces under our Business plan": you submit a
 regular expression for their team to validate, and "requests for detecting patterns like Personal
-Identifiable Information (PII) … will be rejected" — which likely rules out people's names.
+Identifiable Information (PII) … will be rejected" — which rules out people's names.
 
-**Best pick when** the repo belongs to an organization that already pays for Secret Protection,
-or lives on a forge whose server hooks you control.
+**Best pick when** the repo belongs to an organization that pays for Secret Protection, or lives
+on a forge whose server hooks you control.
 
-**Cost.** The plan, or running the forge. Anyone with write access can bypass GitHub push
-protection with a reason, by default, and a push to a personal fork is outside the org's
-protection. Push protection covers pushes; pull request and issue text is scanned for alerts after
-it is posted. The host holds the list in plaintext.
+**Cost.** The plan, or running the forge. "Anyone with write access to the repository can bypass
+push protection by specifying a bypass reason", by default. Push protection covers pushes; GitHub
+"also automatically scans" issue and pull request text, which finds the string once it is posted.
+The host holds the list in plaintext.
 
 **Lifecycle.** Organization settings or a server hook. Status: sourced. Dropped on fit for us: a
 personal-account repository on GitHub.com cannot get either.
@@ -131,17 +132,18 @@ check nobody skips from a laptop.
 **Cost.** One job per pull request. It runs after the push, so the string is already on the
 server. Log masking: "Never use structured data as a secret", because redaction "largely relies
 on finding an exact match" ([secure use](https://docs.github.com/en/actions/reference/security/secure-use));
-a multi-line list is not named there but has the same problem, so never print it. Fork pull
+a multi-line list has the same problem, so never print it. Fork pull
 requests: "secrets are not passed to the runner when a workflow is triggered from a forked
 repository" ([events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)),
-so the job must fail or say it skipped — not pass. `pull_request_target` would hand forks the
-secret, but runs in the base repository's context, so any step that touches the fork's code can
-read the list ([pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)).
+so the job must fail or say it skipped — not pass. `pull_request_target` hands forks the secret
+and runs in the base repository's context: safe only if the fork's code "is only ever inspected as
+data and never executed", which a grep over the diff is and a build step is not
+([pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)).
 And the secret is readable "by any workflow that runs with secrets", as one project put it when
 rejecting this design ([prism#476](https://github.com/sandydargoport/prism/pull/476)).
 
 **Lifecycle.** A workflow, a script and a secret someone must set and keep current. Status:
-tried — this repo; it runs, but no planted hit has yet shown it catches anything.
+tried — this repo; it runs, but no planted hit has shown it catches anything.
 
 ### 6. A hashed list in the repo
 
@@ -153,14 +155,14 @@ hashes "are not secret: the salt is committed, so anyone can test a guessed name
 a check that runs anywhere, forks and laptops included. #1310 also scans commit messages, the
 branch name and the pull request text, and normalises tokens so that `AcmeVerify` and
 `ACME-VERIFY` match. [Purview Exact Data Match](https://learn.microsoft.com/en-us/purview/sit-learn-about-exact-data-match-based-sits)
-is the same idea as a Microsoft 365 service: a salted hash of a data table, uploaded.
+is the same idea as a Microsoft 365 service: a salted hash of an uploaded table.
 
 **Best pick when** outside contributors open pull requests, or the check must run the same
 locally and in CI.
 
 **Cost.** For a repository, a custom script: we found no packaged tool. #1310 also checks "every
-tail of a word", but a term at the start or middle of a longer word is missed. A committed salt
-lets anyone confirm a guess.
+tail of a word"; prism#476 names what both still miss — "a value buried inside a longer word with
+no separator". A committed salt lets anyone confirm a guess.
 
 **Lifecycle.** A script, the hash file and, with HMAC, a key. Status: sourced.
 
@@ -175,8 +177,9 @@ fails.
 **Best pick when** the public repo really is derived from a private one, one way.
 
 **Cost.** Building and running the pipeline; changes made directly on the public side need a
-reverse flow. Like 4 it checks before anything is public, but needs no paid plan and cannot be
-skipped from a laptop.
+reverse flow — Copybara has `git.github_pr_origin` for GitHub pull requests, and its `core.replace`
+"can be automatically reversed". Like 4 it checks before anything is public, but needs no paid
+plan and no cooperation from a laptop.
 
 **Lifecycle.** Pipeline config on the private side. Status: sourced. Dropped on merit: FBShipIt —
 "This project is no longer maintained."
@@ -185,16 +188,17 @@ skipped from a laptop.
 
 **How it works.** A model finds person names and emails you never listed.
 [Presidio](https://data-privacy-stack.github.io/presidio/) does this, and also takes a
-`deny_list`; its default configuration ignores organisations ("Has many false positives"). For
-variants of names you did list: case folding (Vale's `reject.txt` with `(?i)`), or fuzzy matching
+`deny_list`; its upstream [`default.yaml`](https://github.com/microsoft/presidio/blob/main/presidio-analyzer/presidio_analyzer/conf/default.yaml)
+ignores organisations ("Has many false positives"). For variants of names you did list: a regular
+expression per line in Vale's `reject.txt` (`[Aa]cme`), or fuzzy matching
 that allows k errors against a pattern file ([agrep](https://github.com/Wikinaut/agrep) `-#`
 with `-f`).
 
 **Best pick when** the risk includes names not on any list, or typos of names on it, and a person
 reads what it flags.
 
-**Cost.** False positives in code and prose; and "there is no guarantee that Presidio will find
-all sensitive information." Client and employer names need the organisation label turned back on.
+**Cost.** False positives in code and prose; "there is no guarantee that Presidio will find all
+sensitive information". Client and employer names need the organisation label turned back on.
 
 **Lifecycle.** A service or library plus tuning. Status: sourced.
 
@@ -208,8 +212,7 @@ alone by default: fix it by hand first.
 **Best pick when** a string already landed. It is the last step, not a check.
 
 **Cost.** Every clone must re-clone. On GitHub the data stays reachable "In any clones or forks of
-your repository", by SHA in cached views and "Through any pull requests that reference them"; in
-forks it "will continue to be accessible there"
+your repository", by SHA in cached views and "Through any pull requests that reference them"
 ([removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
 
 **Lifecycle.** One-off. Status: sourced.
@@ -220,8 +223,8 @@ forks it "will continue to be accessible there"
 staged, and a smudge filter restores it on checkout, so committed blobs never hold it
 ([clean/smudge](https://developers.redhat.com/articles/2022/02/02/protect-secrets-git-cleansmudge-filter)).
 
-**Best pick when** a fixed set of strings must stay in files you edit locally (a config, a notes
-file) but never be committed.
+**Best pick when** a fixed set of strings must stay in files you edit locally but never be
+committed.
 
 **Cost.** The filter and its list live on each machine; a clone without them commits the real
 string. It covers file contents only, not messages or pull request text.
@@ -237,49 +240,52 @@ checks needs the key, which is option 5's secret with more steps.
 
 First, in order:
 
-1. **Is the writer an agent that can do the public work without reading the private material?**
-   Yes → 1, then continue: everything below catches what 1 lets through. A person writing, or an
-   agent whose instructions carry the private context → 1 does not apply.
-2. **Is the public repo exported from a private one, with no changes made on the public side?**
-   Yes → 7. If the public side also takes contributions, 7 needs a reverse flow; answer no.
-3. **Can your host refuse a push by its contents?** An organization with GitHub Secret Protection,
-   or a forge whose server hooks you run → 4. GitLab push rules and GitHub rulesets check commit
-   messages only; add them to another option.
-4. **Do people open pull requests from forks?** Yes → 6 with a committed salt; 5 cannot check
-   them.
+1. **Is the writer an agent, and does nothing it loads — instructions, imported files, the repo
+   itself — carry the private strings?** Yes → 1, then continue: the rest catches what 1 lets
+   through. A person writing, or an agent whose instructions carry them → 1 does not apply.
+2. **Is the public repo exported from a private one?** Yes → 7. Contributions on the public side
+   do not rule it out; they add a reverse import to build.
+3. **Can your host refuse a push by matching your own list?** An organization with GitHub Secret
+   Protection, or a forge whose server hooks you run → 4. GitLab push rules and GitHub rulesets
+   match commit metadata, branch names and filenames, not file contents; GitLab secret push
+   protection and GitHub's default patterns take no list of yours — add either alongside another.
+4. **Do people open pull requests from forks?** Yes → 6 with a committed salt. 5 reaches them only
+   through `pull_request_target` with a data-only step; otherwise it must skip them visibly.
 
 | Option | Fits only if |
 |---|---|
-| 1 | the writer is an agent, the private material is at paths you can deny, and the task does not read them |
+| 1 | the writer is an agent, the private material is at paths you can deny, and nothing the agent loads carries the strings |
 | 2 | combined with a mechanical check |
-| 3 | every place that writes — each laptop, or the agent's harness — has the hook and the list |
+| 3 | every writer who holds the private strings — each laptop, or the agent's harness — has the hook and the list |
 | 4 | your host reads push contents: GitHub Secret Protection, or server hooks you run |
-| 5 | fork pull requests are absent or may stay red; the string is public before it runs |
+| 5 | fork pull requests are absent, stay red, skip visibly, or get a data-only `pull_request_target` job; the string is public before it runs |
 | 6 | someone writes and maintains the tokeniser; salt committed (guesses testable) or keyed (no forks) |
-| 7 | changes flow one way, private to public |
-| 8 | names outside the list are a risk, and a person reviews every flag |
+| 7 | changes flow private to public, and you build the reverse import for what the public side takes |
+| 8 | you cannot enumerate the names in advance, and a person reviews every flag |
 | 9 | something already leaked |
-| 10 | the strings belong in files on your machine, and every clone gets the filter |
+| 10 | the strings belong in files on your machine, and every clone that holds them gets the filter |
 
 Among what is left:
 
 - **Before anyone can fetch it:** 7 and a server hook (4). GitHub push protection too, but anyone
-  with write access can bypass it by default, and a push to a personal fork is outside it.
-- **Before it leaves the machine:** 3 and 10, which a writer can skip or never install.
-- **After the push, as a required check:** 5 and 6 — not skippable from a laptop, but 5 does not
-  check forks.
-- **Beyond file contents:** #1310's version of 6 scans commit messages and pull request text; 3 as
-  a harness hook sees pull request text before it is posted. The rest check files.
+  with write access can bypass it by default.
+- **Before it leaves the machine:** 3 and 10. A git hook is skipped with `--no-verify`; a harness
+  hook is not, but covers only what that agent writes.
+- **After the push, as a required check:** 5 and 6 — not skippable from a laptop, but 5 reaches
+  forks only through a data-only `pull_request_target` job.
+- **Beyond file contents:** 6 (both #1310 and prism#476) and a harness hook (3) cover commit
+  messages and pull request text; a server hook (4) and push rules see commit messages; 9 rewrites
+  them. The rest check files.
 
-If no mechanical option fits, take 3 on the machines you do control, with 2. If even that is out,
+If no mechanical option fits, take 3 on the machines you control, with 2. If even that is out,
 2 is advice with nothing behind it: say in the repo that nothing checks.
 
 **At more than one developer.** A local hook (3, 10) needs installing on every machine, and one
 person without it is the gap. The list has an owner who adds to it; everyone else only needs the
 check to fail. With a list held as a secret (5), contributors cannot run the check before pushing,
 so pair it with 6 or give them a local copy. The more people, the more the list itself is the
-risk: prefer hashes (6) or a pipeline (7) over plaintext — and note that 4 also stores the
-plaintext, with the host, and with GitGuardian its staff read the pattern.
+risk: prefer hashes (6) or a pipeline (7) over plaintext — 4 also stores plaintext, with the host,
+and GitGuardian's staff read the pattern.
 
 **Examples.** An organization on GitHub Team with Secret Protection, agents working without
 private material: 4 with the list as custom patterns, plus 1 — this points away from our choice.
@@ -289,17 +295,17 @@ that takes fork pull requests: 6 with a committed salt, as agentic-org#1310 chos
 **Our own choice.** A public repository on a personal account, written mostly by an agent. Step 1:
 no — the agent's global instructions load a private repository into its context. Step 2: no, the
 public repo is written directly. Step 3: no, a personal account on GitHub.com. Step 4: no fork
-pull requests so far. That leaves 3, 5, 6 and 10; we took 2 plus 5:
-[`gitleaks.yml`](../.github/workflows/gitleaks.yml) runs gitleaks and then the scrub, which was
-one step in a job that already ran. Not taken yet: a harness hook (3), which would check pull
-request text before it is posted and close the second gap below; 6, which would too, after the
-push. Gaps:
+pull requests so far. That leaves 3, 5 and 6 — 10's row does not hold, because our private strings
+live in no file here. We took 2 plus 5: [`gitleaks.yml`](../.github/workflows/gitleaks.yml) runs
+gitleaks and then the scrub, both added in the same pull request (#34). Not taken yet: a harness
+hook (3), which would check pull request text before it is posted and close the second gap below;
+6 would too, after the push. Gaps:
 
 - The secret was never set. All 32 scrub runs before the fix, from pull request #34 on 2026-09-16
   to 2026-09-17, logged "Scrub clean" and were green, having checked nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
-  The script now fails on an empty list, which means every pull request — forks included — fails
-  until someone sets it.
+  The script now fails on an empty list, so every pull request — forks included — fails until
+  someone sets it.
 - It runs after the push, on file contents only — the checkout and plaintext files under `.git`,
   not packed history, commit messages, or pull request and issue text — and on exact strings.
 

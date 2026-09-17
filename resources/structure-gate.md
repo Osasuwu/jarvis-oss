@@ -27,8 +27,10 @@ as this repo runs it:
   required check on `main`.
 
 To adopt: copy the script and its tests, change the key tuples and the size cap to your contract,
-and make the job a required check. The frontmatter parser reads flat `key: value` lines only; a
-YAML list or multi-line value will not parse.
+and make the job a required check. The frontmatter parser reads flat `key: value` lines only
+([`structure_gate.py:45-60`](../tests/structure_gate.py)): a YAML list is recorded as the key with
+an empty value and its `- ` items are dropped, so a required key written as a list passes with
+nothing in it — silently, not as a parse error.
 
 Not checked: section headings and their order, option fields, and whether every doc has an
 example and a resource pointing at it.
