@@ -40,6 +40,7 @@ the label or wrote the ledger line. See the doc's "What every option depends on"
   not a required check — or you are an administrator and protection does not apply to you.
 - **Ledger checks:** fill in `signed_off:` on a doc without adding a ledger line; the
   `structure-gate` check goes red naming `signoff_missing_entry` and the doc path. A green run
-  prints the pytest summary for `tests/test_structure_gate.py`.
+  prints the pytest summary for `tests/test_structure_gate.py` and
+  `tests/test_jarvis_setup_skill.py`.
 - **Review report:** the report is a comment on the pull request, and the ledger entry's `facts:`
   URL opens it. An entry with `facts: human` means no report was used.

@@ -8,13 +8,13 @@ pairs_with: docs/private-literal-scrub.md, docs/agent-safety-hooks.md
 
 This repo added a personal-literal scrub on 2026-09-16 (pull request #34): a step in
 [`gitleaks.yml`](../.github/workflows/gitleaks.yml) that reads a newline-separated list from the
-`PERSONAL_LITERALS` repository secret and fails if any entry appears in the checkout. Its tests
-passed, and it merged.
+`PERSONAL_LITERALS` repository secret and fails if any entry appears in the checkout. It merged
+75 seconds after it was opened, with no review.
 
 **What happened.** The secret was never created. On 2026-09-17 `gh secret list` for the repository
-returned nothing. Every run of the workflow from 2026-09-16 to 2026-09-17 — 32 of them, on
-every pull request in that window — was green, and each run's log contains the line the script
-printed when it found no hits:
+returned nothing. Every run of the workflow from its first, on #34, until the fix on 2026-09-17
+— 32 of them — was green, and each run's log contains the line the script printed when it found
+no hits:
 
 ```
 Scrub clean — no personal literals found in the tree.
@@ -43,8 +43,7 @@ and on fork pull requests it always will, since forks get no secrets.
   the input unset.
 - A green check should say what it checked — a count, a list of files — so "checked nothing" is
   visible in the log.
-- "Tried" means someone confirmed the check caught something, not that it ran. The quickest proof
-  is a planted hit with a canary — a meaningless string added to the list for that purpose, never
+- A check that ran is not a check shown to catch anything. The quickest proof is a planted hit with a canary — a meaningless string added to the list for that purpose, never
   a real entry, since the branch is public once pushed.
 
 See [`private-literal-scrub.md`](../docs/private-literal-scrub.md), option 5.

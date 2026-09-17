@@ -28,7 +28,9 @@ Assisted-by tag".
 
 **What makes it work there.** The trailer is not the barrier — any agent that can write a commit
 message can write `Signed-off-by:`. What stands behind it is the rest of the kernel's process:
-patches go to maintainers, who reply and apply them under their own sign-off. The trailer is a
+patches go to maintainers who reply on the list, and "any further SoBs (Signed-off-by:'s)
+following the author's SoB are from people handling and transporting the patch"
+([submitting patches](https://docs.kernel.org/process/submitting-patches.html)). The trailer is a
 record (option 6 of [`publishing-discipline.md`](../docs/publishing-discipline.md)); the people
 downstream are the proof.
 

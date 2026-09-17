@@ -27,7 +27,8 @@ closes that gap, and brings its own ways to go wrong:
 - **The writer edits the check** — the pull request that breaks the shape also loosens the rule.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked on 2026-09-17.
+from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
+the review on the pull request that added this doc.
 
 ## The options
 
@@ -36,7 +37,9 @@ from the tool's documentation). Quotes were checked on 2026-09-17.
 **How it works.** A template file or an agent skill describes the shape; the writer follows it
 and a reviewer compares. Our [`write-doc`](../.agents/skills/write-doc/SKILL.md) skill is this,
 and [log4brains](https://github.com/thomvaill/log4brains) generates architecture decision records
-from a "Customizable template (default: MADR)" with no validation step.
+from a "Customizable template (default: MADR)"; its README describes no validation. Editor
+extensions such as [Front Matter CMS](https://frontmatter.codes/) flag schema errors while you
+type, but fail nothing.
 
 **Best pick when** docs are few, one person reviews all of them, or the shape is still changing
 weekly.
@@ -104,16 +107,20 @@ content collections validate frontmatter with Zod — "If any file violates its 
 Astro will provide a helpful error" — and "With the `reference()` function, you can define a
 property in a collection schema as an entry from another collection"
 ([Astro](https://docs.astro.build/en/guides/content-collections/)).
-[Velite](https://velite.js.org/guide/introduction) does the same with Zod for any stack. Other
+[Velite](https://velite.js.org/guide/introduction) does the same with Zod for "any JavaScript
+framework or library", with no site needed. [Markdoc](https://markdoc.dev/docs/validation)
+validates tags and attributes inside the body against its schema. Other
 generators check links rather than frontmatter: Docusaurus `onBrokenLinks` defaults to throwing
 ([config](https://docusaurus.io/docs/api/docusaurus-config)), MkDocs has `--strict`
 ([configuration](https://www.mkdocs.org/user-guide/configuration/)), Hugo fails the build on a
 template `errorf` ([errorf](https://gohugo.io/functions/fmt/errorf/)).
 
-**Best pick when** you already build the docs with one of these.
+**Best pick when** you already build the docs with Astro, Velite or Markdoc. The link-only
+generators are option 7 in practice.
 
-**Cost.** No extra tool, but every pull request needs a site build in CI. A `reference()` says an
-example points at a doc; it does not say every doc has an example.
+**Cost.** No extra tool, but every pull request needs a build in CI. A `reference()` says an
+example points at a doc; it does not say every doc has an example. Astro's schemas do not check
+links.
 
 **Lifecycle.** Part of the site config. Status: sourced. Dropped on merit: Contentlayer — its
 README says it "is no longer maintained due to lack of funding".
@@ -126,13 +133,14 @@ a standard heading structure for a set of files"; custom rules see frontmatter l
 "called once for each file/string input"
 ([custom rules](https://github.com/DavidAnson/markdownlint/blob/main/doc/CustomRules.md)).
 [Vale](https://docs.vale.sh/formats/front-matter) can target frontmatter fields, but "Only
-string-valued fields are linted", and its `metric` check can cap words.
+string-valued fields are linted"; its `metric` check can cap words, and its
+[`occurrence`](https://docs.vale.sh/checks/occurrence) check with `min: 1` can require a token.
 
-**Best pick when** you already lint prose and want required headings or a word limit in the same
-run.
+**Best pick when** you already lint prose and want required headings, a required phrase or a
+word limit in the same run.
 
-**Cost.** One heading list per config. Not built to require that a key exists. No cross-file
-rules.
+**Cost.** One heading list per config. Keys are awkward: Vale sees string values only. Custom
+rules run per file, so a cross-file rule means writing code (8).
 
 **Lifecycle.** Config plus a CI step or hook. Status: sourced.
 
@@ -154,17 +162,36 @@ local files and block network requests"; [remark-validate-links](https://github.
 required check. GitHub Docs builds custom rules on markdownlint, including "GHD012: Frontmatter
 must conform to the schema" and a cross-file one, "GHD063: Children frontmatter paths must exist"
 ([content linter](https://docs.github.com/en/contributing/collaborating-on-github-docs/using-the-content-linter)).
-[Danger JS](https://danger.systems/js/) adds pull-request-level rules such as "a change to this doc
-must also touch that file". Ours is [`structure_gate.py`](../tests/structure_gate.py): required
+Kubernetes' [`verify-toc-vs-template.sh`](https://github.com/kubernetes/enhancements/blob/master/hack/verify-toc-vs-template.sh)
+diffs each changed proposal's headings against the template's, so the template is the rule.
+[Danger JS](https://danger.systems/js/) adds pull-request-level rules, such as failing when a doc
+changes and its companion file does not. [conftest](https://www.conftest.dev/options/)
+`--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
+own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
 frontmatter keys, a 20000-byte cap, relative links that must resolve, `pairs_with` targets that
 must exist, example provenance and staleness, and the sign-off ledger rules.
 
-**Best pick when** you need a rule across files — pairings, directory-dependent rules — which no
-off-the-shelf linter found expresses in general.
+**Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
+rule no tool above has.
 
 **Cost.** You write, test and maintain a parser. Ours reads only flat `key: value` frontmatter.
 
 **Lifecycle.** Code with its own tests. Status: tried — this repo, required on `main`.
+
+### 9. A model reviews the doc as a check
+
+**How it works.** A prompt says what a good doc contains, and an agent reads each pull request's
+docs and reports a status check. [Continue checks](https://github.com/continuedev/checks) are
+markdown prompts in `.continue/checks/`, run on each pull request. It is the only option aimed at
+substance: a key that is present and says nothing.
+
+**Best pick when** shape passes and content still fails, and a person reads what it flags.
+
+**Cost.** Model calls on every pull request; answers vary between runs, so a red check can be
+wrong, and text in the doc can steer the model that reads it.
+
+**Lifecycle.** A prompt file plus a CI job. Status: sourced. Not ours, on fit: a person reviews
+substance here ([`publishing-discipline.md`](publishing-discipline.md)).
 
 ## What every option depends on
 
@@ -172,48 +199,70 @@ A check blocks nothing unless it runs on every pull request as a **required** st
 project's frontmatter script sat in the repo while its only workflow was disabled; the issue that
 found it is titled "The doc-frontmatter check runs in no workflow, and accumulated 40 new
 offenders in four weeks", and says "Without a job that runs the check, the count returns"
-([`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md)). The same goes for who
-can change the rule: if the pull request under check can also edit the check, only review stops it.
+([`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md)). A pre-commit hook
+alone never counts: it can be skipped. On a self-hosted forge a server-side `pre-receive` hook can
+reject the push itself.
+
+Required checks need branch protection or rulesets. On GitHub Free, private repositories have
+neither, so every option there is advisory and a review hold is what blocks
+([`publishing-discipline.md`](publishing-discipline.md)). And if the pull request under check can
+also edit the check, only review stops it — see "At more than one developer".
 
 ## How to choose
 
 First, in order:
 
-1. **Do you build the docs into a site?** Yes → 5, and add rules there before adding a tool.
-2. **Do you need a rule across files** (every doc has an example; a field names a real file)?
-   Yes → 8, or 5's references if one direction is enough. Per-file tools (2, 4, 6) cannot say it.
-3. **Do docs of a kind share fixed headings?** Yes → 4, which also covers keys, size and links.
+1. **Can a check be required on your repo?** No (a private repo on GitHub Free) → any option still
+   reports, but nothing below blocks a merge; pair it with a review hold.
+2. **Do you need a rule across files?** "Every doc has an example" → 8 (a script, or conftest on
+   extracted frontmatter). "This field names an entry" → also 5's `reference()`, if you build with
+   Astro. "This field names a file" → also flint's Asset Existence (3).
+3. **Do docs of a kind share fixed headings?** Yes → 4, or 6's MD043 if you lint already. mdschema
+   (4) also covers keys, word count and links; the Structured MADR action covers keys and
+   sections only.
+4. **Does a build already validate content?** Astro, Velite, Markdoc → 5. MkDocs, Docusaurus and
+   Hugo check links only: count them as 7 and take keys from 2 or 3.
 
 | Option | Fits only if |
 |---|---|
-| 1 | you accept that misses are found by readers |
-| 2 | keys are the contract; sections and size are not enforced |
-| 3 | its built-in rules match yours |
+| 1 | no check runs on pull requests yet, or the shape changes faster than a check could follow |
+| 2 | your rules are frontmatter keys, types and enums only |
+| 3 | every rule you need is in its built-in list (review dates; fields, dates, file paths) |
 | 4 | each doc type has one fixed heading structure |
-| 5 | you build the docs with that generator and run the build on pull requests |
-| 6 | you already run the linter; headings or word count are the rule |
+| 5 | the docs build with Astro, Velite or Markdoc, and the build runs on pull requests |
+| 6 | you already run markdownlint or Vale; the rules are headings, a phrase or a word count |
 | 7 | combined with another option — links only |
-| 8 | you will maintain the code and its tests |
+| 8 | someone can write and maintain a parser and its tests |
+| 9 | a person reads what it flags; never the only required check |
 
-Among what is left: 4 is the most coverage for the least code; 8 is the only general answer to
-cross-file rules and costs a parser; 2 and 3 are cheap and shallow. Pair any of them with 7 unless
-it already checks links. If nothing fits, keep 1 and put the shape rules in the review checklist.
+If several are left, list your rules and count what each covers: mdschema (4) takes keys,
+headings, size and links in one config; 5 adds no tool if the build already runs; 8 takes
+anything and costs a parser; 2 and 3 take keys only. Add 7 unless the option already checks
+links (mdschema, Docusaurus, MkDocs `--strict`). If nothing fits, keep 1 and put the shape rules
+in the review checklist.
 
 **At more than one developer.** Make the check required and apply it to administrators, or
-someone will merge around it. Give the check file and its config an owner (code owners), so a
-pull request cannot loosen the rule it is failing without that person. Prefer checking the
-pull request's changed files, or keep `main` green at all times: with several open pull requests,
-a whole-tree scan turns one bad merge into everyone's red check.
+someone will merge around it. Keep the rule out of reach of the pull request it fails: code
+owners on the check files, a ruleset that restricts those paths, an organization ruleset that
+requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow from
+the base branch (never run the pull request's code under it). Check only changed files —
+[changed-files](https://github.com/tj-actions/changed-files) lists them,
+[reviewdog](https://github.com/reviewdog/reviewdog) `-filter-mode` filters findings — or, when
+adopting a check on a tree that already fails it, record a baseline and fail only on new offences
+([Betterer](https://phenomnomnominal.github.io/betterer/docs/introduction)). With several open
+pull requests, a whole-tree scan turns one bad merge into everyone's red check.
 
 **Examples.** An Astro docs site: 5 — collection schemas for keys, `reference()` from examples to
-docs — with no separate linter; this points away from our choice. A team writing decision
+docs — plus 7 for links; this points away from our choice. A MkDocs site with owner and
+review-date keys: `--strict` for links, 3 for the review date. A team writing decision
 records to a fixed template: 4 (the Structured MADR action or mdschema) plus 7. A plain folder
 where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its check:
 [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
 **Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
 sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 317-line
-script and its tests. Gaps: sections and option fields are not checked, so a doc can drop "How to
+script and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
+below; 9, since a person reviews substance. Gaps: sections and option fields are not checked, so a doc can drop "How to
 choose" and pass; nothing checks that every doc has an example and a resource — `pairs_with`
 points from example to doc, not back; the ledger rule was met by splitting commits with nothing
 read ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); the

@@ -11,7 +11,7 @@ runs it:
 
 - **Script:** [`scripts/scrub_personal_literals.py`](../scripts/scrub_personal_literals.py). Reads
   `PERSONAL_LITERALS` (one literal per line, blank lines ignored), walks `GITHUB_WORKSPACE`, and
-  fails if any file contains any literal as an exact substring. A hit prints the file path with
+  fails if any file (`.git` included) contains any literal as an exact substring. A hit prints the file path with
   "values withheld" — never the literal. An empty or unset list fails.
 - **Workflow:** [`gitleaks.yml`](../.github/workflows/gitleaks.yml), on every pull request, after
   gitleaks. The secret is passed only to the scrub step's environment.
@@ -21,7 +21,8 @@ To adopt: copy the script and the step, then create the secret
 (`gh secret set PERSONAL_LITERALS < list.txt`, from a file outside the repo) and make the job a
 required check.
 
-**Not covered:** git history, commit messages, branch names, pull request and issue text; any
+**Not covered:** packed git history, commit messages, pull request and issue text (the walk does
+include plaintext files under `.git`, such as refs); any
 variant of a literal (case, spacing, a split across lines); fork pull requests, which fail. The
 push has already happened when it runs. Keep each literal specific enough that it cannot occur by
 chance, or every pull request goes red. The job log masks the secret by exact match only, so the
