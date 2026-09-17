@@ -39,7 +39,7 @@ and a reviewer compares. Our [`write-doc`](../.agents/skills/write-doc/SKILL.md)
 and [log4brains](https://github.com/thomvaill/log4brains) generates architecture decision records
 from a "Customizable template (default: MADR)"; its README describes no validation. Editor
 extensions such as Front Matter CMS added "Schema and validation for front matter in markdown
-files" ([changelog](https://frontmatter.codes/changelog)) — in the editor, not in CI.
+files" ([v10.10.0](https://frontmatter.codes/updates/v10.10.0)) — in the editor, not in CI.
 
 **Best pick when** docs are few, one person reviews all of them, or the shape is still changing
 weekly.
@@ -207,7 +207,9 @@ project's frontmatter script sat in the repo while its only workflow was disable
 found it is titled "The doc-frontmatter check runs in no workflow, and accumulated 40 new
 offenders in four weeks", and says "Without a job that runs the check, the count returns"
 ([`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md)). A pre-commit hook
-alone never counts: it can be skipped. On a self-hosted forge a server-side `pre-receive` hook can
+alone never counts: it can be skipped — but the same config runs in CI, since "adding
+`pre-commit run --all-files` as a CI step will ensure everything stays in tip-top shape"
+([pre-commit](https://pre-commit.com/)), and that job can be required. On a self-hosted forge a server-side `pre-receive` hook can
 reject the push itself.
 
 Required checks need branch protection or rulesets. On GitHub Free, private repositories have
@@ -221,8 +223,11 @@ check, only review stops it — see "At more than one developer".
 ## How to choose
 
 Most options below read markdown: 2, 3, 4 and 7's tools, and 6's MD043. For reStructuredText or
-AsciiDoc, what is left is Vale (6), a script (8), and whatever the generator's own build checks
-(5) — answer step 3 and 4 accordingly.
+AsciiDoc, what is left is Vale (6), a script (8), a model check (9), review alone (1), and the
+generator's own build (5) — for Sphinx that is `-W`, which will "Turn warnings into errors …
+exits with exit status 1 if any warnings are generated"
+([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4
+accordingly.
 
 First, in order:
 
@@ -266,10 +271,14 @@ Make the check required and apply it to administrators, or someone will merge ar
 code owners on the check files, a ruleset that restricts those paths, an organization ruleset
 that requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow
 from the base repository's **default** branch — not the branch the pull request targets — and
-under which you must never run the pull request's code. All four are GitHub, and rulesets are
-"for customers on GitHub Team and GitHub Enterprise plans"; GitLab's code owners are "Premium,
-Ultimate". On GitLab Free, or a personal GitHub account, none of them is available and review is
-the only thing between a pull request and the check it fails. Check only changed files —
+under which you must never run the pull request's code. All four are GitHub. Rulesets themselves
+are free on a public repository, but restricting paths is a *push* ruleset, "available for the
+GitHub Team plan in internal and private repositories", and the organization ruleset that requires
+a workflow from another repo is documented only for Enterprise Cloud
+([available rules](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets));
+GitLab's code owners are "Premium, Ultimate". So on a personal account, code owners and those two
+rulesets are all out: `pull_request_target` and review are what is left. On GitLab Free, review
+alone stands between a pull request and the check it fails. Check only changed files —
 [changed-files](https://github.com/tj-actions/changed-files) lists them,
 [reviewdog](https://github.com/reviewdog/reviewdog) `-filter-mode` filters findings — or, when
 adopting a check on a tree that already fails it, record a baseline and fail only on new offences
