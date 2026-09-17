@@ -67,16 +67,24 @@ It must not see the option list, the examples or anything else in the repo.
    - `covered` — say which option it falls under.
    - `out of scope` — quote the `applies_when_not` clause that excludes it.
 
-## Pass 3 — value test
+## Pass 3 — how to choose, and the value test
 
-Give the reviewer the doc.
+Give the reviewer the doc. The "how to choose" section rules options out with checkable facts and
+names the trade-offs among what is left. It does not pick one option for the reader. **More than
+one option fitting a setup is intended, not a defect.** Do not ask for a step that decides, and do
+not report that the steps cannot reach a single option.
 
-1. From the doc's own "how to choose" section, build **two** realistic reader setups that land on
-   an option other than the one the doc calls ours. Walk each through the steps and cite the step
-   that decides.
-2. If no such setup exists, the doc only justifies our choice. Report `fails value test`.
-3. Report every place where following the steps contradicts an option's own "best pick when" or
-   "cost".
+1. Build at least four realistic reader setups from `applies_when`, unlike the doc's own examples.
+   Walk each through the section: what each filter rules out, and what is left.
+2. Report every place where:
+   - a filter is a judgement, not a fact the reader can check;
+   - a filter rules out an option the setup could build, or leaves in one it cannot;
+   - a trade-off, an example or our own choice contradicts an option's own section: how it works,
+     best pick when, cost, update and uninstall;
+   - a setup ends with nothing left and the section says nothing about that case.
+3. **Value test.** Find two realistic setups where the option the doc calls ours is ruled out, or
+   stays in but loses a trade-off the section names. If there are none, the doc only justifies our
+   choice. Report `fails value test`.
 
 ## Pass 4 — judgement spots, and the report
 
@@ -106,7 +114,8 @@ before the collapsed parts.
 
 **Mismatches (N):** <file:line> — <claim> → <fetched excerpt> (<source>)
 **Missing options (N):** <approach> — <source> — <why a reader could need it>
-**Value test:** passes | fails — <setup 1 → option X via step K>; <setup 2 → …>
+**How to choose (N):** <file:line> — <filter, trade-off or example> → <setup that breaks it>
+**Value test:** passes | fails — <setup 1 → ours ruled out by <fact> | loses on <trade-off>>; <setup 2 → …>
 **Unverifiable (N):** <file:line> — <why>
 
 <details><summary>Confirmed (N)</summary> one line each, with the excerpt </details>
@@ -119,6 +128,10 @@ The writer fixes every mismatch and every `missing` option, or answers each one 
 then the skill runs again. The person signs only after reading the report, the "read these
 closely" places, and a skim of the rest. What that signature covers is set out in
 [`docs/SIGNOFF.md`](../../../docs/SIGNOFF.md).
+
+The shape a practice doc is expected to have, and why, is in
+[`write-doc`](../write-doc/SKILL.md). A doc that departs from it is not wrong for that alone;
+review what it says, not which headings it has.
 
 ## Limits
 

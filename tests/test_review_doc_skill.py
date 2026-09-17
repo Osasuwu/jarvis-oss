@@ -41,3 +41,10 @@ def test_report_puts_human_reading_list_first():
 
 def test_calibration_record_exists():
     assert (SKILL_DIR / "CALIBRATION.md").is_file()
+
+
+def test_how_to_choose_may_leave_several_options():
+    # #64: a pass that asks setups to land on one option drove six rounds of tie-breaks.
+    text = " ".join(_skill_text().split())
+    assert "More than one option fitting a setup is intended, not a defect." in text
+    assert "the step that decides" not in text
