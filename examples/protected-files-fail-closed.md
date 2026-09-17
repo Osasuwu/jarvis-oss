@@ -22,9 +22,9 @@ That's a team accepting a real, named cost — the project's own operator loses 
 `.gitleaks.toml` directly, even at their own keyboard, without opening a PR — in exchange for the
 same hook code running correctly, unmodified, in a context (CI/Actions) where there is no live
 operator to have earned an exception in the first place. The alternative (branch the hook's
-behavior on whether a human is present) is the option
-[`docs/agent-safety-hooks.md`](../docs/agent-safety-hooks.md) records as tried and dropped for a
-different reason: there's no reliable signal inside a hook subprocess to make that branch on.
+behavior on whether a human is present) was tried and dropped on merit, as the "Our own choice"
+part of [`docs/agent-safety-hooks.md`](../docs/agent-safety-hooks.md) records: there's no reliable
+signal inside a hook subprocess to make that branch on.
 
 See [`agent-safety-hooks.md`](../docs/agent-safety-hooks.md) for the practice this example
 evidences.

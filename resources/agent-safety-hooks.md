@@ -1,6 +1,6 @@
 ---
 pairs_with: docs/agent-safety-hooks.md
-harnesses: Claude Code only — `PreToolUse` hooks with a `permissionDecision: deny` exit are a harness-specific mechanism; see docs/harnesses.md for the table of what each harness does and doesn't support instead. A harness without a tool-call-boundary hook can't run this resource as-is — it needs the read-vs-write review-gate treatment `docs/harnesses.md` covers for that case.
+harnesses: Claude Code only as shipped — `PreToolUse` hooks with a `permissionDecision: deny` exit are a harness-specific mechanism; see docs/harnesses.md for the table of what each harness does and doesn't support instead. A harness without a tool-call-boundary hook can't run this resource as-is — it needs the read-vs-write review-gate treatment `docs/harnesses.md` covers for that case.
 cost: no paid API calls. Runs as a local Python subprocess per matched tool call — pure CPU/regex work, no network, no model tokens spent by the hook itself.
 ---
 
@@ -41,6 +41,17 @@ Neither hook writes anywhere else — there is no dedicated log file to tail. If
 audit trail of blocks over time, that's an extension left to the reader (redirect the
 `permissionDecisionReason` string to a file before returning it), not something either script
 does today.
+
+## Keeping the matcher current
+
+The GitHub MCP entry in `settings.snippet.json` names write tools one by one. When the server
+renames or adds a tool, a name the matcher doesn't list is never scanned, and nothing reports it —
+this happened once here, recorded in
+[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md).
+[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) checks the matcher against the
+list last verified; it can't see a later rename. Compare the list with your GitHub MCP server's
+current tools when you upgrade it, and adjust the `mcp__github__` prefix if you registered the
+server under another name.
 
 ## Adapting these
 

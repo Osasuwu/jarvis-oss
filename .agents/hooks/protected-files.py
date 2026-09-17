@@ -13,8 +13,11 @@ subprocess, which always receives piped stdin whether or not a terminal is attac
 The accepted consequence is that this project hook also blocks the live owner's own
 local interactive edits to canonical protected files, even where a still-present
 user-level hook alone would allow them. See docs/agent-safety-hooks.md for the
-practice this hook backs, and the "options tried" section there for what was
-considered and dropped instead of this trade-off.
+practice this hook backs; its "Our own choice" part records what was tried and
+dropped instead of this trade-off.
+
+Matches Edit/Write/NotebookEdit only: a shell command that writes a protected file
+is not seen by this hook. Exits 0 on empty or unparsable input (fails open there).
 
 Reads tool_input from stdin (JSON). Exits 2 to block if the edited path matches a
 protected file.
@@ -24,9 +27,8 @@ Wire it up via the matcher in `settings.snippet.json` (same directory).
 CUSTOMIZE: the two sets below are placeholders. Replace them with your own repo's
 files whose own compromise would weaken review itself — secret-scanner config,
 CI gate definitions, branch-protection scripts — not just "important" files.
-Everything else should go through ordinary PR + CI + review instead (see the first
-"options tried" entry in docs/agent-safety-hooks.md for why that split, not a longer
-protected list, is the design).
+Everything else should go through ordinary PR + CI + review instead (option 1,
+"Written rules only", in docs/agent-safety-hooks.md covers when that is enough).
 """
 
 import json
