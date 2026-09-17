@@ -25,7 +25,8 @@ Read `docs/harnesses.md` — the dated, pull-only harness table (see the note un
 file's heading) — for the current harness's:
 
 - rules-file name (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, …)
-- whether it lists `@import`/include support
+- whether it lists include support, and which shape (in-file include line, config-level file
+  list, or drop-in directory — §6 has the per-shape detail)
 
 If the harness cannot be determined from context, ask the reader which row of the table
 applies. Do not guess a rules-file name from training data — the table is pull-only precisely
@@ -77,18 +78,32 @@ repo is just the case where nothing was already present.
 - **Full** — append the delta to the existing rules file (or create it fresh, for an empty
   repo) at the path from §2.
 
-## 6. Optional — Claude Code only
+## 6. Optional extras
 
 Everything above works verbatim on any harness listed in `docs/harnesses.md`, using plain
-rules-file text. Two extras exist only where the harness table's Include support column says
-so (currently Claude Code):
+rules-file text. Two extras exist on top of that core path:
 
-- **`@import`** — instead of inlining the delta body, split it into its own file and
-  `@path/to/file` it from the rules file. Skip this on any harness whose row says no
-  documented include mechanism — inline the text instead.
+- **Split the delta into its own file** — instead of inlining the delta body, write it to a
+  separate file and pull it into the rules file using whatever mechanism the current harness's
+  row in `docs/harnesses.md` documents under Include support:
+  - **in-file include line** (Claude Code, Gemini CLI) — add one `@path/to/file` line to the
+    rules file.
+  - **config-level file list** (OpenCode) — add the split file's path to the harness's config
+    (e.g. the `instructions` array in `opencode.json`), not to the rules file itself.
+  - **drop-in directory** (Claude Code, Cursor, GitHub Copilot, Windsurf) — write the split file
+    straight into the harness's rules directory (e.g. `.claude/rules/`, `.cursor/rules/`,
+    `.github/instructions/`, `.windsurf/rules/`); it is picked up automatically, no separate
+    registration step. Claude Code supports both shapes — either works.
+  - Codex CLI's directory-hierarchy concatenation is not a split-and-pull mechanism (there's
+    nowhere to point an include at) — inline the text there like any harness with no include
+    support.
+  - **No include support documented** (Codex CLI, Zed) — inline the delta text. Zed's own Rules
+    feature is deprecated in favor of Skills + Instructions, and Codex CLI has no in-file import
+    syntax — see `docs/harnesses.md` for the sourced detail behind both.
 - **Hooks** — Claude Code can enforce the two invariants mechanically via hook scripts (e.g.
-  blocking a tool call that would persist a secret). Offer this only on Claude Code; on every
-  other harness the invariants are prose-only, enforced by the agent reading them.
+  blocking a tool call that would persist a secret). Offer this only on Claude Code; no other
+  harness in the table documents an equivalent enforcement mechanism, so on every other harness
+  the invariants stay prose-only, enforced by the agent reading them.
 
 Skipping both extras must still leave a fully working rules file — they are conveniences, not
 requirements of this skill's core path.
