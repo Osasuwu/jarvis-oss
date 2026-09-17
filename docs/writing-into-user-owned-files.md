@@ -22,8 +22,7 @@ service's config. The first run is easy. What goes wrong comes later:
 - **Loading nothing** — the lines are written, but the thing reading the file never picks them
   up, and nothing reports it.
 
-Every option below trades these off differently. Most tools only think about the first two, and
-find the other three when they ship a second version.
+Every option below trades these off differently.
 
 Each option is marked **tried** (we ran or maintain it; the example says where) or
 **sourced** (read from the tool's documentation or source). Quotes and behaviour were checked on
@@ -50,7 +49,12 @@ unless `backupFileExtension` is set, which will "move existing files by appendin
 extension rather than exiting with an error"
 ([nixos/common.nix](https://github.com/nix-community/home-manager/blob/master/nixos/common.nix)).
 
-**Update / uninstall.** Re-render / delete the file.
+A **seed-once** variant writes the file only if it is absent and never again: Puppet's
+`replace => false` "allows file resources to initialize files without overwriting future changes"
+([file.rb](https://github.com/puppetlabs/puppet/blob/main/lib/puppet/type/file.rb)). From then on
+the file is the person's, so update and uninstall are given up on purpose.
+
+**Update / uninstall.** Re-render / delete the file. Seed-once: neither.
 
 Status: sourced. We rejected it for `jarvis-setup` **on fit** — a rules file is the person's.
 
@@ -99,9 +103,9 @@ comment can stand in for the pair: *code-derived:* JHipster's generators insert 
 `jhipster-needle-*` comments and skip content already present
 ([needles.ts](https://github.com/jhipster/generator-jhipster/blob/main/generators/base-core/support/needles.ts)).
 
-**Best pick when** the tool must install, later update, and eventually remove several lines in a
-file whose format has no includes, and it ships no file of its own to point at. Common in shell
-profiles (conda, mamba).
+**Best pick when** the tool installs several lines it may later update or remove, and either the
+format has no includes or the tool keeps no file of its own. Shell profiles can `source` a file, so
+there it is a choice: conda and mamba made it, rustup chose option 4.
 
 **Cost.**
 - Edits a person makes *inside* the block are overwritten on the next run (code-derived for
@@ -143,7 +147,7 @@ without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/do
 
 **Best pick when** the format supports includes or drop-ins and the tool's content changes
 between versions. Update is a rewrite of the tool's own file; uninstall is deleting that file and
-one line. The person's file stays readable — one line tells them where the rest lives.
+one line.
 
 **Cost.** The include line itself is written with option 2 or 3, and it can fail without a sound:
 - git skips a missing include target silently — tried: `git config -f main.cfg --includes --get`
@@ -156,13 +160,23 @@ one line. The person's file stays readable — one line tells them where the res
   [`bare-import-silently-dropped.md`](../examples/bare-import-silently-dropped.md).
 - Drop-ins have their own rule: in Cursor, "A plain `.md` file in `.cursor/rules` is ignored by
   the rules system because it has no frontmatter" ([rules](https://cursor.com/docs/rules)).
-- rustup matches its line by exact text — its own source: "This is whitespace sensitive where it
-  should not be."
+- Placement can decide. In `sshd_config`, "for each keyword, the first obtained value will be
+  used", so an include below the person's settings loses to them
+  ([sshd_config](https://man.openbsd.org/sshd_config)).
 - Where the format has neither, this option does not exist. For agent rules files, see
   [`harnesses.md`](harnesses.md).
 
 So the check that belongs with this option is not "is the line present" but "did the content
 load": in Claude Code, `/context` lists loaded memory files.
+
+Where the file is a program slot with no include, such as a git hook, the same idea runs the
+other way: the tool takes the slot and calls the person's program. pre-commit installs "in a
+migration mode which runs both your existing hooks and hooks for pre-commit", and
+`pre-commit uninstall` "will restore your hooks to the state prior to installation"
+([pre-commit](https://pre-commit.com/)). Repointing the slot instead drops the person's program:
+husky sets `core.hooksPath`
+([index.js](https://github.com/typicode/husky/blob/main/index.js)), and git then looks there
+"instead of in `$GIT_DIR/hooks`" ([git-config](https://git-scm.com/docs/git-config)).
 
 **Update / uninstall.** Both, and the tool never edits inside the person's content.
 
@@ -229,18 +243,20 @@ append is option 2 without a guard.
 
 **Best pick when** the target is prose that the person may already cover in their own words, and
 a second phrasing of the same rule would do harm (two versions of one rule in an agent's rules
-file invite the agent to pick between them). It is the only option here that notices an
-equivalent statement written differently.
+file invite the agent to pick between them).
 
 **Cost** ([`semantic-delta-real-run.md`](../examples/semantic-delta-real-run.md) records a run):
-- **Not deterministic** (seen in the run). Whether "no hardcoded secrets in the repo" covers
-  "secrets never land in any persistent surface" is a judgement; two reviewers can disagree.
+- **Not deterministic** (follows from the run: one verdict was a close call). Whether "no
+  hardcoded secrets in the repo" covers "secrets never land in any persistent surface" is a
+  judgement; two reviewers can disagree.
 - **Sees one file** (seen in the run). Content the person delivers through an include, or from a
   user-level file, is invisible to it, so it can add what is already loaded.
 - **No update, no uninstall** when appended plainly (follows from the run: nothing marks what it
   wrote). A re-run judges old wording "present in substance" and writes nothing.
 
-**Update / uninstall.** Only through the option that carries the delta: 3 or 4.
+**Update / uninstall.** Only through the option that carries the delta: 3 or 4. Then the judge
+reads the person's file minus the tool's block or file, and the tool rewrites that block or file
+whole on every run. Judging its own old wording would make a re-run write nothing.
 
 Status: tried.
 
@@ -249,7 +265,7 @@ Status: tried.
 A switch on any option: compute the change, print it, write only on approval. `terraform plan`
 "alone does not actually carry out the proposed changes"
 ([plan](https://developer.hashicorp.com/terraform/cli/commands/plan)); `conda init --dry-run`
-will "Only display what would have been done"; `jarvis-setup` asks "trial or full" first.
+will "Only display what would have been done"; `jarvis-setup` first asks "Trial or full setup?".
 
 Taken all the way, the tool never writes: it prints the lines and the person adds them.
 Homebrew's installer ends with "Next steps:" and the `echo … >> ${shell_rcfile}` commands to run
@@ -258,26 +274,27 @@ Homebrew's installer ends with "Next steps:" and the `echo … >> ${shell_rcfile
 [rustup-init.sh](https://github.com/rust-lang/rustup/blob/master/rustup-init.sh)).
 
 Show first when a person should approve each write, or the first time a tool meets a file it did
-not create. Do not write when the person manages the file by other means (dotfiles repo, Nix)
-and a tool's edit would be undone or unwanted. Cost: someone has to read, or paste.
+not create. Do not write when the file is managed by other means (dotfiles repo, Nix) or the
+person opted out. Cost: someone has to read, or paste.
 
 ## How to choose
 
 Questions 1, 2 and 4–7 stop at the first yes. Question 3 never stops: it changes *what* you
 write, and the rest decide *where*.
 
-1. **Would the person rather paste it themselves** (file managed by a dotfiles repo or Nix)?
-   Yes → **print, do not write**.
+1. **Is the file managed by other means (a dotfiles repo, Nix), or did the person opt out** (a
+   flag like `--no-modify-path`)? Yes → **print, do not write**.
 2. **Does anyone other than the tool edit this file?** No → **option 1**, refusing to replace a
-   file you did not create.
-3. **Is it prose the person may already say in their own words?** Yes → **option 7** decides what
-   is missing. Go on.
-4. **Does the format support includes or a drop-in directory, and can you verify the content
-   loads?** Yes → **option 4**. See [`harnesses.md`](harnesses.md) for agent rules files.
-5. **Is it structured (JSON/YAML/TOML/INI), with an editor that keeps comments and order?** Yes →
-   **option 5**.
-6. **Does the tool ship the whole file or scaffold, keep improving it, and expect people to edit
+   file you did not create. Only as a starting point → option 1, seed-once.
+3. **Is it prose the person may already say in their own words, where saying it twice would do
+   harm?** Yes → **option 7** decides what is missing. Go on.
+4. **Does the tool ship the whole file or scaffold, keep improving it, and expect people to edit
    their copy?** Yes → **option 6**.
+5. **Can the tool keep its content in a file of its own, loaded by an include or drop-in the
+   format supports, and check on every run that it loaded?** Yes → **option 4**. See
+   [`harnesses.md`](harnesses.md) for agent rules files.
+6. **Is it a handful of keys in JSON/YAML/TOML/INI, with an editor that keeps comments and
+   order?** Yes → **option 5**.
 7. **Is your content one line?** Yes → **option 2**: by pattern if it may change or be removed,
    by substring if never. No → **option 3**.
 
@@ -285,33 +302,19 @@ Then decide whether to show before writing.
 
 | Reader setup | Lands on |
 |---|---|
-| CLI installer that ships an env script or `init` command, adding it to shell profiles | 4 via step 4 (rustup, starship) |
-| Installer whose several profile lines have no file of their own | 3 via step 7 (conda) |
-| Setting one directive in `sshd_config`, may change later | 2 by pattern via step 7 |
-| Tool that needs two scripts in someone's `package.json` | 5 via step 5 |
-| Company project template, CI files evolve monthly, teams customise | 6 via step 6 (copier / cruft) |
-| Package that ships a default config people edit | 6 via step 6 (dpkg / ucf) |
-| Agent rules for Claude Code that users may already state their own way | 7 via step 3, then 4 via step 4 |
+| CLI installer that ships an env script or `init` command, adding it to shell profiles | 4 via step 5 (rustup, starship) |
+| Tool adding several entries to `/etc/hosts` that it may later remove | 3 via step 7 (conda's shape) |
+| Tool adding one entry to `/etc/hosts`, which may change later | 2 by pattern via step 7 |
+| Linter making sure `.env` is listed in a repo's `.gitignore` | 2 by substring via step 7 |
+| Tool that needs two scripts in someone's `package.json` | 5 via step 6 |
+| Company project template, CI files evolve monthly, teams customise | 6 via step 4 (copier / cruft) |
+| Package that ships a default config people edit | 6 via step 4 (dpkg / ucf) |
+| Agent rules for Claude Code that users may already state their own way | 7 via step 3, then 4 via step 5 |
 | Agent rules for a harness with no include support, same users | 7 via step 3, then 3 via step 7 |
 | Dotfiles managed in Nix or a repo | print via step 1 |
 | Generated client code nobody edits | 1 via step 2 |
-
-## Examples
-
-- [`semantic-delta-real-run.md`](../examples/semantic-delta-real-run.md) — option 7, a recorded
-  `jarvis-setup` run against a real, already-developed rules file.
-- [`bare-import-silently-dropped.md`](../examples/bare-import-silently-dropped.md) — option 4's
-  failure mode, from our own setup.
-- [`conda-init-managed-block.md`](../examples/conda-init-managed-block.md) — option 3 in a widely
-  deployed installer.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has. The steps above send that case to 7 then 4 on Claude Code, and to 7
 then 3 elsewhere. The skill today does 7 with show-before-writing and a plain append, so it
 cannot update or remove its own lines. Closing that gap is #57.
-
-## See also
-
-- [`harnesses.md`](harnesses.md) — which agent harnesses support includes, and their rules-file
-  names.
-- [`jarvis-setup-skill.md`](../resources/jarvis-setup-skill.md) — the skill behind option 7.
