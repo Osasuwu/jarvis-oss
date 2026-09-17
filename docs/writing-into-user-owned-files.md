@@ -22,8 +22,6 @@ service's config. The first run is easy. What goes wrong comes later:
 - **Loading nothing** — the lines are written, but the thing reading the file never picks them
   up, and nothing reports it.
 
-Every option below trades these off differently.
-
 Each option is marked **tried** (we ran or maintain it; the example says where) or
 **sourced** (read from the tool's documentation or source). Quotes and behaviour were checked on
 2026-09-17; items marked *code-derived* are a reading of source code, not a documented promise.
@@ -38,8 +36,7 @@ file says so at the top; Go's generator convention is a line matching
 ([go generate](https://github.com/golang/go/blob/master/src/cmd/go/internal/generate/generate.go)).
 
 **Best pick when** the tool owns the file outright and people's changes belong in the tool's
-inputs, not its output. Simplest option by far: idempotent, trivially updated, removed by
-deleting the file.
+inputs, not its output. Simplest option by far.
 
 **Cost.** Any hand edit is lost on the next run; the header is a warning, not a guard. Wrong the
 moment a person keeps their own content in the same file. The first run is the dangerous one: a
@@ -83,12 +80,12 @@ Status: sourced. We do not use it for `jarvis-setup`: a rules file is the person
 **Best pick when** your content is one line in a format with no includes: a single setting, a
 `source` line. By substring only if the line will never change or be removed.
 
-**Cost.** A substring guard does not recognise a changed line as yours and counts a
-commented-out copy as present; *code-derived:* nvm's re-run never updates the line and its
-installer has no removal step. A pattern guard can update and remove, but the pattern is the
-contract: it "should typically match both the initial state of the line as well as its state
-after replacement", `lineinfile` replaces "Only the last line found", and `file_line` raises an
-error on several matches unless `multiple => true`.
+**Cost.** A substring guard counts any line holding the substring as present, a commented-out
+or edited copy too, so it can neither update nor restore it; *code-derived:* nvm's re-run never
+updates the line and its installer has no removal step. A pattern guard can update and remove,
+but the pattern is the contract: it "should typically match both the initial state of the line as
+well as its state after replacement", `lineinfile` replaces "Only the last line found", and
+`file_line` raises an error on several matches unless `multiple => true`.
 
 **Update / uninstall.** Substring: neither. Pattern: both.
 
@@ -253,7 +250,7 @@ It decides *what* to write, not *where*: the delta still goes in with another op
 append is option 2 without a guard.
 
 **Best pick when** the target is prose that the person may already cover in their own words, and
-a second phrasing of the same rule would do harm (an agent then picks between two versions).
+two phrasings of one rule would drift apart.
 
 **Cost** ([`semantic-delta-real-run.md`](../examples/semantic-delta-real-run.md) records a run):
 - **Not deterministic** (follows from the run: one verdict was a close call). Whether a rule
@@ -281,25 +278,28 @@ Taken all the way, the tool never writes: it prints the lines and the person add
 Homebrew's installer ends with "Next steps:" and the `echo … >> ${shell_rcfile}` commands to run
 ([install.sh](https://github.com/Homebrew/install/blob/HEAD/install.sh)); rustup-init has
 `--no-modify-path` ("Don't configure the PATH environment variable",
-[rustup-init.sh](https://github.com/rust-lang/rustup/blob/master/rustup-init.sh)).
+[rustup-init.sh](https://github.com/rust-lang/rustup/blob/master/rustup-init.sh)). A tool that
+starts the reader itself can skip the file: VS Code activates shell integration "by injecting
+arguments and/or environment variables when the shell session launches"
+([shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)).
 
 Show first when a person should approve each write, or the first time a tool meets a file it did
 not create. Cost: someone has to read, or paste.
 
 ## How to choose
 
-Two questions first, in order:
+First, in order:
 
 1. **Is the file managed by other means (dotfiles repo, Nix), or did the person opt out?** Yes →
    **print, do not write**.
 2. **Does anyone besides the tool edit it?** No → **option 1**; refuse to replace a file you did
    not create.
 
-**What to write.** Prose the person may already state their own way, where a second phrasing does
-harm → **option 7** picks the missing items. It has no place of its own: carry its output with 4
-where the format has includes, otherwise 3.
+**What to write.** Prose the person may already state their own way, where two phrasings would
+drift apart → **option 7** picks the missing items. It has no place of its own: carry its output
+with 4 where the format has includes, otherwise 3.
 
-**Where.** Any row that fits is sound; the tie-breaks below decide overlaps.
+**Where.** Any row that fits is sound, with or without showing first; tie-breaks settle overlaps.
 
 | If | Option | Unless |
 |---|---|---|
@@ -307,25 +307,21 @@ where the format has includes, otherwise 3.
 | The format also loads a file the person owns | 1, split | they must edit the main file |
 | You ship the whole file or scaffold, improve it, people edit their copy | 6 | you cannot keep a base copy |
 | The format has an include or drop-in, and your content changes between versions | 4 | the include cannot sit where it wins |
-| A few keys in JSON / YAML / TOML / INI | 5 | the editor loses comments or order they keep |
-| One line | 2; by pattern if it may change or go | |
-| Several lines | 3 | the format has no comments for markers (then 5) |
+| A few keys in JSON / YAML / TOML / INI | 5 | the editor loses what they keep (then show first) |
+| One line | 2; by pattern if it may change or go | it changes and includes exist (4) |
+| Several lines you add to a file you did not ship | 3 | no comments for markers (then 5) |
 
 Tie-breaks: shell profiles fit 4 (the tool ships a file to load, rustup) and 3 (the lines are all
-there is, conda). Package config with a drop-in directory: 4 over 6. A few stable keys: 5 until
-the set grows.
+there is, conda). With a drop-in directory, a tool adding to another program's config writes its
+own file there (4); a package whose admins edit its config ships the base and leaves `.d/` to
+them (1, split). Keys that grow in number or change between versions: 4 over 5.
 
 | Reader setup | Lands on |
 |---|---|
-| CLI installer with an env script or `init` command, for shell profiles | 4 (rustup, starship) |
 | Several `/etc/hosts` entries the tool may later remove | 3 |
-| Company project template, teams customise, CI files evolve | 6 (copier / cruft) |
 | Package default config people edit, no drop-in directory | 6 (dpkg / ucf) |
-| Agent rules for Claude Code users who may state them already | 7, carried by 4 |
-| The same, on a harness with no include support | 7, carried by 3 |
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has, so it lands on 7, carried by 4 on Claude Code and by 3 elsewhere. The
-skill today does 7 with show-before-writing and a plain append; on Claude Code it can instead put
-the delta in its own file and `@import` it. Either way it has no update or uninstall step. Closing
-that gap is #57.
+skill today does 7 with show-before-writing and a plain append, or on Claude Code an `@import` of
+its own file, and has no update or uninstall step in either. Closing that gap is #57.
