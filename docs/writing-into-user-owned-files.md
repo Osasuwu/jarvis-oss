@@ -34,7 +34,7 @@ Each option is marked **tried** (we ran or maintain it; the example says where) 
 
 **How it works.** The tool renders the whole file and writes it, every run. By convention the
 file says so at the top; Go's generator convention is a line matching
-`^// Code generated .* DO NOT EDIT\.$` before the first non-comment text
+`^// Code generated .* DO NOT EDIT\.$` before the first non-comment, non-blank text
 ([go generate](https://github.com/golang/go/blob/master/src/cmd/go/internal/generate/generate.go)).
 
 **Best pick when** the tool owns the file outright and people's changes belong in the tool's
@@ -54,9 +54,17 @@ A **seed-once** variant writes the file only if it is absent and never again: Pu
 ([file.rb](https://github.com/puppetlabs/puppet/blob/main/lib/puppet/type/file.rb)). From then on
 the file is the person's, so update and uninstall are given up on purpose.
 
+A **split** variant keeps the tool's file whole and moves the person's changes into a second file
+the reader also loads. Docker Compose reads `compose.yaml` and `compose.override.yaml`: "If both
+files exist on the same directory level, Compose combines them into a single configuration"
+([merge](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/)). In Claude Code,
+"`CLAUDE.local.md` is appended after `CLAUDE.md`"
+([memory docs](https://code.claude.com/docs/en/memory)). It works only where the format already
+reads such a file and the person accepts editing there.
+
 **Update / uninstall.** Re-render / delete the file. Seed-once: neither.
 
-Status: sourced. We rejected it for `jarvis-setup` **on fit** — a rules file is the person's.
+Status: sourced. We do not use it for `jarvis-setup`: a rules file is the person's.
 
 ### 2. Ensure one line
 
@@ -68,7 +76,8 @@ Status: sourced. We rejected it for `jarvis-setup` **on fit** — a rules file i
   existing line using a back-referenced regular expression"; with `state: absent` the regexp is
   "the pattern of the line(s) to remove"
   ([lineinfile](https://github.com/ansible/ansible/blob/devel/lib/ansible/modules/lineinfile.py)).
-  Puppet's `file_line` does the same with `match`
+  Puppet's `file_line` does the same with `match`; removing by it also needs
+  `match_for_absence => true`
   ([file_line](https://github.com/puppetlabs/puppetlabs-stdlib/blob/main/lib/puppet/type/file_line.rb)).
 
 **Best pick when** your content is one line in a format with no includes: a single setting, a
@@ -110,10 +119,10 @@ there it is a choice: conda and mamba made it, rustup chose option 4.
 **Cost.**
 - Edits a person makes *inside* the block are overwritten on the next run (code-derived for
   both tools). The "managed by" comment exists to say so.
-- Markers are load-bearing. Ansible's own notes: a custom marker without `{mark}`, or a
-  multi-line marker, "may result in the block being repeatedly inserted on subsequent playbook
-  runs". *Code-derived:* if a person deletes one marker line, `blockinfile` inserts a fresh block
-  rather than repairing the old one.
+- Markers are load-bearing. Ansible's `marker` docs: a custom marker without `{mark}` "may
+  result in the block being repeatedly inserted on subsequent playbook runs", and multi-line
+  markers "will". *Code-derived:* if a person deletes one marker line, `blockinfile` inserts a
+  fresh block rather than repairing the old one.
 - Duplicates are not cleaned up: conda's source carries
   `# TODO: maybe remove all but last of replace_str, if there's more than one occurrence`.
 - It still judges nothing: if the person already has an equivalent line outside the block, the
@@ -129,8 +138,8 @@ Status: sourced. See [`conda-init-managed-block.md`](../examples/conda-init-mana
 file) and the person's file carries one line that loads it:
 - git: "The contents of the included file are inserted immediately, as if they had been found at
   the location of the include directive" ([git-config](https://git-scm.com/docs/git-config)).
-- *Code-derived:* rustup adds `. "$HOME/.cargo/env"` to shell profiles, or that path made
-  absolute for a non-default `CARGO_HOME`
+- *Code-derived:* rustup adds `. "$HOME/.cargo/env"` to shell profiles, or the `CARGO_HOME`
+  path when it is not the default
   ([shell.rs](https://github.com/rust-lang/rustup/blob/master/src/cli/self_update/shell.rs)).
 - The loaded content can be a command's output instead of a file: starship's setup is
   `eval "$(starship init bash)"` ([starship](https://starship.rs/)), so the content updates with
@@ -154,9 +163,10 @@ one line.
   with `include.path` pointing at a nonexistent file returns the other keys and exit 0 (git
   2.44).
 - Claude Code: two `@path` imports written inside a sentence, each with a comma glued on, loaded
-  nothing for 4–9 days while a substring guard stayed green. Bare lines fixed it. The docs show a
-  mid-sentence import as valid ("See @README for project overview and @package.json for available
-  npm commands"), so the glued comma may be the cause. See
+  nothing for 4–9 days while a substring guard stayed green. They were rewritten as bare lines;
+  no fresh session has confirmed that this alone fixed it. The docs show a mid-sentence import as
+  valid ("See @README for project overview and @package.json for available npm commands"), so
+  the glued comma may be the cause. See
   [`bare-import-silently-dropped.md`](../examples/bare-import-silently-dropped.md).
 - Drop-ins have their own rule: in Cursor, "A plain `.md` file in `.cursor/rules` is ignored by
   the rules system because it has no frontmatter" ([rules](https://cursor.com/docs/rules)).
@@ -197,8 +207,9 @@ keys, and the editor keeps what the person keeps: comments, order, formatting.
 **Cost.** Comments and ordering survive only if the editor models them. Check that it says so, as
 ruamel.yaml does: "roundtrip preservation of comments, seq/map flow style, and map key order"
 ([PyPI](https://pypi.org/project/ruamel.yaml/)). Multi-valued keys need a decision: `git config`
-exits with status 5 when you "try to unset/set an option for which multiple lines match" unless
-you pass `--replace-all`. A key the person set on purpose gets overwritten unless you check first.
+exits with status 5 when you "try to unset/set an option for which multiple lines match";
+`--replace-all` and `--unset-all` act on all of them. A key the person set on purpose gets
+overwritten unless you check first.
 
 **Update / uninstall.** Set / unset the keys — but only if you recorded which keys are yours.
 
@@ -213,9 +224,9 @@ versions: that base, its new output, and the person's copy.
   ([copier updating](https://github.com/copier-org/copier/blob/master/docs/updating.md)). cruft
   records the template commit in `.cruft.json` and applies the difference with `git apply -3`
   ([update.py](https://github.com/cruft/cruft/blob/master/cruft/_commands/update.py)).
-- **One config file.** dpkg asks the person only when both sides changed; its `--force-conf*`
-  choices apply "If a conffile has been modified and the version in the package did change"
-  ([dpkg](https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html)). `ucf` gives maintainer
+- **One config file.** dpkg: "If both have changed their version the user is prompted about the
+  problem and must resolve the differences themselves"
+  ([policy](https://www.debian.org/doc/debian-policy/ap-pkg-conffiles.html)). `ucf` gives maintainer
   scripts the same, and `--three-way` merges "using diff3 during the install"
   ([ucf](https://manpages.debian.org/bookworm/ucf/ucf.1.en.html)).
 
@@ -242,12 +253,11 @@ It decides *what* to write, not *where*: the delta still goes in with another op
 append is option 2 without a guard.
 
 **Best pick when** the target is prose that the person may already cover in their own words, and
-a second phrasing of the same rule would do harm (two versions of one rule in an agent's rules
-file invite the agent to pick between them).
+a second phrasing of the same rule would do harm (an agent then picks between two versions).
 
 **Cost** ([`semantic-delta-real-run.md`](../examples/semantic-delta-real-run.md) records a run):
-- **Not deterministic** (follows from the run: one verdict was a close call). Whether "no
-  hardcoded secrets in the repo" covers "secrets never land in any persistent surface" is a
+- **Not deterministic** (follows from the run: one verdict was a close call). Whether a rule
+  headed "No hardcoded secrets" covers "secrets never land in any persistent surface" is a
   judgement; two reviewers can disagree.
 - **Sees one file** (seen in the run). Content the person delivers through an include, or from a
   user-level file, is invisible to it, so it can add what is already loaded.
@@ -256,7 +266,7 @@ file invite the agent to pick between them).
 
 **Update / uninstall.** Only through the option that carries the delta: 3 or 4. Then the judge
 reads the person's file minus the tool's block or file, and the tool rewrites that block or file
-whole on every run. Judging its own old wording would make a re-run write nothing.
+whole on every run.
 
 Status: tried.
 
@@ -274,47 +284,48 @@ Homebrew's installer ends with "Next steps:" and the `echo … >> ${shell_rcfile
 [rustup-init.sh](https://github.com/rust-lang/rustup/blob/master/rustup-init.sh)).
 
 Show first when a person should approve each write, or the first time a tool meets a file it did
-not create. Do not write when the file is managed by other means (dotfiles repo, Nix) or the
-person opted out. Cost: someone has to read, or paste.
+not create. Cost: someone has to read, or paste.
 
 ## How to choose
 
-Questions 1, 2 and 4–7 stop at the first yes. Question 3 never stops: it changes *what* you
-write, and the rest decide *where*.
+Two questions first, in order:
 
-1. **Is the file managed by other means (a dotfiles repo, Nix), or did the person opt out** (a
-   flag like `--no-modify-path`)? Yes → **print, do not write**.
-2. **Does anyone other than the tool edit this file?** No → **option 1**, refusing to replace a
-   file you did not create. Only as a starting point → option 1, seed-once.
-3. **Is it prose the person may already say in their own words, where saying it twice would do
-   harm?** Yes → **option 7** decides what is missing. Go on.
-4. **Does the tool ship the whole file or scaffold, keep improving it, and expect people to edit
-   their copy?** Yes → **option 6**.
-5. **Can the tool keep its content in a file of its own, loaded by an include or drop-in the
-   format supports, and check on every run that it loaded?** Yes → **option 4**. See
-   [`harnesses.md`](harnesses.md) for agent rules files.
-6. **Is it a handful of keys in JSON/YAML/TOML/INI, with an editor that keeps comments and
-   order?** Yes → **option 5**.
-7. **Is your content one line?** Yes → **option 2**: by pattern if it may change or be removed,
-   by substring if never. No → **option 3**.
+1. **Is the file managed by other means (dotfiles repo, Nix), or did the person opt out?** Yes →
+   **print, do not write**.
+2. **Does anyone besides the tool edit it?** No → **option 1**; refuse to replace a file you did
+   not create.
 
-Then decide whether to show before writing.
+**What to write.** Prose the person may already state their own way, where a second phrasing does
+harm → **option 7** picks the missing items. It has no place of its own: carry its output with 4
+where the format has includes, otherwise 3.
+
+**Where.** Any row that fits is sound; the tie-breaks below decide overlaps.
+
+| If | Option | Unless |
+|---|---|---|
+| The person takes the file over after the first write | 1, seed-once | you must update it later |
+| The format also loads a file the person owns | 1, split | they must edit the main file |
+| You ship the whole file or scaffold, improve it, people edit their copy | 6 | you cannot keep a base copy |
+| The format has an include or drop-in, and your content changes between versions | 4 | the include cannot sit where it wins |
+| A few keys in JSON / YAML / TOML / INI | 5 | the editor loses comments or order they keep |
+| One line | 2; by pattern if it may change or go | |
+| Several lines | 3 | the format has no comments for markers (then 5) |
+
+Tie-breaks: shell profiles fit 4 (the tool ships a file to load, rustup) and 3 (the lines are all
+there is, conda). Package config with a drop-in directory: 4 over 6. A few stable keys: 5 until
+the set grows.
 
 | Reader setup | Lands on |
 |---|---|
-| CLI installer that ships an env script or `init` command, adding it to shell profiles | 4 via step 5 (rustup, starship) |
-| Tool adding several entries to `/etc/hosts` that it may later remove | 3 via step 7 (conda's shape) |
-| Tool adding one entry to `/etc/hosts`, which may change later | 2 by pattern via step 7 |
-| Linter making sure `.env` is listed in a repo's `.gitignore` | 2 by substring via step 7 |
-| Tool that needs two scripts in someone's `package.json` | 5 via step 6 |
-| Company project template, CI files evolve monthly, teams customise | 6 via step 4 (copier / cruft) |
-| Package that ships a default config people edit | 6 via step 4 (dpkg / ucf) |
-| Agent rules for Claude Code that users may already state their own way | 7 via step 3, then 4 via step 5 |
-| Agent rules for a harness with no include support, same users | 7 via step 3, then 3 via step 7 |
-| Dotfiles managed in Nix or a repo | print via step 1 |
-| Generated client code nobody edits | 1 via step 2 |
+| CLI installer with an env script or `init` command, for shell profiles | 4 (rustup, starship) |
+| Several `/etc/hosts` entries the tool may later remove | 3 |
+| Company project template, teams customise, CI files evolve | 6 (copier / cruft) |
+| Package default config people edit, no drop-in directory | 6 (dpkg / ucf) |
+| Agent rules for Claude Code users who may state them already | 7, carried by 4 |
+| The same, on a harness with no include support | 7, carried by 3 |
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
-rules a person already has. The steps above send that case to 7 then 4 on Claude Code, and to 7
-then 3 elsewhere. The skill today does 7 with show-before-writing and a plain append, so it
-cannot update or remove its own lines. Closing that gap is #57.
+rules a person already has, so it lands on 7, carried by 4 on Claude Code and by 3 elsewhere. The
+skill today does 7 with show-before-writing and a plain append; on Claude Code it can instead put
+the delta in its own file and `@import` it. Either way it has no update or uninstall step. Closing
+that gap is #57.

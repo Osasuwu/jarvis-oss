@@ -38,7 +38,7 @@ days later, while probing what subagents inherit:
 **The fix** had two parts, merged the same day:
 
 1. Each import moved to its own line, bare: `@FILE_A.md`.
-2. The guard now asserts the **form** instead of a substring: a line matching `^@<path>\s*$`
+2. The guard now asserts the **form** instead of a substring: a line matching `^@(\S+)[ \t]*$`
    outside code spans. It also asserts that the target file exists on disk.
 
 The issue also asked for a check in a **fresh** session, since a rules-file change is read at

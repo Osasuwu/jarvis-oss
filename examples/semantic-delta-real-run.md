@@ -9,7 +9,8 @@ pairs_with: docs/writing-into-user-owned-files.md
 **Setup.** `jarvis-setup` ([resource](../resources/jarvis-setup-skill.md)) was run by an agent
 session following `SKILL.md` step by step. It ran on a copy of the `CLAUDE.md` from
 [music-intel-mcp](https://github.com/Osasuwu/music-intel-mcp) at commit `db32f4a`. That is a small
-public project of ours, and its 59-line rules file was written long before this skill existed.
+public project of ours, and its 59-line rules file was first written four months before this skill
+existed and last changed eight days before it.
 The session did a trial first, then a full run on the copy, then a re-run. The project itself was
 not changed.
 
