@@ -11,6 +11,27 @@ The structure gate (`tests/structure_gate.py`) enforces both: any doc with `sign
 have a matching entry here (`signoff_missing_entry`), and that entry must not have been added in
 the same commit as the doc body (`signoff_same_commit`).
 
+## Drafted, not yet signed
+
+`signed_off:` present but empty (`signed_off:` with nothing after the colon) is the intentional
+"drafted, not yet signed" state — not a violation, and not the same as omitting the key. The gate
+skips a doc with an empty `signed_off` entirely: no ledger entry is required until the value is
+filled in. A doc lands with this empty value on its first PR; a later, separate PR fills in the
+date and adds the matching ledger line below.
+
+## Sign-off provenance (#53)
+
+The two-commit rule above stops a single commit from claiming its own review, but a same-commit
+check inside one PR is satisfied just as mechanically if the doc body and the ledger line land in
+two different commits of that *same* PR — nothing here diffs against `main`, only against the
+doc's own git history. The intended control against that is `waiting-human-review` (see
+`.github/workflows/waiting-human-review.yml`): it holds any PR, sign-off or not, until a human has
+looked at it. **It holds nothing until it is a required status check on `main`** — while it is
+only a status check, a red run does not block the merge button (#55 merged 57 seconds after the
+hold label went on, with the check red). Given that hold, the practice — not a mechanical gate — is
+to re-sign a doc through a PR that touches only the `docs/SIGNOFF.md` line, with no other change
+to that doc's body, merged by the author after actually reading it.
+
 ## Entry format
 
 One line per signed-off doc, alphabetical by path:
