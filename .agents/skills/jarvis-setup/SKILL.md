@@ -25,7 +25,8 @@ Read `docs/harnesses.md` — the dated, pull-only harness table (see the note un
 file's heading) — for the current harness's:
 
 - rules-file name (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, …)
-- whether it lists `@import`/include support
+- whether it lists include support, and which shape (in-file include line, config-level file
+  list, or drop-in directory — §6 has the per-shape detail)
 
 If the harness cannot be determined from context, ask the reader which row of the table
 applies. Do not guess a rules-file name from training data — the table is pull-only precisely
@@ -110,21 +111,40 @@ repo is just the case where nothing was already present.
     the whole marker block once if it is not there yet. This is option 3 of
     `docs/writing-into-user-owned-files.md`.
 
-## 6. Optional — Claude Code only
+## 6. Optional extras
 
 Everything above works verbatim on any harness listed in `docs/harnesses.md`, using plain
 rules-file text; on Claude Code the write step in §5 always uses the owned-file `@import` path.
-One further check and one further extra exist only where the harness table's Include support
-column says so (currently Claude Code):
+Extras exist on top of that core path:
 
-- **Verify the include loaded** — after writing the owned file and its import line, the check that
-  belongs with this option is not "is the import line present" but "did the content load": run
-  `/context` and confirm the owned file (e.g. `.claude/jarvis.md`) appears in the loaded memory
-  files list. An import line with no matching entry in `/context` means the include did not
-  resolve — say so, don't report success on the strength of the line alone.
+- **Split the delta into its own file** — instead of inlining the delta body, write it to a
+  separate file and pull it into the rules file using whatever mechanism the current harness's
+  row in `docs/harnesses.md` documents under Include support:
+  - **in-file include line** (Claude Code, Gemini CLI) — add one `@path/to/file` line to the
+    rules file.
+  - **config-level file list** (OpenCode) — add the split file's path to the harness's config
+    (e.g. the `instructions` array in `opencode.json`), not to the rules file itself.
+  - **drop-in directory** (Claude Code, Cursor, GitHub Copilot, Windsurf) — write the split file
+    straight into the harness's rules directory (e.g. `.claude/rules/`, `.cursor/rules/`,
+    `.github/instructions/`, `.windsurf/rules/`); it is picked up automatically, no separate
+    registration step. Claude Code supports both shapes — either works.
+  - Codex CLI's directory-hierarchy concatenation is not a split-and-pull mechanism (there's
+    nowhere to point an include at) — inline the text there like any harness with no include
+    support.
+  - **No include support documented** (Codex CLI, Zed) — inline the delta text. Zed's own Rules
+    feature is deprecated in favor of Skills + Instructions, and Codex CLI has no in-file import
+    syntax — see `docs/harnesses.md` for the sourced detail behind both.
+  - **Verify the include loaded** (Claude Code only, since §5's write step there always uses the
+    owned-file path) — after writing the owned file and its import line, the check that belongs
+    with this option is not "is the import line present" but "did the content load": run
+    `/context` and confirm the owned file (e.g. `.claude/jarvis.md`) appears in the loaded memory
+    files list. An import line with no matching entry in `/context` means the include did not
+    resolve — say so, don't report success on the strength of the line alone. No other harness in
+    the table exposes an equivalent load-verification command; elsewhere, trust the write.
 - **Hooks** — Claude Code can enforce the two invariants mechanically via hook scripts (e.g.
-  blocking a tool call that would persist a secret). Offer this only on Claude Code; on every
-  other harness the invariants are prose-only, enforced by the agent reading them.
+  blocking a tool call that would persist a secret). Offer this only on Claude Code; no other
+  harness in the table documents an equivalent enforcement mechanism, so on every other harness
+  the invariants stay prose-only, enforced by the agent reading them.
 
 Skipping both extras must still leave a fully working rules file — they are conveniences, not
 requirements of this skill's core path.
