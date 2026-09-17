@@ -289,8 +289,8 @@ has to read, or paste.
 
 ## How to choose
 
-**First.** Already declared in a dotfiles manager or Nix config, or the person manages it
-elsewhere? Yes → **print, do not write**.
+**First.** Already declared in a dotfiles manager or Nix config, the person said they manage it
+elsewhere, or the person opted out? Yes → **print, do not write**.
 
 **What to write.** Prose the person may already state their own way → **option 7** picks what's
 missing; it has no place of its own, so the option that carries it decides update and uninstall.
@@ -308,10 +308,13 @@ missing; it has no place of its own, so the option that carries it decides updat
 | 6 | you ship the whole file, keeping its base outside what the person edits |
 
 For 2, 3, 4 and 5, check where yours loads: `sshd_config` keeps the first value found; `git
-config` errors on multiple matches. Among what's left: 2 and 3 stay in the file the person sees;
-4 grows via include without touching theirs; 5 sets only your keys, keeps the rest, but can
-overwrite theirs and needs a record to uninstall; 6 costs a stored base and conflicts to
-resolve. Showing first fits every option. If nothing is left: option 1, shown first, backed up.
+config` returns the last value found, exit 0 — writing a single value over an existing
+multi-valued key is what errors. Among what's left: 2 and 3 stay in the file the person sees; 4
+grows via include without touching theirs, or takes a program slot, which can replace what the
+person had there; 5 sets only your keys, keeps the rest, but can overwrite theirs and needs a
+record to uninstall; 6 costs a stored base and conflicts to resolve. Showing first fits every
+option. If nothing is left: print the lines and let the person add them — nothing here
+overwrites what they already have.
 
 A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
 passes 5, not 2: a bare line can break JSON.
