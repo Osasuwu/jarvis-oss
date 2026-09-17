@@ -192,9 +192,10 @@ anyone with write access; repository-level push protection "Requires GitHub Secr
 be enabled; push rulesets with path restrictions need a Team or Enterprise plan. A scanner in CI
 runs on any plan. Merge gates themselves are #44's subject.
 
-**Lifecycle.** Repository settings and workflow files. Status: tried — CI gitleaks and a
-personal-literal scrub run on this repo
-([`gitleaks.yml`](../.github/workflows/gitleaks.yml)).
+**Lifecycle.** Repository settings and workflow files. Status: tried — CI gitleaks runs on this repo
+([`gitleaks.yml`](../.github/workflows/gitleaks.yml)). Its personal-literal scrub ran its first 32
+runs with no list and reported clean; lists of private strings are
+[`private-literal-scrub.md`](private-literal-scrub.md).
 
 ### 9. Stage the writes; a separate job applies them
 

@@ -1,4 +1,4 @@
-"""Personal-literal scrub — CI step for #23 (D25, Osasuwu/jarvis docs/decisions/2026-Q3.md).
+"""Personal-literal scrub — CI step for #23.
 
 Reads a newline-separated list of private literals from the ``PERSONAL_LITERALS``
 repository secret and fails the check if any literal appears anywhere in the
