@@ -95,5 +95,6 @@ requirements of this skill's core path.
 
 ## See also
 
-Why §3's delta-only approach was chosen over a full overwrite or a blind append:
-[`docs/setup-delta-only.md`](../../../docs/setup-delta-only.md).
+The other ways to write into a file the user owns, what each costs (including this skill's lack
+of an update or uninstall path), and how to choose between them:
+[`docs/writing-into-user-owned-files.md`](../../../docs/writing-into-user-owned-files.md).
