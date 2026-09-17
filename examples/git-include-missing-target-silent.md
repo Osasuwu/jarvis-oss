@@ -1,8 +1,6 @@
 ---
 fit: works when checking whether an include-based write actually took effect
-source: https://git-scm.com/docs/git-config
-verified: 2026-09-17
-claim: git config --includes silently skips a missing include.path target and still returns the other keys with exit 0
+last_seen: 2026-09-17
 pairs_with: docs/writing-into-user-owned-files.md
 ---
 
