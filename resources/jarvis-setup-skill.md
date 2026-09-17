@@ -1,7 +1,7 @@
 ---
 pairs_with: docs/writing-into-user-owned-files.md
 harnesses: all — see docs/harnesses.md
-cost: reader's time — one short trial-run read, plus a yes/no confirmation before the full write
+cost: reader's time — one short trial-run read, plus the trial-or-full question asked before anything is written
 ---
 
 # jarvis-setup skill

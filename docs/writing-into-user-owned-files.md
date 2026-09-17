@@ -66,7 +66,7 @@ Status: sourced. We do not use it for `jarvis-setup`: a rules file is the person
 
 **How it works.** Find your line; add it only if it is absent.
 - **By substring.** nvm's installer: `if ! command grep -qc '/nvm.sh' "$NVM_PROFILE"; then` …
-  append, else `"nvm source string already in ${NVM_PROFILE}"`
+  append, else `"=> nvm source string already in ${NVM_PROFILE}"`
   ([nvm install.sh](https://github.com/nvm-sh/nvm/blob/master/install.sh)).
 - **By pattern.** Ansible's `lineinfile` "ensures a particular line is in a file, or replace an
   existing line using a back-referenced regular expression"; with `state: absent` the regexp is
@@ -252,7 +252,7 @@ two phrasings of one rule would drift apart.
 
 **Cost** ([`semantic-delta-real-run.md`](../examples/semantic-delta-real-run.md) records a run):
 - **Not deterministic** (follows from the run: one verdict was a close call). Whether a rule
-  headed "No hardcoded secrets" covers "secrets never land in any persistent surface" is a
+  headed "No hardcoded secrets" covers "Secrets never land in any persistent surface" is a
   judgement; two reviewers can disagree.
 - **Sees one file** (seen in the run). Content the person delivers through an include, or from a
   user-level file, is invisible to it, so it can add what is already loaded.
@@ -294,31 +294,31 @@ First, in order:
 
 1. **Is the file managed by other means (dotfiles repo, Nix), or did the person opt out?** Yes →
    **print, do not write**.
-2. **Does anyone besides the tool edit it?** No → **option 1**; refuse to replace a file you did
-   not create.
+2. **Does anyone besides the tool edit it?** No → **option 1**. If a file you did not create is
+   already there, back it up first or show first.
 
 **What to write.** Prose the person may already state their own way, where two phrasings would
 drift apart → **option 7** picks the missing items. It has no place of its own: carry its output
-with 4 where the format has includes or drop-ins, otherwise 3.
+with the option the table picks.
 
-**Where.** Any row that fits is sound; tie-breaks settle overlaps.
+**Where.** Go down the table and stop at the first row whose condition holds. Each condition is a
+fact about the file, its format or your tool, so one setup lands on one row.
 
-| If | Option | Unless |
+| # | If | Option |
 |---|---|---|
-| The person takes the file over after the first write | 1, seed-once | you must update it later (3, 4) |
-| You own the main file, and the format also loads one the person edits | 1, split | they must edit yours (6) |
-| You ship the whole file or scaffold, improve it, people edit their copy | 6 | you cannot keep a base (show first) |
-| The format has an include or drop-in, and your content changes between versions | 4 | the include cannot sit where it wins (3) |
-| A program slot, such as a git hook | 4, call their program | |
-| A few keys in a format a parser edits | 5 | the editor loses what they keep (show first) |
-| One line | 2; by pattern if it may change or go | it changes and includes exist (4) |
-| Several lines you add to a file you did not ship | 3 | no comments for markers (5) |
+| a | The person takes the file over after the first write, and you never update it | 1, seed-once |
+| b | You ship the file, and the format loads an override file the person edits | 1, split |
+| c | You ship the file, people edit it in place, and you keep what you shipped last time | 6 |
+| d | You fill a program slot, such as a git hook | 4, call their program |
+| e | The format has an include or drop-in, and it can sit where your content is not overridden | 4 |
+| f | A parser edits the format keeping comments and order, and you record which keys are yours | 5 |
+| g | Your content is one line | 2; by pattern if it may change or go |
+| h | The format has comments to use as markers | 3 |
+| – | None of the above | show first; the person places it |
 
-Tie-breaks: where includes exist, 4 if the tool can keep a file of its own (rustup), 3 if the
-lines are all there is (conda). Keys in a file a parser edits: 5 over 2 and 3, but 4 if they
-grow in number or change between versions. A shipped file people edit: 1, split if the format
-loads an override (a package leaving `.d/` to admins), else 6. A tool adding to another
-program's config with a drop-in directory writes its own file there (4).
+Examples: a `PATH` line in `~/.bashrc` → e (`source` exists), as rustup does; conda's block would
+land there too. A changing key in `package.json` → f. A static line in `sshd_config` on a system
+whose `Include` of `sshd_config.d/` comes first → e. A key in a JSON file with no such parser → –.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has, so it lands on 7, carried by 4 on Claude Code and by 3 elsewhere. The
