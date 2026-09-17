@@ -326,5 +326,5 @@ passes 2 and 5.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
-elsewhere. Today it shows first, then appends plainly or, where it has includes, pulls itself in;
-neither has an update or uninstall step. Closing that gap is #57.
+elsewhere. It shows first, then writes via 4 on Claude Code or 3 elsewhere; both carry an update
+and an uninstall step, documented in `jarvis-setup`'s own SKILL.md.
