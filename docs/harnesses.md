@@ -14,7 +14,7 @@ guess.
 
 | Harness | Rules-file | Skills dir | Include support | Verified | Source |
 |---|---|---|---|---|---|
-| Claude Code | `CLAUDE.md` | `.claude/skills/` (project), `~/.claude/skills/` (user) | Yes — `@path/to/file` syntax, expanded inline at session start, recursive up to 5 hops, relative/absolute/home-dir paths | 2026-09-16 | https://code.claude.com/docs/en/memory |
+| Claude Code | `CLAUDE.md` | `.claude/skills/` (project), `~/.claude/skills/` (user) | Yes — `@path/to/file` syntax, expanded inline at session start, recursive up to four hops, relative/absolute/home-dir paths | 2026-09-17 | https://code.claude.com/docs/en/memory |
 | OpenCode | `AGENTS.md` | `.opencode/skills/`, `~/.config/opencode/skills/`, `.claude/skills/`, `~/.claude/skills/`, `.agents/skills/`, `~/.agents/skills/` | No documented import/include mechanism | 2026-09-16 | https://opencode.ai/docs/skills/ |
 | Codex CLI | `AGENTS.md` | unverified | No documented include mechanism found | 2026-09-16 (unverified) | not independently confirmed against primary docs |
 | Gemini CLI | `GEMINI.md` | unverified | No documented include mechanism found | 2026-09-16 (unverified) | not independently confirmed against primary docs |

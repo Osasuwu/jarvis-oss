@@ -1,12 +1,14 @@
 ---
-pairs_with: docs/setup-delta-only.md
+pairs_with: docs/writing-into-user-owned-files.md
 harnesses: all — see docs/harnesses.md
 cost: reader's time — one short trial-run read, plus a yes/no confirmation before the full write
 ---
 
 # jarvis-setup skill
 
-The tool behind [`setup-delta-only.md`](../docs/setup-delta-only.md):
+The semantic-delta option (7) in
+[`writing-into-user-owned-files.md`](../docs/writing-into-user-owned-files.md), plus its
+show-before-writing trial mode:
 [`.agents/skills/jarvis-setup/SKILL.md`](../.agents/skills/jarvis-setup/SKILL.md).
 
 ## How you know it ran
