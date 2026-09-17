@@ -96,9 +96,71 @@ walked 16 setups and did not push toward one option. It found four real defects,
 - the doc's own nvm example contradicted the row it was meant to pass;
 - one option's cost left out that it can overwrite the person's values.
 
-**Not yet done.** No seeded run of the new pass 3: no planted wrong filter, contradicting example
-or missing fallback to show it catches them. Until one is recorded, treat pass 3 findings as
-uncalibrated.
+**Seeded run:** Run 2, below.
+
+## Run 2 — pass 3 only, 2026-09-17
+
+**Doc:** `docs/writing-into-user-owned-files.md` at `8a79a4d` (after #65), checked against itself.
+
+**Setup:** three copies, each reviewed by fresh subagents that were given only the copy and the
+pass 3 text. None was told errors were planted, and none read the repo or the web.
+
+- **A, seeded:** seven errors planted in "How to choose" by the session that set up the run, one
+  or more per check. Reviewed twice, to see variance.
+- **B, clean:** the doc as merged.
+- **C, value test:** one change, "Whatever the file, start from **option 7**", which makes our
+  option apply to every setup.
+
+What counts as a catch was written down before any result was read.
+
+### Planted errors
+
+| # | Planted error | Check | Run A1 | Run A2 |
+|---|---|---|---|---|
+| P1 | row 3 → "a marked block would not clutter the person's file" | judgement, not fact | caught | caught |
+| P2 | row 5 → "the file is JSON" | rules out a buildable option | caught | caught |
+| P3 | row 4 → "your content changes between versions" | leaves in one that can't be built | caught | caught |
+| P4 | trade-off: "a broken include is reported" | contradicts option 4's cost | caught | caught |
+| P5 | example: "conda 4, rustup 3" | contradicts options 3 and 4 | caught | caught |
+| P6 | nothing-left sentence removed | no pointer when nothing is left | caught | caught |
+| P7 | our choice: "by 5 elsewhere" | contradicts option 5 | caught | caught |
+| V | copy C: "Whatever the file, start from option 7" | value test | `fails value test` | — |
+
+**7 of 7 caught in both runs.** Copy C failed the value test, and copy B passed it.
+
+### Findings on the clean doc
+
+Run B reported ten findings. The session that set up the run checked each against the doc: eight
+hold, two are wording calls, none is false. The seeded runs and run C, which share the unchanged
+text, found the same defects and a few more. Those that hold:
+
+- Seed-once writes only when the file is absent, but `applies_when` is a file that exists, so its
+  row and the nothing-left fallback offer something that writes nothing. (A1, B, C)
+- The split row drops "the person accepts editing there". (A1, B, C)
+- Step 2, "is your tool the only one that edits it?", is out of scope by `applies_when_not`, and
+  is a prediction, not a fact. (A1, B, C)
+- Row 2 has no format condition, so a line edit stays in for JSON. (B, C)
+- The fallback's "print" contradicts when to print, and "several one-line edits" brings back a
+  ruled-out option 2. (B, C)
+- "5 sets only your keys in any layout" overstates option 5's cost. (A1, A2, C)
+- "Today it … appends plainly" is option 2 unguarded, not 3. (A1, B, C)
+- Also, each seen in only one run: the program-slot variant touches the person's hook (B); the
+  include line can be written with 5 (B); "managed by other means" is a judgement (C); "a base the
+  person does not touch" cannot be checked (C); the placement check leaves out option 5 (C).
+
+Round seven of #61 had already reported the split row and the plain append, and they were left
+unfixed. The nothing-left fallback was round seven's own suggestion, and B and C now find it
+flawed. The other defects are new.
+
+### Variance between runs
+
+- A1 and A2 caught the same seven plants, and agreed on none of the extra findings except
+  "any layout".
+- Five real defects on the clean text were seen in a single run only.
+
+Every plant was a single edit that contradicts text elsewhere in the same doc. A defect that needs
+outside knowledge, such as a filter that is wrong about a tool, is pass 1's job and was not planted
+here.
 
 ## Limits seen
 
