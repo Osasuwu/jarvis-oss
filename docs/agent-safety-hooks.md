@@ -39,8 +39,8 @@ that review if changed on a branch.
 
 **Cost.** Every failure mode above; nothing fires if the agent forgets or is steered off course.
 
-**Lifecycle.** Edit a file. Status: tried — our baseline for ordinary changes; dropped *on fit*
-for secrets and the files below.
+**Lifecycle.** Edit a file. Status: tried in our private source project as the baseline for ordinary
+changes, no public trace; dropped *on fit* for secrets and the files below.
 
 ### 2. Approve each call
 
@@ -85,9 +85,10 @@ Equivalents block on exit 2 or a deny decision in
 [Cursor](https://cursor.com/docs/hooks) (`preToolUse`, `beforeShellExecution`, `beforeMCPExecution`),
 [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md) (`BeforeTool`),
 [Codex](https://developers.openai.com/codex/hooks) (`PreToolUse`),
-[Copilot](https://docs.github.com/en/copilot/reference/hooks-reference) (`preToolUse`) and
-[Kiro](https://kiro.dev/docs/hooks/) (Pre Tool Use); OpenCode plugins throw from
-`tool.execute.before` ([plugins](https://opencode.ai/docs/plugins/)).
+[Copilot](https://docs.github.com/en/copilot/reference/hooks-reference) (`preToolUse`);
+[Kiro](https://kiro.dev/docs/hooks/)'s Pre Tool Use hook "can validate and block tool usage";
+OpenCode plugins throw from `tool.execute.before` ([plugins](https://opencode.ai/docs/plugins/)).
+Vendors also ship ready-made scanners for these hooks, such as GitGuardian's ggshield.
 
 **Best pick when** you need to read *content* (a secret-shaped string in a file, command or issue
 body) at the moment of the call, including calls to remote APIs that never touch disk.
@@ -107,7 +108,7 @@ body) at the moment of the call, including calls to remote APIs that never touch
   enforcement boundary."
 
 **Lifecycle.** Scripts plus a settings entry per harness; updating means re-checking matchers
-against the current tool names. Status: tried — this is ours
+and input fields against the current tools. Status: tried — this is ours
 ([resource](../resources/agent-safety-hooks.md)).
 
 ### 5. OS sandbox or container
@@ -116,16 +117,19 @@ against the current tool names. Status: tried — this is ours
 sandbox applies to "every Bash, PowerShell, or Monitor command and its child processes" and by
 default writes only to the working directory and temp
 ([sandboxing](https://code.claude.com/docs/en/sandboxing)); Codex runs `workspace-write` with no
-network by default ([security](https://developers.openai.com/codex/security)); Gemini CLI uses
+network by default ([approvals and security](https://developers.openai.com/codex/agent-approvals-security)); Gemini CLI uses
 Seatbelt or containers ([sandbox](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/sandbox.md)).
-A dev container isolates the whole session.
+A dev container isolates the whole session; on Linux, `chattr +i` makes a single file
+unwritable to anyone without root.
 
 **Best pick when** the risk is a script or command doing something no rule anticipated, and you
 can list the paths and hosts it legitimately needs.
 
 **Cost.** Content-blind: it limits where writes go, not what they say, so a secret in an allowed
 file or an allowed API call passes. Claude Code's sandbox covers commands, not its own file-edit
-tools, and "Native Windows is not supported". A container keeps what you mount: "Avoid mounting
+tools, and "Native Windows is not supported". A command it blocks can be retried outside the
+sandbox with `dangerouslyDisableSandbox` unless you set `allowUnsandboxedCommands: false`, so the
+limit holds only with that setting. A container keeps what you mount: "Avoid mounting
 host secrets such as `~/.ssh` or cloud credential files into the container", and with permissions
 skipped it does "not prevent a malicious project from exfiltrating anything accessible inside the
 container" ([devcontainer](https://code.claude.com/docs/en/devcontainer)).
@@ -141,7 +145,9 @@ the GitHub MCP server with `--read-only`, where "write tools are skipped", or on
 `--toolsets` you use ([github-mcp-server](https://github.com/github/github-mcp-server/blob/main/README.md));
 no secrets in the agent's environment. A gateway between agent and MCP servers can also filter:
 Docker's MCP Gateway has a `block-secrets` switch
-([run reference](https://github.com/docker/mcp-gateway/blob/main/docs/generator/reference/docker_mcp_gateway_run.yaml)).
+([run reference](https://github.com/docker/mcp-gateway/blob/main/docs/generator/reference/docker_mcp_gateway_run.yaml)),
+which reads content. A token without the `workflows` permission cannot change files under
+`.github/workflows`.
 
 **Best pick when** the agent does not need the write at all, or needs it only on a few repos.
 
@@ -182,12 +188,42 @@ them can switch off locally.
 
 **Cost.** For text already posted — issue bodies, comments — it alerts after exposure. CI scans
 a pushed branch, which is already on the server. Push protection bypasses need only a reason from
-anyone with write access; repository-level protection needs Secret Protection on private repos;
-path restrictions on pushes need a paid plan. Merge gates themselves are #44's subject.
+anyone with write access; repository-level push protection "Requires GitHub Secret Protection" to
+be enabled; push rulesets with path restrictions need a Team or Enterprise plan. A scanner in CI
+runs on any plan. Merge gates themselves are #44's subject.
 
 **Lifecycle.** Repository settings and workflow files. Status: tried — CI gitleaks and a
 personal-literal scrub run on this repo
 ([`gitleaks.yml`](../.github/workflows/gitleaks.yml)).
+
+### 9. Stage the writes; a separate job applies them
+
+**How it works.** The agent runs read-only and records what it wants to post or push; a later
+job, holding the write token, scans that output and applies it. GitHub Agentic Workflows do this
+with "safe outputs" and a threat-detection job
+([architecture](https://github.blog/ai-and-ml/generative-ai/under-the-hood-security-architecture-of-github-agentic-workflows/)).
+
+**Best pick when** the agent runs unattended in CI and must post text, and you want content read
+before it lands without trusting a hook inside the agent's own process.
+
+**Cost.** Writes are delayed and limited to the kinds the job knows how to apply; the scan is only
+as good as its detector; you run the pipeline. It does not cover interactive sessions.
+
+**Lifecycle.** Workflow config. Status: sourced.
+
+### 10. A model judges each call
+
+**How it works.** A classifier model, not a person, approves or blocks risky calls: Claude Code's
+auto mode ([auto mode](https://claude.com/blog/auto-mode)), or OpenHands' security analyzer with a
+confirmation policy ([security](https://docs.openhands.dev/sdk/guides/security)).
+
+**Best pick when** option 2 fits your risk but no person is present, and an occasional miss is
+tolerable.
+
+**Cost.** Probabilistic: it can be wrong both ways, and a crafted input can steer it. Each call
+costs a model request. Use it beside a deterministic layer, not in place of one.
+
+**Lifecycle.** Harness setting. Status: sourced.
 
 ## How to choose
 
@@ -196,30 +232,38 @@ These are layers, not rivals: most setups want one before the write and one on t
 First, in order:
 
 1. **Can the agent reach nothing that becomes public or permanent before a person merges it?**
-   Yes → **option 1**, with option 8 as the backstop.
-2. **Can the agent write to a public place outside git — issues, comments, chat?** Options 4
-   and 6 act before that text lands; 8 does so only for GitHub MCP calls on public repos, and
-   otherwise alerts after.
-3. **Is there a file whose edit disables your checks?** Options 3 or 4 on edits, and 8 (code
-   owners) on the server. Don't count on 4 alone: it misses shell writes unless it parses them.
+   Yes → **option 1**, with option 8 as the backstop — provided no file the agent can edit on a
+   branch weakens that review (a workflow edited on a branch changes the check run on that PR;
+   close it with code owners or a token without the `workflows` permission).
+2. **Can the agent write to a public or permanent place outside git — issues, comments, chat?**
+   Options 4 and 9 read the text before it lands; 6 limits where it can write; 8 blocks it only
+   for GitHub MCP calls on public repos, and otherwise alerts after.
+3. **Is there a file whose edit disables your checks?** Options 3 or 4 on edits, 5 (the sandbox
+   denies writes to the files that configure the harness), 6 (a token without the `workflows`
+   permission) and 8 (code owners) on the server. Don't count on 4 alone: it misses shell writes
+   unless it parses them.
 
 These facts rule options out:
 
 | Option | Fits only if |
 |---|---|
 | 2 | a person is present for every session |
-| 3 | what you protect is a path, not content |
-| 4 | your harness has a blocking pre-call hook ([`harnesses.md`](harnesses.md)), and you will keep its matchers current |
-| 5 | your OS or container runtime is supported, and you can list the paths and hosts commands need |
+| 3 | what you protect has a known path — a secrets file (`Read(./.env)`) or a config file — not a secret that can appear in any file |
+| 4 | your harness has a blocking pre-call hook (the list under option 4), and the matchers and fields name the tools your version has |
+| 5 | your OS or container runtime is supported, you can list the paths and hosts commands need, and (Claude Code) `allowUnsandboxedCommands` is `false` |
 | 6 | the agent can do its job without the write you withhold |
-| 7 | the risk ends at a commit, and every clone installs the hook |
-| 8 | your host offers the check for your plan and visibility (public or private) |
+| 7 | the risk you cover with it is a commit — other surfaces need another layer — and your setup installs the hook in every clone that commits |
+| 8 | your plan and visibility include the part you rely on: push protection needs Secret Protection (free on public repos), push rulesets need Team or Enterprise, a CI scan works anywhere |
+| 9 | the agent runs as a CI job whose writes can wait for a second job |
+| 10 | a wrong decision now and then is acceptable |
 
-Among what is left: 4 reads content on every surface it names but only those, and runs only in
-the harnesses you configured; 5 and 6 cannot be talked out of their limit but do not read
-content; 7 and 8 cover every author, agent or human, but 7 can be skipped and 8 fires after the
-push. If nothing is left — no hook, no sandbox, no server checks — withhold the write (6) or
-keep a person on every call (2).
+Among what is left: 4 and 9 read content on the surfaces they name, and 4 runs only in the
+harnesses you configured; 5 (with unsandboxed retries off) and 6 cannot be talked out of their
+limit, and only 6's gateway filters read content; 7 and 8 cover every author, agent or human, but
+7 can be skipped, push protection blocks the push and a CI scan fires after it; 10 is a judgement,
+not a rule. If nothing is left, first look again at 3 and 7, which need no hook support; then
+move posting behind a person or a separate job (2 or 9); otherwise accept the risk in writing,
+naming the surface you leave open.
 
 **At more than one developer.** Project-settings hooks reach every clone, but each person can
 switch them off locally; managed settings are the only harness layer they cannot. Server-side
@@ -228,21 +272,29 @@ reviewer other than its author — the same shift
 [`publishing-discipline.md`](publishing-discipline.md) makes for its sign-off.
 
 **Examples.** A private repo where agents only push branches and never post outside git: 1, with
-7 on commits and 3 for `.env` — no script to maintain, and a hook would add little. A team with
-public repos and people on different harnesses: 8 first (push protection, a secret scan in CI,
-code owners on the workflow folder) and 6 for tokens, since only those reach everyone; 4 where a
-harness supports it. Shell-heavy unattended work on Linux or macOS with no posting rights: 5
-and 6. An unattended agent that posts to a public tracker: 6 and 4, since nothing else acts
-before the text lands.
+7 on commits, 3 for `.env`, and a token without the `workflows` permission so a branch cannot
+change its own checks — no script to maintain, and a hook would add little. A team with public
+repos and people on different harnesses: 8 first (push protection, a secret scan in CI, code
+owners on the workflow folder) and 6 for tokens, since only those reach everyone; 4 where a
+harness supports it. Shell-heavy unattended work on Linux or macOS with no posting rights: 5 and
+6. An unattended agent that posts to a public GitHub repo: 8's push protection, which covers its
+MCP writes, plus 4 or 9 to read the text on the surfaces it does not cover.
 
 **Our own choice.** Our agent runs unattended, posts issues and pull requests on a public repo,
 and we use one harness. So we take 4 — two hooks: a secret scanner on file edits, shell commands
-and GitHub MCP writes, and a protected-file block on the files that configure the scanner — plus
-8: CI gitleaks and a required human-review check before merge. The protected-file hook blocks
-our own edits too, with no bypass for a person at the keyboard: we tried deciding from inside the
-hook whether a person was present, and dropped it *on merit* — a hook's stdin is always piped, so
-every session looked unattended; see
+and every GitHub MCP call (the matcher is the server prefix, `^mcp__github__`, and the fields it
+reads include discussions and Copilot tasks), and a protected-file block on the hook scripts and
+their settings snippet — plus 8: CI gitleaks and a required human-review check before merge. The
+protected set is a placeholder: its `.gitleaks.toml` does not exist here, and it does not list
+`.github/workflows/gitleaks.yml`; the repo has no code owners file. The protected-file hook
+blocks our own edits too, with no bypass for a person at the keyboard: we tried deciding from
+inside the hook whether a person was present, and dropped it *on merit* — a hook's stdin is
+always piped, so every session looked unattended (tried in the private source project; the
+public trace is the hook's docstring); see
 [`protected-files-fail-closed.md`](../examples/protected-files-fail-closed.md). Known gaps: the
-protected-file hook does not see shell writes; both hooks exit 0 on input they cannot parse; and
-our GitHub matcher named retired tools until this rewrite. How a scan can miss part of its input:
+protected-file hook does not see shell writes — option 3's `Edit` deny rules, which reach shell
+redirections and `sed`/`tee`, would close most of that and are our next step; both hooks exit 0
+on input they cannot parse; and our GitHub matcher named retired tools until this rewrite, see
+[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md). How a scan can
+miss part of its input:
 [`heredoc-stripping-boundary-bug.md`](../examples/heredoc-stripping-boundary-bug.md).

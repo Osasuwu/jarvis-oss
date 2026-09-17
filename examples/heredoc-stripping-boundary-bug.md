@@ -28,8 +28,9 @@ The fix widened the closing alternatives to include a bare following newline.
 The lesson this example carries isn't about which patterns the scanner looks for — it's that a mechanical
 tool-call-boundary hook has two places to get wrong, not one: what it looks for, and what part of
 the input it looks at. A correct pattern list scanning the wrong slice of text is still a
-correctness bug, and it fails silently in exactly the direction that matters here — under-scanning
-rather than over-blocking.
+correctness bug. This one erred toward over-blocking: harmless writes were refused, which is loud
+and gets noticed. A boundary drawn the other way — stripping text that is actually executed —
+would fail quietly, letting a dangerous command through with no sign that it was never scanned.
 
 See [`agent-safety-hooks.md`](../docs/agent-safety-hooks.md) for the practice this example
 evidences.

@@ -26,8 +26,11 @@ tool simply never matches, and a hook that never matches produces no warning. Th
 was ported from had moved to the new names ten days earlier; the port copied an older list.
 
 What caught it was reading the server's tool list while rewriting
-[`agent-safety-hooks.md`](../docs/agent-safety-hooks.md), not any run of the hook. The fix names
-the current write tools, anchors the pattern with `^…$`, and adds
-[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py), which fails when a listed
-write tool is not matched. The test holds the list we checked; it cannot see a tool the server
-adds or renames later. Re-check the list against the server whenever you update it.
+[`agent-safety-hooks.md`](../docs/agent-safety-hooks.md), not any run of the hook. A first fix
+listed the current write tools, and a review of that fix found three more it had missed
+(`discussion_comment_write`, `create_pull_request_with_copilot`, `projects_write`) before it merged — the same
+failure again. So the matcher now takes every tool of the server, `^mcp__github__`, and
+the scanner reads Copilot's `problem_statement` field too.
+[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) checks that a tool name it has
+never seen is still matched, and that a secret in each write tool's text field is blocked. The
+field list is still a list: re-check it against the server when you upgrade.

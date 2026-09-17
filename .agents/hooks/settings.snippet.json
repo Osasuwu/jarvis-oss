@@ -24,7 +24,7 @@
         ]
       },
       {
-        "matcher": "^mcp__github__(issue_write|add_issue_comment|update_issue_comment|create_pull_request|update_pull_request|pull_request_review_write|add_comment_to_pending_review|add_reply_to_pull_request_comment|create_or_update_file|push_files|create_gist|update_gist)$",
+        "matcher": "^mcp__github__",
         "hooks": [
           {
             "type": "command",

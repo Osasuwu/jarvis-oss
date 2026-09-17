@@ -1,6 +1,6 @@
 ---
 pairs_with: docs/agent-safety-hooks.md
-harnesses: Claude Code only as shipped — `PreToolUse` hooks with a `permissionDecision: deny` exit are a harness-specific mechanism; see docs/harnesses.md for the table of what each harness does and doesn't support instead. A harness without a tool-call-boundary hook can't run this resource as-is — it needs the read-vs-write review-gate treatment `docs/harnesses.md` covers for that case.
+harnesses: Claude Code only as shipped — `PreToolUse` hooks with a `permissionDecision: deny` exit are a harness-specific mechanism. Cursor, Codex, Gemini CLI, Copilot, Kiro and OpenCode have their own pre-call hooks (option 4 of docs/agent-safety-hooks.md lists them); the scripts need their own wiring and input parsing there. A harness without a blocking pre-call hook can't run this resource at all.
 cost: no paid API calls. Runs as a local Python subprocess per matched tool call — pure CPU/regex work, no network, no model tokens spent by the hook itself.
 ---
 
@@ -33,9 +33,10 @@ is not something a normal session will ever surface on its own. Two ways to chec
    scratch file, or attempt to edit a path listed in `protected-files.py`'s `PROTECTED_CANONICAL`.
    A wired-up hook returns a `permissionDecision: deny` with a `BLOCKED:` reason and the tool call
    is refused; the agent sees this in its own transcript, not a separate log.
-2. **`claude --debug`** (or the equivalent verbose/debug flag for your harness) prints each hook
-   invocation and its exit code to stderr as it runs, including the ones that exit 0 and produce
-   no other output — this is the only place a *successful, silent* run is visible at all.
+2. **`claude --debug`** (or the equivalent flag for your harness) writes each hook invocation
+   and its exit code to a debug log (Claude Code: `~/.claude/debug/<session-id>.txt`, not the
+   terminal), including the ones that exit 0 and produce no other output — this is the only place
+   a *successful, silent* run is visible at all.
 
 Neither hook writes anywhere else — there is no dedicated log file to tail. If you want a durable
 audit trail of blocks over time, that's an extension left to the reader (redirect the
@@ -44,19 +45,22 @@ does today.
 
 ## Keeping the matcher current
 
-The GitHub MCP entry in `settings.snippet.json` names write tools one by one. When the server
-renames or adds a tool, a name the matcher doesn't list is never scanned, and nothing reports it —
-this happened once here, recorded in
-[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md).
-[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) checks the matcher against the
-list last verified; it can't see a later rename. Compare the list with your GitHub MCP server's
-current tools when you upgrade it, and adjust the `mcp__github__` prefix if you registered the
-server under another name.
+The GitHub MCP entry in `settings.snippet.json` matches every tool of the server
+(`^mcp__github__`), not a list of write tools. A list fails open when the server renames or adds a
+tool — this happened here, recorded in
+[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md). The cost is one
+Python process per GitHub call, reads included. What still drifts is the set of input fields the
+scanner reads (`extract_github_text`):
+[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) pins the text field of each
+write tool as of its last check, and cannot see a field the server adds later. Re-check the fields
+when you upgrade the server, and change the `mcp__github__` prefix if you registered it under
+another name.
 
 ## Adapting these
 
-Both `PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS`/
-`SECRET_PATTERNS` in `secret-scanner.py` are marked `CUSTOMIZE` at their definition — they ship as
+`PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS` in
+`secret-scanner.py` are marked `CUSTOMIZE` at their definition, and `SECRET_PATTERNS` in that
+file's docstring — they ship as
 placeholders naming this repo's own hook files and `.gitleaks.toml`, not a claim that those are
 the right files for every reader's repo. Point them at whatever your own project's review-gate
 files and credential-shaped env vars actually are.
