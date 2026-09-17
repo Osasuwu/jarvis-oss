@@ -55,7 +55,8 @@ It added one more: a sentence in quotation marks that paraphrases its source.
 Judgement spots and `missing` options are calls, not facts, so they cannot be false positives in
 the same sense. On the clean doc, pass 3 and pass 4 found that the "how to choose" steps cannot
 reach one table row, and that they send the doc's own case to a different option than the one the
-doc picks. Both hold on reading the steps.
+doc picks. Both hold on reading the steps. The first is no longer a finding: pass 3 changed after
+this run (below), and several options fitting one setup is now intended.
 
 ### Variance between runs
 
@@ -71,6 +72,33 @@ Matching in pass 4 also varied on borderline cases:
   is loose.
 
 A single run misses things another run would catch. Treat the report as a floor, not a proof.
+
+## Pass 3 change — 2026-09-17
+
+**What changed.** Pass 3 used to build setups that "land on an option", cite "the step that
+decides", and report `option X via step K`. It now checks a section that rules options out with
+checkable facts and names trade-offs among what is left: filters are facts, no filter wrongly
+rules an option in or out, trade-offs and examples match the option sections, and there is a
+pointer when nothing is left. The value test fails only when no realistic setup rules our option
+out or makes it lose a named trade-off. More than one option fitting is stated as not a defect.
+
+**Why.** On `docs/writing-into-user-owned-files.md` (#61, PR #62) the old wording drove six
+review-and-fix rounds of ordered steps, tables and tie-breaks. Each round made the steps reach one
+option and each review found new contradictions, because a real choice between options with
+different costs does not reduce to one answer per setup.
+
+**Evidence, unseeded.** Round seven ran the new checks as a prompt, on `8bc6712`. The reviewer
+walked 16 setups and did not push toward one option. It found four real defects, all fixed in
+`24d690a`:
+
+- the placement check applied to one table row, though it held for three;
+- nothing said what to do when every option is ruled out;
+- the doc's own nvm example contradicted the row it was meant to pass;
+- one option's cost left out that it can overwrite the person's values.
+
+**Not yet done.** No seeded run of the new pass 3: no planted wrong filter, contradicting example
+or missing fallback to show it catches them. Until one is recorded, treat pass 3 findings as
+uncalibrated.
 
 ## Limits seen
 
