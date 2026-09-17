@@ -21,16 +21,16 @@ detection and delta computation in §2–§4; only the last step (write vs. prin
 
 ## 2. Detect the harness and the rules file
 
-Read `docs/harnesses.md` — the dated, pull-only harness table (see that file's own
-`applies_when` header) — for the current harness's:
+Read `docs/harnesses.md` — the dated, pull-only harness table (see the note under that
+file's heading) — for the current harness's:
 
 - rules-file name (`CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, …)
 - whether it lists `@import`/include support
 
 If the harness cannot be determined from context, ask the reader which row of the table
 applies. Do not guess a rules-file name from training data — the table is pull-only precisely
-so this skill reads it fresh instead of hard-coding a path (`docs/harnesses.md`'s own
-`applies_when` note).
+so this skill reads it fresh instead of hard-coding a path (the note under
+`docs/harnesses.md`'s heading).
 
 Look for that rules-file at the repo root.
 

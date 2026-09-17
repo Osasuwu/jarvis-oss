@@ -61,6 +61,6 @@ nothing was written.
   it cannot see that.
 - The secrets verdict rests on a judgement that could have gone the other way.
 - Nothing marks the appended lines as written by the skill. The run did not test what follows
-  from that, but it follows: a later version with different invariant wording would judge these
-  lines "present in substance" and leave them alone, and uninstalling the skill would leave them
+  from that, but it follows: a later version with different invariant wording would find these
+  lines already stated in substance and leave them alone, and uninstalling the skill would leave them
   too.

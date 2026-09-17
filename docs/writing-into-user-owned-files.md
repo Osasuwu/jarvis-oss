@@ -38,10 +38,9 @@ file says so at the top; Go's generator convention is a line matching
 **Best pick when** the tool owns the file outright and people's changes belong in the tool's
 inputs, not its output. Simplest option by far.
 
-**Cost.** Any hand edit is lost on the next run; the header is a warning, not a guard. Wrong the
-moment a person keeps their own content in the same file. The first run is the dangerous one: a
-file already there is not yours. Home Manager refuses with "Existing file '$targetPath' would be
-clobbered" ([check-link-targets.sh](https://github.com/nix-community/home-manager/blob/master/modules/files/check-link-targets.sh)),
+**Cost.** Any hand edit is lost on the next run; the header is a warning, not a guard. The first
+run is the dangerous one: a file already there is not yours. Home Manager refuses with
+"Existing file '$targetPath' would be clobbered" ([check-link-targets.sh](https://github.com/nix-community/home-manager/blob/master/modules/files/check-link-targets.sh)),
 unless `backupFileExtension` is set, which will "move existing files by appending the given file
 extension rather than exiting with an error"
 ([nixos/common.nix](https://github.com/nix-community/home-manager/blob/master/nixos/common.nix)).
@@ -77,8 +76,8 @@ Status: sourced. We do not use it for `jarvis-setup`: a rules file is the person
   `match_for_absence => true`
   ([file_line](https://github.com/puppetlabs/puppetlabs-stdlib/blob/main/lib/puppet/type/file_line.rb)).
 
-**Best pick when** your content is one line in a format with no includes: a single setting, a
-`source` line. By substring only if the line will never change or be removed.
+**Best pick when** your content is one line: a single setting, a `source` line. By substring only if
+the line will never change or be removed.
 
 **Cost.** A substring guard counts any line holding the substring as present, a commented-out
 or edited copy too, so it can neither update nor restore it; *code-derived:* nvm's re-run never
@@ -115,15 +114,15 @@ there it is a choice: conda and mamba made it, rustup chose option 4.
 
 **Cost.**
 - Edits a person makes *inside* the block are overwritten on the next run (code-derived for
-  both tools). The "managed by" comment exists to say so.
+  both tools).
 - Markers are load-bearing. Ansible's `marker` docs: a custom marker without `{mark}` "may
   result in the block being repeatedly inserted on subsequent playbook runs", and multi-line
   markers "will". *Code-derived:* if a person deletes one marker line, `blockinfile` inserts a
   fresh block rather than repairing the old one.
 - Duplicates are not cleaned up: conda's source carries
   `# TODO: maybe remove all but last of replace_str, if there's more than one occurrence`.
-- It still judges nothing: if the person already has an equivalent line outside the block, the
-  block adds a second one.
+- It judges only its own lines. *Code-derived:* conda comments out its older lines outside the
+  block; `blockinfile` leaves an equivalent line there and adds a second copy.
 
 **Update / uninstall.** Both, by design, within one file.
 
@@ -152,18 +151,15 @@ rules, Claude Code's `.claude/rules/`: "All `.md` files are discovered recursive
 without `paths` "are loaded at launch" ([memory docs](https://code.claude.com/docs/en/memory)).
 
 **Best pick when** the format supports includes or drop-ins and the tool's content changes
-between versions. Update is a rewrite of the tool's own file; uninstall is deleting that file and
-one line.
+between versions.
 
 **Cost.** The include line itself is written with option 2 or 3, and it can fail without a sound:
 - git skips a missing include target silently — tried: `git config -f main.cfg --includes --get`
   with `include.path` pointing at a nonexistent file returns the other keys and exit 0 (git
   2.44).
 - Claude Code: two `@path` imports written inside a sentence, each with a comma glued on, loaded
-  nothing for 4–9 days while a substring guard stayed green. They were rewritten as bare lines;
-  no fresh session has confirmed that this alone fixed it. The docs show a mid-sentence import as
-  valid ("See @README for project overview and @package.json for available npm commands"), so
-  the glued comma may be the cause. See
+  nothing for 4–9 days while a substring guard stayed green. The docs allow mid-sentence imports,
+  so the comma may be the cause. See
   [`bare-import-silently-dropped.md`](../examples/bare-import-silently-dropped.md).
 - Drop-ins have their own rule: in Cursor, "A plain `.md` file in `.cursor/rules` is ignored by
   the rules system because it has no frontmatter" ([rules](https://cursor.com/docs/rules)).
@@ -197,9 +193,11 @@ than editing text. `git config --file <f> <key> <value>` ("query/set/replace/uns
 ([npm pkg](https://docs.npmjs.com/cli/v11/commands/npm-pkg)). Libraries do the same inside your
 own tool: jsonc-parser's "*modify* API computes edits to insert, remove or replace a property or
 value in a JSON document" ([jsonc-parser](https://github.com/microsoft/node-jsonc-parser)).
+Augeas covers other formats (`sshd_config`, `/etc/hosts`): it "parses configuration files in
+their native formats and transforms them into a tree" ([Augeas](https://augeas.net/)).
 
-**Best pick when** the file is JSON / YAML / TOML / INI and your contribution is a handful of
-keys, and the editor keeps what the person keeps: comments, order, formatting.
+**Best pick when** a parser can edit the file and your contribution is a handful of keys,
+and the editor keeps what the person keeps: comments, order, formatting.
 
 **Cost.** Comments and ordering survive only if the editor models them. Check that it says so, as
 ruamel.yaml does: "roundtrip preservation of comments, seq/map flow style, and map key order"
@@ -247,7 +245,7 @@ model or a person, not a string match. This is what `jarvis-setup` does
 ([resource](../resources/jarvis-setup-skill.md)).
 
 It decides *what* to write, not *where*: the delta still goes in with another option. Plain
-append is option 2 without a guard.
+append is option 2 unguarded.
 
 **Best pick when** the target is prose that the person may already cover in their own words, and
 two phrasings of one rule would drift apart.
@@ -259,7 +257,7 @@ two phrasings of one rule would drift apart.
 - **Sees one file** (seen in the run). Content the person delivers through an include, or from a
   user-level file, is invisible to it, so it can add what is already loaded.
 - **No update, no uninstall** when appended plainly (follows from the run: nothing marks what it
-  wrote). A re-run judges old wording "present in substance" and writes nothing.
+  wrote). A re-run finds the old wording already stated in substance and writes nothing.
 
 **Update / uninstall.** Only through the option that carries the delta: 3 or 4. Then the judge
 reads the person's file minus the tool's block or file, and the tool rewrites that block or file
@@ -269,10 +267,9 @@ Status: tried.
 
 ### Across all of them: show before writing, or do not write
 
-A switch on any option: compute the change, print it, write only on approval. `terraform plan`
-"alone does not actually carry out the proposed changes"
-([plan](https://developer.hashicorp.com/terraform/cli/commands/plan)); `conda init --dry-run`
-will "Only display what would have been done"; `jarvis-setup` first asks "Trial or full setup?".
+A switch on any option: compute the change, print it, write only on approval.
+`conda init --dry-run` will "Only display what would have been done"; `jarvis-setup` first asks
+"Trial or full setup?".
 
 Taken all the way, the tool never writes: it prints the lines and the person adds them.
 Homebrew's installer ends with "Next steps:" and the `echo … >> ${shell_rcfile}` commands to run
@@ -283,8 +280,13 @@ starts the reader itself can skip the file: VS Code activates shell integration 
 arguments and/or environment variables when the shell session launches"
 ([shell integration](https://code.visualstudio.com/docs/terminal/shell-integration)).
 
+Before replacing a file, validate the result and keep a backup, as Ansible's `template` does:
+`validate` runs "before copying the updated file into the final destination"
+([template](https://docs.ansible.com/ansible/latest/collections/ansible/builtin/template_module.html)).
+
 Show first when a person should approve each write, or the first time a tool meets a file it did
-not create. Cost: someone has to read, or paste.
+not create; print only when the file is managed elsewhere or the person opted out. Cost: someone
+has to read, or paste.
 
 ## How to choose
 
@@ -297,29 +299,26 @@ First, in order:
 
 **What to write.** Prose the person may already state their own way, where two phrasings would
 drift apart → **option 7** picks the missing items. It has no place of its own: carry its output
-with 4 where the format has includes, otherwise 3.
+with 4 where the format has includes or drop-ins, otherwise 3.
 
-**Where.** Any row that fits is sound, with or without showing first; tie-breaks settle overlaps.
+**Where.** Any row that fits is sound; tie-breaks settle overlaps.
 
 | If | Option | Unless |
 |---|---|---|
-| The person takes the file over after the first write | 1, seed-once | you must update it later |
-| The format also loads a file the person owns | 1, split | they must edit the main file |
-| You ship the whole file or scaffold, improve it, people edit their copy | 6 | you cannot keep a base copy |
-| The format has an include or drop-in, and your content changes between versions | 4 | the include cannot sit where it wins |
-| A few keys in JSON / YAML / TOML / INI | 5 | the editor loses what they keep (then show first) |
+| The person takes the file over after the first write | 1, seed-once | you must update it later (3, 4) |
+| You own the main file, and the format also loads one the person edits | 1, split | they must edit yours (6) |
+| You ship the whole file or scaffold, improve it, people edit their copy | 6 | you cannot keep a base (show first) |
+| The format has an include or drop-in, and your content changes between versions | 4 | the include cannot sit where it wins (3) |
+| A program slot, such as a git hook | 4, call their program | |
+| A few keys in a format a parser edits | 5 | the editor loses what they keep (show first) |
 | One line | 2; by pattern if it may change or go | it changes and includes exist (4) |
-| Several lines you add to a file you did not ship | 3 | no comments for markers (then 5) |
+| Several lines you add to a file you did not ship | 3 | no comments for markers (5) |
 
-Tie-breaks: shell profiles fit 4 (the tool ships a file to load, rustup) and 3 (the lines are all
-there is, conda). With a drop-in directory, a tool adding to another program's config writes its
-own file there (4); a package whose admins edit its config ships the base and leaves `.d/` to
-them (1, split). Keys that grow in number or change between versions: 4 over 5.
-
-| Reader setup | Lands on |
-|---|---|
-| Several `/etc/hosts` entries the tool may later remove | 3 |
-| Package default config people edit, no drop-in directory | 6 (dpkg / ucf) |
+Tie-breaks: where includes exist, 4 if the tool can keep a file of its own (rustup), 3 if the
+lines are all there is (conda). Keys in a file a parser edits: 5 over 2 and 3, but 4 if they
+grow in number or change between versions. A shipped file people edit: 1, split if the format
+loads an override (a package leaving `.d/` to admins), else 6. A tool adding to another
+program's config with a drop-in directory writes its own file there (4).
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
 rules a person already has, so it lands on 7, carried by 4 on Claude Code and by 3 elsewhere. The
