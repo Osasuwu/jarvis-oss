@@ -90,7 +90,7 @@ COMPILED_BASH = [(re.compile(p, re.IGNORECASE), label) for p, label in BASH_DANG
 def extract_github_text(tool_input: dict) -> str:
     """Pull all text fields from GitHub MCP tool inputs."""
     parts = []
-    for key in ("body", "title", "content", "message", "description", "comment"):
+    for key in ("body", "title", "content", "message", "description", "comment", "problem_statement"):
         val = tool_input.get(key)
         if isinstance(val, str):
             parts.append(val)
