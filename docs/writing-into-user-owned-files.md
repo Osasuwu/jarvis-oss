@@ -169,8 +169,8 @@ between versions.
 - Where the format has neither, this option does not exist. For agent rules files, see
   [`harnesses.md`](harnesses.md).
 
-So the check that belongs with this option is not "is the line present" but "did the content
-load": in Claude Code, `/context` lists loaded memory files.
+So the real check isn't "is the line present" but "did the content load": in Claude Code,
+`/context` lists loaded memory files.
 
 Where the file is a program slot with no include, such as a git hook, the same idea runs the
 other way: the tool takes the slot and calls the person's program. pre-commit installs "in a
@@ -289,37 +289,34 @@ has to read, or paste.
 
 ## How to choose
 
-**First.** Is the file already declared in a dotfiles manager or Nix config, or did the person
-say they manage it elsewhere? Yes → **print, do not write**.
+**First.** Already declared in a dotfiles manager or Nix config, or the person manages it
+elsewhere? Yes → **print, do not write**.
 
-**What to write.** Prose the person may already state their own way → **option 7** picks the
-missing items. It has no place of its own; the option that carries them decides update and
-uninstall.
+**What to write.** Prose the person may already state their own way → **option 7** picks what's
+missing; it has no place of its own, so the option that carries it decides update and uninstall.
 
-**Where.** No rule picks one option; several usually fit, and the choice is the trade-off each
-option's *best pick when* and *cost* describe. These checkable facts rule options out.
+**Where.** No option fits every setup; choose by the trade-off in its own *best pick when* and
+*cost*. The table rules out by checkable fact.
 
 | Option | Fits only if |
 |---|---|
-| 1, split | the format loads a second file, and the person accepts editing there |
+| 1, split | the format loads a second file the person accepts editing |
 | 2 | your content is a line or two, and a bare line stays valid (not JSON) |
 | 3 | the format has comments to use as markers |
-| 4 | the format has an include or drop-in, or a program slot you can wrap |
+| 4 | the format has an include, drop-in, or a slot you can wrap |
 | 5 | a parser for the format keeps comments, order and formatting |
-| 6 | you ship the whole file and keep its base outside what the person edits |
+| 6 | you ship the whole file, keeping its base outside what the person edits |
 
-For 2, 3, 4 and 5, check where yours loads: `sshd_config` uses the first value; `git config`
-errors on multiple matches. Among what is left: 2 and 3 keep all in the file the person sees;
-4's include grows without touching theirs, though a program slot can replace theirs, and the
-include can fail silently; 5 sets only your keys, keeping the rest if the parser models it, but
-can overwrite theirs and needs a record to uninstall; 6 keeps edits to a file you ship, at the
-price of a base and conflicts to resolve. Showing first fits every option. If nothing is left:
-option 1, shown first and backed up.
+For 2, 3, 4 and 5, check where yours loads: `sshd_config` keeps the first value found; `git
+config` errors on multiple matches. Among what's left: 2 and 3 stay in the file the person sees;
+4 grows via include without touching theirs; 5 sets only your keys, keeps the rest, but can
+overwrite theirs and needs a record to uninstall; 6 costs a stored base and conflicts to
+resolve. Showing first fits every option. If nothing is left: option 1, shown first, backed up.
 
 A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
 passes 5, not 2: a bare line can break JSON.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
-rules a person already has, so it takes 7, carried by 4 where the harness has includes and 2
-unguarded elsewhere. Today it shows first, then appends plainly or, on Claude Code, `@import`s
-its own file; neither has an update or uninstall step. Closing that gap is #57.
+rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
+elsewhere. It shows first, then writes via 4 on Claude Code or 3 elsewhere; both carry an update
+and an uninstall step, documented in `jarvis-setup`'s own SKILL.md.
