@@ -72,7 +72,9 @@ have few users; check they are maintained before depending on them.
 **How it works.** A tool with ready rules instead of a schema. Giant Swarm's
 [frontmatter-validator](https://github.com/giantswarm/frontmatter-validator) checks, for example,
 `REVIEW_TOO_LONG_AGO` — "the `last_review_date` is older than the expiration period (default 365
-days…)" — and runs as a pre-commit hook. [flint](https://github.com/hay-kot/flint) has required
+days…)", per its
+[checks list](https://github.com/giantswarm/frontmatter-validator/blob/main/docs/checks.md) — and
+runs as a pre-commit hook. [flint](https://github.com/hay-kot/flint) has required
 fields, regexes, enums, dates, lengths and "Asset Existence", which checks that a path named in a
 field exists.
 
@@ -127,7 +129,8 @@ example points at a doc; it does not say every doc has an example. A collection 
 frontmatter, not links.
 
 **Lifecycle.** Part of the site config. Status: sourced. Dropped on merit: Contentlayer — its
-README says it "is no longer maintained due to lack of funding".
+[README](https://github.com/contentlayerdev/contentlayer/blob/main/packages/contentlayer/README.md)
+says it "is no longer maintained due to lack of funding".
 
 ### 6. A markdown or prose linter
 

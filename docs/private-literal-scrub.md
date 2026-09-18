@@ -56,8 +56,10 @@ private context.
 ### 2. Written rules for the writer
 
 **How it works.** The agent's instructions list what must not be published and how to cite
-private evidence. OWASP: "such restrictions may not always be honored and could be
-bypassed via prompt injection or other methods."
+private evidence. OWASP
+([LLM02:2025](https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/)): "such
+restrictions may not always be honored and could be bypassed via prompt injection or other
+methods."
 
 **Best pick when** alongside any mechanical check — never alone.
 
@@ -204,8 +206,8 @@ reverse flow — Copybara has `git.github_pr_origin` for GitHub pull requests, a
 "can be automatically reversed". Like 4 it checks before anything is public, but needs no paid
 plan and no cooperation from a laptop.
 
-**Lifecycle.** Pipeline config on the private side. Status: sourced. Dropped on merit: FBShipIt —
-"This project is no longer maintained."
+**Lifecycle.** Pipeline config on the private side. Status: sourced. Dropped on merit:
+[FBShipIt](https://github.com/facebookarchive/fbshipit) — "This project is no longer maintained."
 
 ### 8. Detection beyond exact strings
 
@@ -256,8 +258,9 @@ string. File contents only, not messages or pull request text.
 
 **Lifecycle.** `.gitattributes` plus local git config. Status: sourced.
 
-Also considered and dropped on merit: detect-secrets' `--word-list`, which is an allowlist — "if a
-secret contains a word in the list we ignore it" — not a denylist; and
+Also considered and dropped on merit:
+[detect-secrets](https://github.com/Yelp/detect-secrets)' `--word-list`, which is an allowlist —
+"if a secret contains a word in the list we ignore it" — not a denylist; and
 [git-crypt](https://www.agwa.name/projects/git-crypt/) for the list file, since every job that
 checks needs the key — option 5's secret with more steps.
 
