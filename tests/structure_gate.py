@@ -25,9 +25,11 @@ _SIGNOFF_ENTRY_RE = re.compile(
 )
 
 # D24 describes the cap qualitatively ("the two-hour unit") with no numeric value recorded
-# anywhere in the decision record. 20000 bytes (~roughly a 10-15 minute read) is a placeholder
-# default, chosen here and flagged as revisable — see PR body.
-DOC_SIZE_CAP_BYTES = 20_000
+# anywhere in the decision record. Raised from the 20_000-byte placeholder to 30_000
+# (~roughly a 15-20 minute read) per #78: the placeholder was hit four times in two days
+# (#66, #73, #76, #74), and trimming content to fit produced defects (#73) that no review
+# pass caught, so the grill on #74 (2026-09-17) decided to raise the cap instead of cutting.
+DOC_SIZE_CAP_BYTES = 30_000
 
 DOC_REQUIRED_KEYS = ("applies_when", "applies_when_not", "signed_off")
 RESOURCE_REQUIRED_KEYS = ("pairs_with", "harnesses", "cost")
