@@ -220,3 +220,17 @@ def test_link_text_stays_and_a_backtick_fence_does_not_close_a_tilde_fence():
         'The [page "x" link](https://a.example) says "exit code two blocks".\n'
     )
     assert [q.text for q in extract_quotes(text)] == ["exit code two blocks"]
+
+
+def test_a_stray_comment_opener_does_not_hide_later_paragraphs():
+    text = (
+        "Type `<!--` to start.\n\n"
+        'The [docs](https://a.example) say "exit code two blocks".\n\n`-->`\n'
+    )
+    assert [q.text for q in extract_quotes(text)] == ["exit code two blocks"]
+
+
+def test_line_number_ignores_words_inside_a_comment():
+    text = 'See [d](https://a.example) <!-- exit here -->\nand then\n"exit code two blocks".\n'
+    [quote] = extract_quotes(text)
+    assert quote.line == 3

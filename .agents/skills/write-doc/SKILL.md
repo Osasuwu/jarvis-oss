@@ -116,8 +116,8 @@ PR for review, on the doc and on the examples and resources it links to or that 
    that one has none, and says whether the quoted text is there. Fix every `NOT FOUND`: the
    wording is off, or the link points at a page that does not have the text (link the page that
    does). Check every `found elsewhere`, `unfetchable` and `no source` by hand. Your own phrases
-   in quotation marks show up as `no source`, or as `NOT FOUND` when a link is near; leave them
-   if the doc does not present them as a source's words.
+   in quotation marks show up too, under any verdict but `found`; leave them if the doc does not
+   present them as a source's words.
 2. **Scope words.** A claim about a tool that says *always*, *never*, *only*, *every*, *all* or
    *everywhere* needs a source that says the same. If the source says less, narrow the claim.
 3. **`tried` needs a trace**: a recorded example in this repo, a commit, an issue or a test,

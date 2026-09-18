@@ -3,10 +3,9 @@
 Lists every passage in quotation marks in a markdown doc and checks that it appears, verbatim, in
 a source linked from the same paragraph. When a paragraph has no link, the links of the paragraph
 right before it are tried, which covers "The same page says …". If those miss, every other link in
-the doc is tried,
-which catches a quote credited to the wrong page. Matching ignores case, whitespace, markdown
-emphasis, table pipes, and curly-versus-straight quotes and dashes. A quote with "…" is checked
-piece by piece.
+the doc is tried, which catches a quote credited to the wrong page. Matching ignores case,
+whitespace, markdown emphasis, table pipes, and curly-versus-straight quotes and dashes. A quote
+with "…" is checked piece by piece.
 
     python scripts/check_quotes.py docs/some-doc.md [more.md ...]
 
@@ -48,7 +47,8 @@ _ELLIPSIS_RE = re.compile(r"\s*(?:…|\.\.\.|\[…\]|\[\.\.\.\])\s*")
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
 _BLOCKQUOTE_RE = re.compile(r"^\s*(?:>\s?)+")
-_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
+# An HTML comment; it never runs past a blank line, so a stray "<!--" hides one paragraph at most.
+_COMMENT_RE = re.compile(r"<!--(?:(?!\n\s*\n).)*?-->", re.S)
 
 
 @dataclass(frozen=True)
@@ -72,7 +72,7 @@ def _paragraphs(text: str) -> list[tuple[int, str]]:
 
     A blank line, a heading, a table row or a new list item starts a new paragraph.
     """
-    lines = [_BLOCKQUOTE_RE.sub("", line) for line in _COMMENT_RE.sub(_blank, text).splitlines()]
+    lines = _body_lines(text)
     out: list[tuple[int, str]] = []
     buf: list[str] = []
     start = 0
@@ -108,6 +108,11 @@ def _paragraphs(text: str) -> list[tuple[int, str]]:
         buf.append(line)
     flush()
     return out
+
+
+def _body_lines(text: str) -> list[str]:
+    """The doc's lines with HTML comments blanked and blockquote markers removed."""
+    return [_BLOCKQUOTE_RE.sub("", line) for line in _COMMENT_RE.sub(_blank, text).splitlines()]
 
 
 def _blank(match: re.Match) -> str:
@@ -148,7 +153,7 @@ def doc_urls(text: str) -> tuple[str, ...]:
 
 def extract_quotes(text: str) -> list[Quote]:
     quotes: list[Quote] = []
-    lines = text.splitlines()
+    lines = _body_lines(text)
     prev_urls: tuple[str, ...] = ()
     for line, para in _paragraphs(text):
         urls = _urls(para)
