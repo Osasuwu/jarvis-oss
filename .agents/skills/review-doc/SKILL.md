@@ -120,7 +120,8 @@ skill instead.
 
 Give one fresh reviewer, not the session that made the fix:
 - the earlier report;
-- the diff of the whole commit, `git diff <reviewed commit>..<fix commit>`;
+- the whole diff, `git diff <reviewed commit>..<fix commit>`, not only the doc and the files in
+  scope;
 - a checkout of the repo at the fix commit, to read around each hunk and to search;
 - the PR's replies to the earlier report;
 - an absolute scratch directory, as in Rule 0.

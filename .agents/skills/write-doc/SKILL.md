@@ -95,5 +95,5 @@ detail there, not by dropping options.
 ## Before a person signs
 
 Run [`review-doc`](../review-doc/SKILL.md) on the PR, in contexts that did not write the doc. Fix
-every mismatch and missing option, or answer it in the PR. You wrote the doc, so you do not review
-it.
+or answer what it finds, and run its delta pass on each fix, until the loop its report section
+describes ends. You wrote the doc, so you do not review it.
