@@ -29,6 +29,10 @@ from the tool's documentation). Quotes were checked on 2026-09-17.
 
 ## The options
 
+None of these keep a secret out of git in the first place — `.gitignore` (or an equivalent
+untracked-files rule) the file before any option below matters; a secret that is never staged
+cannot be leaked by a check that only runs after `git add`.
+
 ### 1. Written rules only
 
 **How it works.** The agent's rules file says what not to write or touch.
@@ -62,7 +66,7 @@ writes are allowed ([permission modes](https://code.claude.com/docs/en/permissio
 ([permissions](https://code.claude.com/docs/en/permissions)). Cursor's CLI has `Write(**/.env*)`
 ([permissions](https://cursor.com/docs/cli/reference/permissions)); Gemini CLI a policy engine
 ([policy](https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/policy-engine.md));
-OpenCode `"edit": "deny"` patterns ([permissions](https://opencode.ai/docs/permissions/)).
+OpenCode `"edit": { "*": "deny" }` patterns ([permissions](https://opencode.ai/docs/permissions/)).
 
 **Best pick when** the thing to protect is a known path, and you want no code to maintain.
 
@@ -77,16 +81,18 @@ that opens files itself". Managed settings can lock them for an organisation.
 ### 4. A program that inspects each call before it runs
 
 **How it works.** The harness runs your script before each matching tool call, passing the call
-as JSON; the script blocks it. In Claude Code, "PreToolUse hooks run before every tool call,
-whether or not it needs permission"; exit 2 blocks "whether or not you print JSON", and a deny
-holds "even in `bypassPermissions` mode"
+as JSON; the script blocks it. In Claude Code, `PreToolUse` fires "on every tool call inside the
+agentic loop" — a separate mechanism from the permission system, not a substitute triggered only
+when a permission prompt would otherwise appear; exit 2 blocks "whether or not you print JSON",
+and a deny holds "even in `bypassPermissions` mode"
 ([hooks](https://code.claude.com/docs/en/hooks), [guide](https://code.claude.com/docs/en/hooks-guide)).
 Equivalents block on exit 2 or a deny decision in
 [Cursor](https://cursor.com/docs/hooks) (`preToolUse`, `beforeShellExecution`, `beforeMCPExecution`),
 [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md) (`BeforeTool`),
 [Codex](https://developers.openai.com/codex/hooks) (`PreToolUse`),
 [Copilot](https://docs.github.com/en/copilot/reference/hooks-reference) (`preToolUse`);
-[Kiro](https://kiro.dev/docs/hooks/)'s Pre Tool Use hook "can validate and block tool usage";
+[Kiro](https://kiro.dev/docs/hooks/)'s Pre Tool Use hook can "block tool execution unless preconditions
+are met";
 OpenCode plugins throw from `tool.execute.before` ([plugins](https://opencode.ai/docs/plugins/)).
 Vendors also ship ready-made scanners for these hooks, such as GitGuardian's ggshield.
 
@@ -101,7 +107,9 @@ body) at the moment of the call, including calls to remote APIs that never touch
 - Failure handling differs by harness. Claude Code: "Without valid JSON on stdout, Claude Code
   treats exit code 1 as a non-blocking error"; Cursor: "Crashes, timeouts, and non-zero exit codes
   other than 2 fail open by default", unless `failClosed: true`. A script that exits 0 on input it
-  cannot parse fails open everywhere.
+  cannot parse fails open everywhere. So does a command that fails to launch at all — the
+  interpreter it names is missing, or too old to run the script — since that also exits non-zero
+  but not 2; chaining `|| exit 2` onto the command makes a launch failure deny too.
 - The agent can edit the hook or its settings unless something else stops it, and a hook in
   project settings can be turned off locally with `disableAllHooks`; only managed settings cannot.
 - Vendors call it partial. Codex: "Treat tool hooks as a useful guardrail, not a complete
@@ -114,13 +122,28 @@ and input fields against the current tools. Status: tried — this is ours
 ### 5. OS sandbox or container
 
 **How it works.** The operating system limits what commands can write or reach. Claude Code's
-sandbox applies to "every Bash, PowerShell, or Monitor command and its child processes" and by
-default writes only to the working directory and temp
-([sandboxing](https://code.claude.com/docs/en/sandboxing)); Codex runs `workspace-write` with no
-network by default ([approvals and security](https://developers.openai.com/codex/agent-approvals-security)); Gemini CLI uses
+sandbox "applies only to Bash, PowerShell, and Monitor commands and their child processes"
+([sandboxing](https://code.claude.com/docs/en/sandboxing)) and by default writes only to the
+working directory and temp. Inside that boundary it separately denies writes to the files it
+loads configuration and code from, regardless of any `allowWrite` entry, in four groups: in the
+working directory and the directories above it, the `.claude` settings files, the
+`.claude/skills`, `.claude/agents`, `.claude/commands`, and `.claude/hooks` directories,
+`.mcp.json`, and the files Claude Code runs on its own such as `.claude/workflows` and
+`.claude/scheduled_tasks.json`; in the working directory only, shell startup files, `.gitconfig`,
+the `.vscode` and `.idea` directories, and `hooks` and `config` inside `.git`; the files that
+would turn the working directory into a bare git repository; and, separately, most of
+`~/.claude` itself ([sandboxing](https://code.claude.com/docs/en/sandboxing)). That built-in list
+does not know about a given repo's own review-gate files — here,
+`.agents/hooks/`, `.github/workflows/*` and `.gitleaks.toml` sit outside it, so covering them
+under option 5 needs an explicit `denyWrite` entry for each, added by the reader. Codex runs
+`workspace-write` with no network by default ([approvals and security](https://developers.openai.com/codex/agent-approvals-security)); Gemini CLI uses
 Seatbelt or containers ([sandbox](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/sandbox.md)).
 A dev container isolates the whole session; on Linux, `chattr +i` makes a single file
-unwritable to anyone without root.
+unwritable to anyone without root — plain `chmod`/ACLs do not: they restrict other accounts, not
+the one the agent already runs as, so the agent's own process can `chmod` the file back before
+writing it. Network isolation is separate from file protection: Claude Code's sandbox also
+restricts which hosts a command can reach by default, closing off exfiltration to an arbitrary
+endpoint even from an allowed write path ([sandboxing](https://code.claude.com/docs/en/sandboxing)).
 
 **Best pick when** the risk is a script or command doing something no rule anticipated, and you
 can list the paths and hosts it legitimately needs.
@@ -182,6 +205,12 @@ secret scanning also reads issue and pull request text, as alerts
 CI can run a scanner on each pull request; rulesets and code owners gate who may merge changes
 to chosen paths ([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets),
 [code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)).
+These facts are GitHub's. GitLab's equivalent, secret push protection, needs Ultimate tier and is
+off by default: a Security Manager, Maintainer or Owner enables it per project, and a
+self-managed instance needs an admin to allow it instance-wide first; once enabled it blocks a
+push containing a secret by default, skippable with `git push -o
+secret_push_protection.skip_all` or a `[skip secret push protection]` line in a commit message
+([secret push protection](https://docs.gitlab.com/user/application_security/secret_detection/secret_push_protection/)).
 
 **Best pick when** several people or agents write to one repo and you need one check none of
 them can switch off locally.
@@ -190,7 +219,7 @@ them can switch off locally.
 a pushed branch, which is already on the server. Push protection bypasses need only a reason from
 anyone with write access; repository-level push protection "Requires GitHub Secret Protection" to
 be enabled; push rulesets with path restrictions need a Team or Enterprise plan. A scanner in CI
-runs on any plan. Merge gates themselves are #44's subject.
+runs on any plan. Merge gates themselves are [#44](https://github.com/Osasuwu/jarvis-oss/issues/44)'s subject.
 
 **Lifecycle.** Repository settings and workflow files. Status: tried — CI gitleaks and a
 personal-literal scrub run on this repo
@@ -237,25 +266,32 @@ First, in order:
    close it with code owners or a token without the `workflows` permission).
 2. **Can the agent write to a public or permanent place outside git — issues, comments, chat?**
    Options 4 and 9 read the text before it lands; 6 limits where it can write; 8 blocks it only
-   for GitHub MCP calls on public repos, and otherwise alerts after.
-3. **Is there a file whose edit disables your checks?** Options 3 or 4 on edits, 5 (the sandbox
-   denies writes to the files that configure the harness), 6 (a token without the `workflows`
-   permission) and 8 (code owners) on the server. Don't count on 4 alone: it misses shell writes
-   unless it parses them.
+   for GitHub MCP calls on public repos (GitLab's equivalent needs Ultimate and is opt-in, see the
+   table below) and is silent on trackers and chat tools — a Slack message or Jira comment gets no
+   server-side layer from 8 at all, only 4 or 9 if you read the text before it lands.
+3. **Is there a file whose edit disables your checks?** Option 3 denies the edit outright; option
+   4 can too, but only if its matcher and parsing catch the write — bundle them only when you need
+   a hard, non-probabilistic block and confirm 4's matcher actually names the tool in question.
+   Also 5 (the sandbox
+   denies writes to the files that configure the harness itself, for Bash/PowerShell/Monitor
+   commands only, and only its own built-in list — a repo's own hook scripts or CI config need
+   an explicit `denyWrite` entry to be covered), 6 (a token without the `workflows` permission)
+   and 8 (code owners) on the server. Don't count on 4 alone: it misses shell writes unless it
+   parses them.
 
 These facts rule options out:
 
 | Option | Fits only if |
 |---|---|
-| 2 | a person is present for every session |
+| 2 | a person is present for every session, and the sessions are short enough that they read what they approve |
 | 3 | what you protect has a known path — a secrets file (`Read(./.env)`) or a config file — not a secret that can appear in any file |
 | 4 | your harness has a blocking pre-call hook (the list under option 4), and the matchers and fields name the tools your version has |
-| 5 | your OS or container runtime is supported, you can list the paths and hosts commands need, and (Claude Code) `allowUnsandboxedCommands` is `false` |
+| 5 | your OS or container runtime is supported, you can list the paths and hosts commands need, (Claude Code) `allowUnsandboxedCommands` is `false`, and the files you need covered are either on its built-in protected-path list or added by hand — the list does not know your own repo's hook scripts or CI config |
 | 6 | the agent can do its job without the write you withhold |
-| 7 | the risk you cover with it is a commit — other surfaces need another layer — and your setup installs the hook in every clone that commits |
-| 8 | your plan and visibility include the part you rely on: push protection needs Secret Protection (free on public repos), push rulesets need Team or Enterprise, a CI scan works anywhere |
+| 7 | the hook is wired in `.claude/settings.json` committed to the repo, not in a user-level settings file — check with one `git ls-files` |
+| 8 | you're on GitHub — these facts are GitHub's: push protection needs Secret Protection (free on public repos), push rulesets need Team or Enterprise, a CI scan works anywhere. GitLab's equivalent (secret push protection) needs Ultimate and is off until a Maintainer or Owner enables it |
 | 9 | the agent runs as a CI job whose writes can wait for a second job |
-| 10 | a wrong decision now and then is acceptable |
+| 10 | a false negative that slips past the hook still has to cross the CI scan — the second layer, not the hook, is what catches it |
 
 Among what is left: 4 and 9 read content on the surfaces they name, and 4 runs only in the
 harnesses you configured; 5 (with unsandboxed retries off) and 6 cannot be talked out of their
@@ -282,9 +318,12 @@ MCP writes, plus 4 or 9 to read the text on the surfaces it does not cover.
 
 **Our own choice.** Our agent runs unattended, posts issues and pull requests on a public repo,
 and we use one harness. So we take 4 — two hooks: a secret scanner on file edits, shell commands
-and every GitHub MCP call (the matcher is the server prefix, `^mcp__github__`, and the fields it
-reads include discussions and Copilot tasks), and a protected-file block on the hook scripts and
-their settings snippet — plus 8: CI gitleaks and a required human-review check before merge. The
+and every GitHub MCP call (the matcher is the server prefix, `^mcp__github__`, and it scans every
+string value in the call's input, at any nesting depth, not a named list of fields), and a
+protected-file block on the hook scripts and their settings snippet — plus 8: CI gitleaks and a
+required human-review check before merge. Each hook command in the settings snippet is
+`python3 "…" || exit 2`, so a launch failure (the interpreter missing, or too old to run the
+script) denies the call instead of letting it through. The
 protected set is a placeholder: its `.gitleaks.toml` does not exist here, and it does not list
 `.github/workflows/gitleaks.yml`; the repo has no code owners file. The protected-file hook
 blocks our own edits too, with no bypass for a person at the keyboard: we tried deciding from
@@ -295,6 +334,10 @@ public trace is the hook's docstring); see
 protected-file hook does not see shell writes — option 3's `Edit` deny rules, which reach shell
 redirections and `sed`/`tee`, would close most of that and are our next step; both hooks exit 0
 on input they cannot parse; and our GitHub matcher named retired tools until this rewrite, see
-[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md). How a scan can
-miss part of its input:
+[`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md). Device-identity
+leakage — a literal home-directory path, hostname or username, not a secret-shaped string — is
+scoped out of both hooks: they match shapes, not device-specific literals, and blocking a Bash
+command merely for containing a home-path literal would deny almost every ordinary command;
+closing that needs a literal list assembled from outside the repo and its own review, tracked in
+[#79](https://github.com/Osasuwu/jarvis-oss/issues/79). How a scan can miss part of its input:
 [`heredoc-stripping-boundary-bug.md`](../examples/heredoc-stripping-boundary-bug.md).

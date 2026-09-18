@@ -1,7 +1,7 @@
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
 Handles four tool types:
-- GitHub MCP write tools: scans body/title/content fields
+- GitHub MCP tools: scans body/title/content fields
 - Bash tool: scans command string for secrets and dangerous exfiltration patterns
 - Memory MCP tools: scans content/description fields for secrets
 - File writes (Edit/Write/NotebookEdit): scans the text being written to disk
@@ -87,20 +87,27 @@ COMPILED_BASH = [(re.compile(p, re.IGNORECASE), label) for p, label in BASH_DANG
 # ---------------------------------------------------------------------------
 
 
+def iter_strings(value):
+    """Yield every string found in value, at any nesting depth.
+
+    A field-name whitelist enumerates instances, not the class: #74 found
+    `custom_instructions`/`rationale` (assign_copilot_to_issue*) and
+    `commit_message`/`commit_title` (merge_pull_request, permanent
+    default-branch history) unscanned because they weren't on the list.
+    """
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from iter_strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from iter_strings(v)
+
+
 def extract_github_text(tool_input: dict) -> str:
-    """Pull all text fields from GitHub MCP tool inputs."""
-    parts = []
-    for key in ("body", "title", "content", "message", "description", "comment", "problem_statement"):
-        val = tool_input.get(key)
-        if isinstance(val, str):
-            parts.append(val)
-    # push_files: list of {path, content}
-    files = tool_input.get("files")
-    if isinstance(files, list):
-        for f in files:
-            if isinstance(f, dict) and isinstance(f.get("content"), str):
-                parts.append(f["content"])
-    return "\n".join(parts)
+    """Pull every string value out of a GitHub MCP tool_input, any nesting depth."""
+    return "\n".join(iter_strings(tool_input))
 
 
 def extract_bash_command(tool_input: dict) -> str:
