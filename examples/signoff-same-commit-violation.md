@@ -30,7 +30,7 @@ was open for 29 seconds with zero reviews, and squash-merged as
 pair already on `main` had turned the gate green. The doc was not reopened. The signature it restored was
 later called self-signed by the project itself — [PR #52](https://github.com/Osasuwu/jarvis-oss/pull/52),
 "all three signatures were self-signed" — which is the project's own account, not an independent
-record: every commit here carries one committer identity, so the tree cannot show who signed.
+record: every commit here is made by one account, so the tree cannot show who signed.
 
 **What it shows.**
 

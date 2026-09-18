@@ -11,9 +11,9 @@ This repo added a personal-literal scrub on 2026-09-16 (pull request #34): a ste
 `PERSONAL_LITERALS` repository secret and fails if any entry appears in the checkout. It merged
 75 seconds after it was opened, with no review.
 
-**What happened.** The secret was never created. On 2026-09-17 `gh secret list` for the repository
-returned nothing. Every run of the workflow from its first, on #34, until the fix on 2026-09-17
-— 32 of them — was green, and each run's log contains the line the script printed when it found
+**What happened.** The secret was not created until 2026-09-17; earlier that day `gh secret list`
+for the repository returned nothing. Every run of the workflow from its first, on #34, until the
+secret was set — 33 of them — was green, and each run's log contains the line the script printed when it found
 no hits:
 
 ```
@@ -34,8 +34,9 @@ fails." — and a clean run prints how many literals it checked:
 Scrub clean — checked N literal(s); none found in the tree.
 ```
 
-The cost is real: until someone sets the secret, the gitleaks job fails on every pull request,
-and on fork pull requests it always will, since forks get no secrets.
+The cost is real: with the secret unset, the gitleaks job fails on every pull request, and on
+fork pull requests it always will, since forks get no secrets. The secret was set later on
+2026-09-17, and a run after that logged `Scrub clean — checked 22 literal(s)`.
 
 **What to take from it.**
 

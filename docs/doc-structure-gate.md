@@ -27,8 +27,8 @@ closes that gap, and brings its own ways to go wrong:
 - **The writer edits the check** — the pull request that breaks the shape also loosens the rule.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
-two review runs on the pull request that added this doc.
+from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
+review run on the last commit of the pull request that added this doc.
 
 ## The options
 
@@ -174,7 +174,7 @@ this doc's "Advisory only" failure mode written into the script.
 changes and its companion file does not. [conftest](https://www.conftest.dev/options/)
 `--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
 own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
-frontmatter keys, a 20000-byte cap, relative links that must resolve, `pairs_with` targets that
+frontmatter keys, a 30000-byte cap, relative links that must resolve, `pairs_with` targets that
 must exist, example provenance and staleness, and the sign-off ledger rules.
 
 **Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
@@ -224,7 +224,7 @@ check, only review stops it — see "At more than one developer".
 
 Most options below read markdown: 2, 3, 4 and 7's tools, and 6's MD043. For reStructuredText or
 AsciiDoc, what is left is Vale (6), a script (8), a model check (9), review alone (1), and the
-generator's own build (5) — for Sphinx that is `-W`, which will "Turn warnings into errors …
+generator's own warnings-as-errors, as in 7 — for Sphinx that is `-W`, which will "Turn warnings into errors …
 exits with exit status 1 if any warnings are generated"
 ([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4
 accordingly.
@@ -273,12 +273,19 @@ that requires a workflow kept in another repo, or `pull_request_target`, which r
 from the base repository's **default** branch — not the branch the pull request targets — and
 under which you must never run the pull request's code. All four are GitHub. Rulesets themselves
 are free on a public repository, but restricting paths is a *push* ruleset, "available for the
-GitHub Team plan in internal and private repositories", and the organization ruleset that requires
-a workflow from another repo is documented only for Enterprise Cloud
-([available rules](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets));
-GitLab's code owners are "Premium, Ultimate". So on a personal account, code owners and those two
-rulesets are all out: `pull_request_target` and review are what is left. On GitLab Free, review
-alone stands between a pull request and the check it fails. Check only changed files —
+GitHub Team plan in internal and private repositories"
+([available rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)),
+and the organization ruleset that requires a workflow from another repo is documented for
+Enterprise Cloud and Enterprise Server
+([Enterprise Cloud](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
+Code owners work on a public repository on Free, but an author cannot approve their own pull
+request, so with one account a required code-owner review is never given and you merge around it.
+GitLab's code owners are "Premium, Ultimate". So for one developer on a personal account, code
+owners and those two rulesets are all out: `pull_request_target` and review are what is left. On
+GitLab Free, the CI config can live in another project
+([custom CI/CD configuration file](https://docs.gitlab.com/ci/pipelines/settings/#specify-a-custom-cicd-configuration-file)),
+out of the merge request's reach; without that, review alone stands between a pull request and
+the check it fails. Check only changed files —
 [changed-files](https://github.com/tj-actions/changed-files) lists them,
 [reviewdog](https://github.com/reviewdog/reviewdog) `-filter-mode` filters findings — or, when
 adopting a check on a tree that already fails it, record a baseline and fail only on new offences
@@ -293,7 +300,7 @@ where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its 
 [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
 **Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
-sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 317-line
+sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 319-line
 script and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
 below; 9, since a person reviews substance. Gaps: sections and option fields are not checked, so a doc can drop "How to
 choose" and pass; nothing checks that every doc has an example and a resource — `pairs_with`

@@ -27,8 +27,8 @@ completed it alone". What goes wrong:
 - **Nobody else** — one developer has no second person to approve.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
-two review runs on this doc's pull request.
+from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
+review run on the last commit of the pull request that added this doc.
 
 ## The options
 
@@ -72,8 +72,8 @@ pull request ([owners](https://github.com/kubernetes/community/blob/master/contr
 
 **Cost.** Needs a second account that the agent cannot use. The required-reviews page above adds
 that "Repository owners and administrators can merge a pull request even if it hasn't received an
-approving review" unless the rule is
-applied to administrators; a [ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+approving review"; the protected-branches page lets you "optionally apply the restrictions to
+administrators"; a [ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
 instead names who may bypass — "users with a certain role, such as repository administrator, or …
 specific teams or GitHub Apps". The protected-branches page linked above says of its own bypass
 lists that "Actors may only be added to bypass lists when the repository belongs to an
@@ -112,7 +112,8 @@ that cannot merge, with you merging by hand. Add option 2 only if you are allowe
 
 **Cost.** The separation holds only while the agent never has your token, SSH key or signing key;
 in your terminal it inherits your `gh` login and git credentials unless you remove them. Leave "Allow GitHub Actions to create and approve
-pull requests" off, as it is by default
+pull requests" off — the default for a repository on a personal account; an organization's
+repositories inherit the organization's setting
 ([Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository)).
 One more identity to create, scope and rotate.
 
@@ -196,7 +197,7 @@ report. Our [`review-doc`](../.agents/skills/review-doc/SKILL.md) skill does thi
 entry names it (`facts: <report URL>`). Tools that push toward evidence of reading:
 [Reviewable](https://docs.reviewable.io/files.html) tracks "the reviewed state of each file, at
 each revision, for each reviewer", while GitHub's own
-[mark as viewed](https://github.blog/news-insights/product-news/mark-files-as-viewed/) is free and
+[mark as viewed](https://github.blog/news-insights/product-news/mark-files-as-viewed/)
 resets when a file changes — either way a checkbox, and whether it blocks a merge is the
 repository's own condition;
 [pr-quiz](https://github.com/dkamm/pr-quiz) is "A GitHub Action that uses AI to generate a quiz

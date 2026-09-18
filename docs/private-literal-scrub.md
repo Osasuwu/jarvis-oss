@@ -29,7 +29,8 @@ The ways it goes wrong:
   and a name cannot be rotated like a key.
 
 Each option is marked **tried** (we run or ran it; the example says where — running is not proof
-it catches anything) or **sourced** (from the tool's documentation or a project's pull request). Quotes were checked against the linked pages on 2026-09-17, in two review runs on the
+it catches anything) or **sourced** (from the tool's documentation or a project's pull request). Quotes
+were checked against the linked pages on 2026-09-18, by a review run on the last commit of the
 pull request that added this doc.
 
 ## The options
@@ -75,7 +76,8 @@ provider command: `git secrets --add-provider -- cat /path/to/secret/file/patter
 can live in your home directory. A pre-call hook in the agent's harness can grep what the agent
 is about to write, pull request text included, before the tool runs (option 4 of
 [`agent-safety-hooks.md`](agent-safety-hooks.md)) — it lives in the harness, not in git, so
-`--no-verify` does not reach it, but the agent can turn it off with `disableAllHooks`.
+`--no-verify` does not reach it, but the agent can turn it off with `disableAllHooks` unless
+the hook is set in managed settings.
 
 **Best pick when** the string must stop before it leaves the machine, and every writer can be set
 up with the hook and the list.
@@ -103,19 +105,23 @@ match commit messages, branch names, emails and a list of secret file names
 ([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
 [GitGuardian](https://docs.gitguardian.com/secrets-detection/customize-detection/detector-settings)
 custom detectors are "only available for workspaces under our Business plan": you submit a
-regular expression for their team to validate, and "requests for detecting patterns like Personal
+detector name and example matches (a regular expression is optional) for their team to validate, and "requests for detecting patterns like Personal
 Identifiable Information (PII) … will be rejected" — which likely rules out people's names.
 
 **Best pick when** the repo belongs to an organization that pays for Secret Protection, or lives
 on a forge whose server hooks you control.
 
 **Cost.** The plan, or running the forge. "Anyone with write access to the repository can bypass
-push protection by specifying a bypass reason", by default. Push protection covers pushes; GitHub
-"also automatically scans" issue and pull request text.
+push protection by specifying a bypass reason", by default. Push protection covers pushes
+([push protection](https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection));
+secret scanning "also automatically scans" issue and pull request text, but that raises an alert
+after the text is posted, it blocks nothing
+([secret scanning](https://docs.github.com/en/code-security/secret-scanning/introduction/about-secret-scanning)).
 The host holds the list in plaintext.
 
 **Lifecycle.** Organization settings or a server hook. Status: sourced. Dropped on fit for us: a
-personal-account repo on GitHub.com gets neither.
+public personal-account repo on GitHub.com gets push protection for GitHub's own patterns, but no
+custom patterns and no server hooks.
 
 ### 5. A CI scan with the list held as a secret
 
@@ -131,10 +137,16 @@ on finding an exact match" ([secure use](https://docs.github.com/en/actions/refe
 a multi-line list has the same problem, so never print it. Fork pull
 requests: "secrets are not passed to the runner when a workflow is triggered from a forked
 repository" ([events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)),
-so the job must fail or say it skipped — not pass. `pull_request_target` hands forks the secret
-and runs in the base repository's context: safe only if the fork's code "is only ever inspected as
-data and never executed", which a grep over the diff is and a build step is not
+so the job must fail or say it skipped — not pass. Under `pull_request_target` the job gets the
+secret and runs in the base repository's context: safe only if the fork's code "is only ever
+inspected as data and never executed"
 ([pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)).
+Its default checkout is the base branch, so swapping the trigger alone scans nothing from the fork
+and passes. Checking out the fork's head and running the script from it runs the fork's code with
+the secret in its environment. The safe form takes the script and its config from the base branch,
+checks the head out into a separate directory as data, and runs nothing from it — nor a tool that
+reads config from it, such as gitleaks with the fork's `.gitleaks.toml`. Even then the log is
+public: a fork can plant candidate strings and read which paths fail, testing guesses in batches.
 And the secret is readable "by any workflow that runs with secrets", as
 [prism#476](https://github.com/sandydargoport/prism/pull/476) put it in rejecting this design.
 
@@ -206,10 +218,11 @@ alone by default; fix it first.
 
 **Best pick when** a string already landed. The last step, not a check.
 
-**Cost.** Every clone must re-clone. The data stays reachable "In any clones or forks of your
+**Cost.** Every clone must re-clone or be carefully cleaned up. The data stays reachable "In any clones or forks of your
 repository", by SHA in cached views and "Through any pull requests that reference them"
 ([removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
-Support can "permanently remove cached views and references … in pull requests" where the risk
+[GitHub Support](https://support.github.com) can "permanently remove cached views and references
+to the sensitive data in pull requests on GitHub", only where the risk
 "can't be mitigated by rotating affected credentials" — a name cannot be.
 
 **Lifecycle.** One-off. Status: sourced.
@@ -254,7 +267,7 @@ First, in order:
 | 2 | combined with a mechanical check |
 | 3 | every writer who holds the private strings — each laptop, or the agent's harness — has the hook and the list |
 | 4 | your host reads push contents: GitHub Secret Protection, or server hooks you run |
-| 5 | fork pull requests are absent, stay red, skip visibly, or get a data-only `pull_request_target` job; the string is public before it runs |
+| 5 | fork pull requests are absent, stay red, skip visibly, or get a data-only `pull_request_target` job whose public log lets a fork test guesses; the string is public before it runs |
 | 6 | someone writes and maintains the tokeniser; salt committed (guesses testable) or keyed (no forks) |
 | 7 | changes flow private to public, and you build the reverse import for what the public side takes |
 | 8 | you cannot enumerate the names in advance, and a person reviews every flag |
@@ -266,9 +279,11 @@ Among what is left:
 - **Before anyone can fetch it:** 7 and a server hook (4). GitHub push protection too, but anyone
   with write access can bypass it by default.
 - **Before it leaves the machine:** 3 and 10. A git hook is skipped with `--no-verify`, a harness
-  hook with `disableAllHooks`; and the harness hook covers only what that agent writes.
+  hook with `disableAllHooks` outside managed settings; and the harness hook covers only what
+  that agent writes.
 - **After the push, as a required check:** 5 and 6 — not skippable from a laptop, but 5 reaches
-  forks only through a data-only `pull_request_target` job.
+  forks only through a data-only `pull_request_target` job, and its public log lets a fork test
+  guesses.
 - **Beyond file contents:** 6 (both #1310 and prism#476) and a harness hook (3) cover commit
   messages and pull request text; a server hook (4), push rules and 7's `metadata.scrubber` see
   commit messages; 9 rewrites them. The rest check files.
@@ -297,11 +312,11 @@ gitleaks then the scrub, both added in the same pull request (#34). Not taken ye
 hook (3), which would check pull request text before it is posted and close the second gap below;
 6 would too, after the push. Gaps:
 
-- The secret was never set. All 32 scrub runs before the fix, from #34 on 2026-09-16 to
-  2026-09-17, logged "Scrub clean" and were green, checking nothing
+- The secret was unset until 2026-09-17. All 33 scrub runs before then, from #34 on 2026-09-16,
+  logged "Scrub clean" and were green, checking nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
-  The script now fails on an empty list, so every pull request — forks included — fails until
-  someone sets it.
+  The script now fails on an empty list. Fork pull requests never get the secret, so they stay
+  red.
 - It runs after the push, on file contents only — the checkout and plaintext files under `.git`,
   not packed history, commit messages, or pull request and issue text — and on exact strings.
 
