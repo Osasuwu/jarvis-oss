@@ -163,8 +163,8 @@ local files and block network requests"; [remark-validate-links](https://github.
 ### 8. A custom script in CI
 
 **How it works.** Code that parses the files and applies whatever rules you need, run as a
-required check. GitHub Docs builds custom rules on markdownlint, including "GHD012: Frontmatter
-must conform to the schema" and a cross-file one, "GHD063: Children frontmatter paths must exist"
+required check. GitHub Docs builds custom rules on markdownlint, including GHD012, "Frontmatter
+must conform to the schema", and a cross-file one, GHD063, "Children frontmatter paths must exist"
 ([content linter](https://docs.github.com/en/contributing/collaborating-on-github-docs/using-the-content-linter)).
 Kubernetes' [`verify-toc-vs-template.sh`](https://github.com/kubernetes/enhancements/blob/master/hack/verify-toc-vs-template.sh)
 diffs each changed proposal's headings against the template's, so the template is the rule — but
@@ -222,8 +222,9 @@ check, only review stops it — see "At more than one developer".
 
 ## How to choose
 
-Most options below read markdown: 2, 3, 4 and 7's tools, and 6's MD043. For reStructuredText or
-AsciiDoc, what is left is Vale (6), a script (8), a model check (9), review alone (1), and the
+Most options below read markdown: 2, 3 and 4's tools, 6's MD043, and 7's relative-link checks
+(lychee reads other formats as plain text, so it still finds URLs there, but not relative links).
+For reStructuredText or AsciiDoc, what is left is Vale (6), a script (8), a model check (9), review alone (1), and the
 generator's own warnings-as-errors, as in 7 — for Sphinx that is `-W`, which will "Turn warnings into errors …
 exits with exit status 1 if any warnings are generated"
 ([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4

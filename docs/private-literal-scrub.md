@@ -117,6 +117,8 @@ push protection by specifying a bypass reason", by default. Push protection cove
 secret scanning "also automatically scans" issue and pull request text, but that raises an alert
 after the text is posted, it blocks nothing
 ([secret scanning](https://docs.github.com/en/code-security/secret-scanning/introduction/about-secret-scanning)).
+Push protection also covers "Interactions with the GitHub MCP server (public repositories only)",
+with GitHub's own patterns, not your list.
 The host holds the list in plaintext.
 
 **Lifecycle.** Organization settings or a server hook. Status: sourced. Dropped on fit for us: a
@@ -137,12 +139,17 @@ on finding an exact match" ([secure use](https://docs.github.com/en/actions/refe
 a multi-line list has the same problem, so never print it. Fork pull
 requests: "secrets are not passed to the runner when a workflow is triggered from a forked
 repository" ([events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)),
-so the job must fail or say it skipped — not pass. Under `pull_request_target` the job gets the
-secret and runs in the base repository's context: safe only if the fork's code "is only ever
-inspected as data and never executed"
+and the workflow that runs is the fork's own copy, on the merge commit: a fork can edit the step
+to pass, it just never sees the list. A fork's result checks nothing, whatever colour it shows. On
+GitLab a fork's merge request pipeline runs in the fork, with the fork's CI config. Under
+`pull_request_target` the job gets the secret and runs in the base repository's context: safe only
+if the fork's code "is only ever inspected as data and never executed"
 ([pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)).
-Its default checkout is the base branch, so swapping the trigger alone scans nothing from the fork
-and passes. Checking out the fork's head and running the script from it runs the fork's code with
+The same page adds that "GitHub provides a default event policy that blocks the
+`pull_request_target` event in public repositories", enforced from 2026-11-02, so the repository
+must allow the event first. Its default checkout is the base repository's default branch, so
+swapping the trigger alone scans nothing from the fork and passes. Checking out the fork's head
+needs `allow-unsafe-pr-checkout: true`, and running the script from it runs the fork's code with
 the secret in its environment. The safe form takes the script and its config from the base branch,
 checks the head out into a separate directory as data, and runs nothing from it — nor a tool that
 reads config from it, such as gitleaks with the fork's `.gitleaks.toml`. Even then the log is
@@ -221,7 +228,7 @@ alone by default; fix it first.
 **Cost.** Every clone must re-clone or be carefully cleaned up. The data stays reachable "In any clones or forks of your
 repository", by SHA in cached views and "Through any pull requests that reference them"
 ([removing sensitive data](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
-[GitHub Support](https://support.github.com) can "permanently remove cached views and references
+The same page says GitHub Support can "permanently remove cached views and references
 to the sensitive data in pull requests on GitHub", only where the risk
 "can't be mitigated by rotating affected credentials" — a name cannot be.
 
@@ -259,7 +266,8 @@ First, in order:
    match commit metadata, branch names and filenames, not file contents; GitLab secret push
    protection and GitHub's default patterns take no list of yours — add either alongside another.
 4. **Do people open pull requests from forks?** Yes → 6 with a committed salt. 5 reaches them only
-   through `pull_request_target` with a data-only step; otherwise it must skip them visibly.
+   through a data-only `pull_request_target` job; otherwise a fork's run checks nothing, since it
+   runs the fork's own copy of the workflow.
 
 | Option | Fits only if |
 |---|---|
@@ -267,7 +275,7 @@ First, in order:
 | 2 | combined with a mechanical check |
 | 3 | every writer who holds the private strings — each laptop, or the agent's harness — has the hook and the list |
 | 4 | your host reads push contents: GitHub Secret Protection, or server hooks you run |
-| 5 | fork pull requests are absent, stay red, skip visibly, or get a data-only `pull_request_target` job whose public log lets a fork test guesses; the string is public before it runs |
+| 5 | fork pull requests are absent, are treated as unchecked whatever their run shows, or get a data-only `pull_request_target` job (allowed past GitHub's default event policy) whose public log lets a fork test guesses; the string is public before it runs |
 | 6 | someone writes and maintains the tokeniser; salt committed (guesses testable) or keyed (no forks) |
 | 7 | changes flow private to public, and you build the reverse import for what the public side takes |
 | 8 | you cannot enumerate the names in advance, and a person reviews every flag |
@@ -315,8 +323,8 @@ hook (3), which would check pull request text before it is posted and close the 
 - The secret was unset until 2026-09-17. All 33 scrub runs before then, from #34 on 2026-09-16,
   logged "Scrub clean" and were green, checking nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
-  The script now fails on an empty list. Fork pull requests never get the secret, so they stay
-  red.
+  The script now fails on an empty list. Fork pull requests never get the secret, but they run
+  their own copy of the workflow, so a green run from a fork checked nothing.
 - It runs after the push, on file contents only — the checkout and plaintext files under `.git`,
   not packed history, commit messages, or pull request and issue text — and on exact strings.
 

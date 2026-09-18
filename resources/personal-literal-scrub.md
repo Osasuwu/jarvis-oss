@@ -31,8 +31,8 @@ script must never print the list or a transformed form of it.
 ## How you know it ran
 
 - **Checked something:** the step log ends with
-  `Scrub clean — checked N literal(s); none found in the tree.` N is the number of entries in the
-  secret. An older log line without a count, `Scrub clean — no personal literals found in the tree.`,
+  `Scrub clean — checked N literal(s); none found in the tree.` N is the number of non-blank
+  lines in the secret, after trimming. An older log line without a count, `Scrub clean — no personal literals found in the tree.`,
   proves nothing — that is what it printed with no list at all
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
 - **No list:** the step fails with "No personal literals configured: set the PERSONAL_LITERALS
