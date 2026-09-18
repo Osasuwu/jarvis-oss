@@ -170,3 +170,53 @@ def test_main_exits_1_on_not_found_and_0_otherwise(tmp_path, capsys):
     assert 'NOT FOUND: "exit code two blocks"' in capsys.readouterr().out
     assert main([str(doc)], fetch=_fetcher({"https://a.example": "exit code two blocks"})) == 0
     assert main([]) == 2
+
+
+# --- review findings on #88 ------------------------------------------------------
+
+
+def test_fallback_is_only_the_paragraph_right_before(tmp_path):
+    body = 'See [docs](https://a.example).\n\nOther words.\n\nWe say "some own phrase here".'
+    assert _verdicts(tmp_path, body, {"https://a.example": "x"}) == [
+        ("some own phrase here", "no source")
+    ]
+
+
+def test_a_heading_breaks_the_fallback():
+    [quote] = extract_quotes('See [docs](https://a.example).\n\n## Next\n\nIt says "a b c".\n')
+    assert quote.urls == ()
+
+
+def test_binary_local_link_is_unfetchable_not_a_crash(tmp_path):
+    (tmp_path / "img.png").write_bytes(b"\x89PNG\x80\x81\x82")
+    body = 'See ![diagram](img.png) and [docs](https://a.example): "wrong words entirely here".'
+    assert _verdicts(tmp_path, body, {"https://a.example": "other"}) == [
+        ("wrong words entirely here", "NOT FOUND")
+    ]
+
+
+def test_quote_across_blockquote_lines(tmp_path):
+    body = 'The [docs](https://a.example) say:\n> "exit code\n> two blocks the call"'
+    assert _verdicts(tmp_path, body, {"https://a.example": "exit code two blocks the call"}) == [
+        ("exit code two blocks the call", "found")
+    ]
+
+
+def test_url_with_parentheses_link_title_anchor_and_comment():
+    text = (
+        "<!-- a note \"not a quote at all\" -->\n"
+        '[wiki](https://w.example/Foo_(bar) "Docs Page Title Here") and [above](#x)'
+        ' say "exit code two blocks".\n'
+    )
+    [quote] = extract_quotes(text)
+    assert (quote.text, quote.urls, quote.line) == (
+        "exit code two blocks", ("https://w.example/Foo_(bar)",), 2
+    )
+
+
+def test_link_text_stays_and_a_backtick_fence_does_not_close_a_tilde_fence():
+    text = (
+        "~~~\n```python\n~~~\n\n"
+        'The [page "x" link](https://a.example) says "exit code two blocks".\n'
+    )
+    assert [q.text for q in extract_quotes(text)] == ["exit code two blocks"]

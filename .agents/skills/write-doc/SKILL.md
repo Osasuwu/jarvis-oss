@@ -49,12 +49,13 @@ Then say how claims are marked: which options we **tried** (and where the trace 
 The whole space a reader could pick from, not only what we used. Search outside our projects:
 tool docs, source code, well-known projects that solve the same problem.
 
-Search before you write this section, and search blind. Run review-doc's
-[pass 2](../review-doc/SKILL.md#pass-2--completeness-blind) yourself, in a fresh context (a
-subagent, or a new session) that gets only your frontmatter and "The problem". It lists every
-approach it finds, with one primary source each, and the queries it ran. Each approach becomes an
-option, goes under one, or is excluded by `applies_when_not`. Put the queries in the PR. The
-reviewer runs pass 2 again; this is so that it finds nothing new.
+Search before you write this section, and search blind. Have review-doc's
+[pass 2](../review-doc/SKILL.md#pass-2--completeness-blind) run in a fresh context (a subagent,
+or a new session), never in the session that writes the doc, and give it only your frontmatter
+and "The problem". It lists every approach it finds, with one primary source each, and the
+queries it ran. Each approach becomes an option, goes under one, or is excluded by
+`applies_when_not`. Put the queries in the PR. The reviewer runs pass 2 again; this is so that
+it finds nothing new.
 
 Each option gets:
 
@@ -111,16 +112,17 @@ PR for review, on the doc and on the examples and resources it links to or that 
 `pairs_with` (review-doc's scope):
 
 1. **Quotes.** Run `python scripts/check_quotes.py <doc> <each of those files>`. For each quote it
-   fetches the pages linked from the quote's paragraph, or from the paragraph before if that one
-   has none, and says whether the quoted text is there. Fix every `NOT FOUND`: the wording is
-   off, or the link points at a page that does not have the text (link the page that does).
-   Check every `found elsewhere`, `unfetchable` and `no source` by hand. Your own phrases in
-   quotation marks show up as `NOT FOUND` or `no source`; leave them if the doc does not present
-   them as a source's words.
+   fetches the pages linked from the quote's paragraph, or from the paragraph right before it if
+   that one has none, and says whether the quoted text is there. Fix every `NOT FOUND`: the
+   wording is off, or the link points at a page that does not have the text (link the page that
+   does). Check every `found elsewhere`, `unfetchable` and `no source` by hand. Your own phrases
+   in quotation marks show up as `no source`, or as `NOT FOUND` when a link is near; leave them
+   if the doc does not present them as a source's words.
 2. **Scope words.** A claim about a tool that says *always*, *never*, *only*, *every*, *all* or
    *everywhere* needs a source that says the same. If the source says less, narrow the claim.
 3. **`tried` needs a trace**: a recorded example in this repo, a commit, an issue or a test,
-   linked from the claim. Without one, the option is *sourced*.
+   linked from the claim. Without one, the option is *sourced*, and its "How it works" needs the
+   tool's docs or code quoted.
 4. **Each fact in one version.** For every claim you wrote or changed, search the doc and those
    files for the same fact (a tool, a flag, a number) and make every mention agree.
 
@@ -131,7 +133,7 @@ A fix is new text, and new text is unreviewed. For each finding:
 1. Fetch the source yourself and read the passage. Do not write from the reviewer's summary of it.
 2. Change what the finding needs and nothing more. Every sentence you add is a claim the next
    round has to check.
-3. Run steps 1 and 4 of "Before review" again, then the review.
+3. Run every step of "Before review" again, then the review.
 
 ## Before a person signs
 

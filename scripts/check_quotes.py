@@ -1,8 +1,9 @@
 """Quote check — a writer's step before review-doc (#86).
 
-Lists every quoted passage in a markdown doc and checks that it appears, verbatim, in a source
-linked from the same paragraph. When a paragraph has no link, the previous paragraph's links are
-tried, which covers "The same page says …". If those miss, every other link in the doc is tried,
+Lists every passage in quotation marks in a markdown doc and checks that it appears, verbatim, in
+a source linked from the same paragraph. When a paragraph has no link, the links of the paragraph
+right before it are tried, which covers "The same page says …". If those miss, every other link in
+the doc is tried,
 which catches a quote credited to the wrong page. Matching ignores case, whitespace, markdown
 emphasis, table pipes, and curly-versus-straight quotes and dashes. A quote with "…" is checked
 piece by piece.
@@ -15,7 +16,7 @@ Each quote gets one verdict:
 - ``found elsewhere`` — only a link from another part of the doc has it. Check the attribution.
 - ``NOT FOUND`` — no source linked from the doc contains it. Fix the quote, or the link. If a
   candidate could not be fetched, it is listed; check that one by hand first.
-- ``no source`` — no link in this paragraph or the one before it.
+- ``no source`` — no link in this paragraph or the one right before it.
 - ``unfetchable`` — no candidate source could be fetched, or each came back near-empty (a
   script-rendered page, a bot check, a rate limit). Check these by hand.
 
@@ -39,12 +40,15 @@ MIN_QUOTE_WORDS = 3
 MIN_PIECE_WORDS = 2
 
 _QUOTE_RE = re.compile(r'"([^"]+)"|“([^”]+)”')
-_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
+# [text](url) or [text](url "title"); the url may hold one level of parentheses.
+_LINK_RE = re.compile(r"\[([^\]]*)\]\(((?:[^()\s]|\([^()\s]*\))+)(?:\s+\"[^\"]*\")?\)")
 _BARE_URL_RE = re.compile(r"https?://[^\s)>\]`\"]+")
 MIN_SOURCE_CHARS = 300
 _ELLIPSIS_RE = re.compile(r"\s*(?:…|\.\.\.|\[…\]|\[\.\.\.\])\s*")
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _LIST_ITEM_RE = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
+_BLOCKQUOTE_RE = re.compile(r"^\s*(?:>\s?)+")
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.S)
 
 
 @dataclass(frozen=True)
@@ -68,11 +72,11 @@ def _paragraphs(text: str) -> list[tuple[int, str]]:
 
     A blank line, a heading, a table row or a new list item starts a new paragraph.
     """
-    lines = text.splitlines()
+    lines = [_BLOCKQUOTE_RE.sub("", line) for line in _COMMENT_RE.sub(_blank, text).splitlines()]
     out: list[tuple[int, str]] = []
     buf: list[str] = []
     start = 0
-    in_fence = False
+    fence = ""  # the marker that opened the current fence; only the same one closes it
 
     def flush() -> None:
         if buf:
@@ -81,11 +85,12 @@ def _paragraphs(text: str) -> list[tuple[int, str]]:
 
     for i in range(_strip_frontmatter(lines), len(lines)):
         line = lines[i]
-        if _FENCE_RE.match(line):
+        opener = _FENCE_RE.match(line)
+        if opener and (not fence or opener.group(1) == fence):
             flush()
-            in_fence = not in_fence
+            fence = "" if fence else opener.group(1)
             continue
-        if in_fence:
+        if fence:
             continue
         stripped = line.strip()
         if not stripped:
@@ -103,6 +108,11 @@ def _paragraphs(text: str) -> list[tuple[int, str]]:
         buf.append(line)
     flush()
     return out
+
+
+def _blank(match: re.Match) -> str:
+    """An HTML comment becomes blank lines, so line numbers stay right."""
+    return "\n" * match.group(0).count("\n")
 
 
 def _drop_code_quotes(paragraph: str) -> str:
@@ -126,7 +136,7 @@ def _quote_line(lines: list[str], start: int, body: str) -> int:
 
 def _urls(paragraph: str) -> tuple[str, ...]:
     """Markdown link targets, then bare URLs, in order."""
-    urls = tuple(url for _, url in _LINK_RE.findall(paragraph))
+    urls = tuple(url for _, url in _LINK_RE.findall(paragraph) if not url.startswith("#"))
     bare = _BARE_URL_RE.findall(_LINK_RE.sub("", paragraph))
     return urls + tuple(u.rstrip(".,;:") for u in bare)
 
@@ -143,12 +153,12 @@ def extract_quotes(text: str) -> list[Quote]:
     for line, para in _paragraphs(text):
         urls = _urls(para)
         candidates = urls or prev_urls
-        for match in _QUOTE_RE.finditer(_drop_code_quotes(para)):
+        prose = _LINK_RE.sub(r"[\1]", _drop_code_quotes(para))  # a link title is no quote
+        for match in _QUOTE_RE.finditer(prose):
             body = match.group(1) or match.group(2)
             if len(body.split()) >= MIN_QUOTE_WORDS:
                 quotes.append(Quote(_quote_line(lines, line, body), body, candidates))
-        if urls:
-            prev_urls = urls
+        prev_urls = urls
     return quotes
 
 
@@ -242,7 +252,10 @@ def check(doc: Path, fetch=fetch_url) -> list[tuple[Quote, str, tuple[str, ...]]
                 cache[url] = text if text and len(normalize(text)) >= MIN_SOURCE_CHARS else None
             else:
                 local = (doc.parent / url.split("#", 1)[0]).resolve()
-                cache[url] = local.read_text(encoding="utf-8") if local.is_file() else None
+                try:
+                    cache[url] = local.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):  # missing, a directory, an image
+                    cache[url] = None
         return cache[url]
 
     text = doc.read_text(encoding="utf-8")
