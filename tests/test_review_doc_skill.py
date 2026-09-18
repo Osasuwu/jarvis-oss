@@ -54,7 +54,7 @@ def test_how_to_choose_findings_carry_a_severity():
     # #87: unranked pass 3 findings gave each doc 10-15 fixes and no point where it was done.
     text = " ".join(_skill_text().split())
     assert "Mark each finding `blocking` or `follow-up`" in text
-    assert "If you cannot name the setup or quote both sides, the finding is `follow-up`." in text
+    assert "If you cannot name the setup, or quote two sides that cannot both be true" in text
 
 
 def test_fix_commits_get_a_delta_pass():

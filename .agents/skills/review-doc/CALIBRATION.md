@@ -186,10 +186,10 @@ any result.
 - **A, seeded, pass 3:** five edits in "How to choose", three meant `blocking` and two meant
   `follow-up`. Reviewed twice, given only the copy and the new pass 3 text.
 - **B, clean, pass 3:** the doc as merged.
-- **D, delta:** a git repo with the seeded doc set as the reviewed commit, and a fix commit on top
+- **C, delta:** a git repo with the seeded doc set as the reviewed commit, and a fix commit on top
   of it. The reviewer got an earlier report of five findings, the diff, the repo to read and
-  search, and the web. Run twice: D1 with a draft of the delta pass, D2 with the whole skill as
-  merged here.
+  search, and the web. Run twice: C1 with a draft of the delta pass, C2 with the skill as of the
+  PR's first review fixes.
 
 ### Pass 3 plants
 
@@ -230,19 +230,20 @@ which had no severity, drew ten findings of one weight on an earlier commit (`8a
 
 ### Delta plants
 
-The fix commit fixed three findings correctly, left one unfixed, and changed our own choice from
-option 3 to 2 in the doc only. It also brought in three new errors.
+The fix commit fixed one finding correctly and left one unfixed. The other three fixes each
+brought in an error: a wrong reason, a reworded quote, and our own choice changed from option 3
+to 2 in the doc only.
 
-| # | In the fix commit | Expected | D1 | D2 |
+| # | In the fix commit | Expected | C1 | C2 |
 |---|---|---|---|---|
 | — | finding 1 (row 3) fixed correctly | `fixed`, no new finding | `fixed`, no new finding | `fixed`, confirmed |
-| D2 | finding 4 (option 6's cost) left as it was | `not fixed` | `not fixed` | `not fixed` |
 | D1 | finding 3 fixed with "a bare line can break YAML" | mismatch: `package.json` is JSON | caught | caught, npm docs fetched |
-| D4 | finding 2 fixed with a git quote reworded to "as if it had been found at the end of the including file" | pass 1 mismatch | caught | caught, git-config fetched |
+| D2 | finding 4 (option 6's cost) left as it was | `not fixed` | `not fixed` | `not fixed` |
 | D3 | finding 5: our choice moved from option 3 to 2 in the doc only | leftovers | caught in the resource, the example and `jarvis-setup`'s SKILL.md | the same, and a test |
+| D4 | finding 2 fixed with a git quote reworded to "as if it had been found at the end of the including file" | pass 1 mismatch | caught | caught, git-config fetched |
 
-**Both runs caught all four plants, with 0 false positives.** In D2 all three leftover files, and
-`tests/test_jarvis_setup_skill.py`, came from the whole-repo search the skill now asks for. D1
+**Both runs caught all four plants, with 0 false positives.** In C2 all three leftover files, and
+`tests/test_jarvis_setup_skill.py`, came from the whole-repo search the skill now asks for. C1
 found the `jarvis-setup` file by going past its draft, which searched only the files in scope.
 Both runs also reported the defects the changed choice made, which were not planted:
 
@@ -250,23 +251,23 @@ Both runs also reported the defects the changed choice made, which were not plan
 - "both carry an update and an uninstall step" contradicts option 2's "Substring: neither";
 - option 7 says "With 3 or 4", but our choice now carries it by 2.
 
-D2 scored finding 5 `fixed` and reported the damage as new findings, as the skill now says. D1,
-which had no rule for this, called it `not fixed`. D2 also put the reversed design choice on its
+C2 scored finding 5 `fixed` and reported the damage as new findings, as the skill now says. C1,
+which had no rule for this, called it `not fixed`. C2 also put the reversed design choice on its
 "read these closely" list.
 
 ### Variance between runs
 
-- A1 and A2 gave every plant the same severity. A1 did not report F1; A2 did.
+- A1 and A2 gave the same severity to every plant both reported. A1 did not report F1; A2 did.
 - Of the extra findings, the two runs agreed only on the one that follows from B1.
-- D1 and D2 caught the same plants and the same three unplanted defects. D2 filed the leftover
+- C1 and C2 caught the same plants and the same three unplanted defects. C2 filed the leftover
   files as `mismatch` and option 7's line as a how-to-choose `follow-up`.
 
 ### Limits of this run
 
-- D1 ran on a draft: it had pass 1's text and the report format, but not pass 3's. D2 had the
-  whole skill.
-- The planter chose which edits were meant to be harmless, and one of the two was not. Severity
-  plants need a second reader before the run.
+- C1 ran on a draft: it had pass 1's text and the report format, but not pass 3's. C2 had the
+  whole skill, before the second round of review fixes to the delta pass.
+- The planter chose which edits were meant to be harmless, and one of the two arguably was not.
+  Severity plants need a second reader before the run.
 - Every run used the same doc as Runs 1 and 2, and the delta plants and fix are one commit pair.
 
 ## Limits seen

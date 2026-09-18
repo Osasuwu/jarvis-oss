@@ -86,12 +86,13 @@ not report that the steps cannot reach a single option.
    - `blocking` — you name a setup from step 1 and what goes wrong for it: an option ruled out
      that it could build, one left in that it cannot build, nothing left with no pointer, or a
      judgement filter that the setup could answer either way, changing what is left. Also
-     `blocking`: a contradiction with an option's own section, with both sides quoted, where both
-     cannot be true at once.
+     `blocking`: a contradiction with an option's own section, with both sides quoted, that cannot
+     both be true.
    - `follow-up` — everything else: wording that could be tighter, a trade-off named more loosely
      than the option's cost, a judgement filter that sends none of your setups anywhere wrong.
 
-   If you cannot name the setup or quote both sides, the finding is `follow-up`.
+   If you cannot name the setup, or quote two sides that cannot both be true, the finding is
+   `follow-up`.
 4. **Value test.** Find two realistic setups where the option the doc calls ours is ruled out, or
    stays in but loses a trade-off the section names. If there are none, the doc only justifies our
    choice. Report `fails value test`; it is `blocking`.
@@ -119,8 +120,8 @@ skill instead.
 
 Give one fresh reviewer, not the session that made the fix:
 - the earlier report;
-- the diff, `git diff <reviewed commit>..<fix commit>`, over the doc and the files in scope;
-- the paths of the doc and the files in scope, to read around each hunk;
+- the diff of the whole commit, `git diff <reviewed commit>..<fix commit>`;
+- a checkout of the repo at the fix commit, to read around each hunk and to search;
 - the PR's replies to the earlier report;
 - an absolute scratch directory, as in Rule 0.
 
@@ -128,18 +129,21 @@ This one context runs checks from passes 1 and 3. That is the one exception to "
 fresh": the fix is small, and the reviewer sees the earlier passes only through their report.
 
 1. **Each finding** of the earlier report gets one verdict:
-   - `fixed` — the diff changes what the finding named. Judge only that; anything the change
-     breaks is a new finding from steps 2–4.
-   - `answered` — the PR replies to it with a reason, or links an issue it was filed as.
+   - `fixed` — after the diff, the finding no longer holds. Judge only that; anything the
+     change breaks is a new finding from steps 2–4.
+   - `answered` — the PR links an issue the finding was filed as, or, for any finding but a
+     `follow-up`, replies to it with a reason.
    - `not fixed` — neither.
 2. **Each added or changed claim** gets pass 1's checks and verdicts, from a source fetched now.
 3. **Each added or changed filter, trade-off, example or choice** gets pass 3's checks and
-   severity, against the option sections as they stand after the fix.
+   severity, against the option sections as they stand after the fix. If the diff changes our
+   own choice, run the value test again.
 4. **Leftovers.** For each fact the diff changes (a tool, a flag, a number, a quote, an option's
    name or number, a filter), search the whole repo for its old wording and for every other
    mention of it. A mention that now disagrees with the fix is a finding at its own line, even if
-   that file is outside the scope: a `mismatch` if it is a claim pass 1 checks, otherwise a
-   how-to-choose finding with its severity.
+   that file is outside the scope: a `mismatch` if it states a fact (a tool's behaviour, a
+   flag, a number, a quote, which option we use), otherwise a how-to-choose finding with its
+   severity.
 5. **New calls.** A call the diff adds, in the sense of pass 4, goes on a "read these closely"
    list.
 
@@ -177,9 +181,9 @@ closely" list holds only the calls the fix added. It has no completeness search.
 The writer fixes every mismatch, every `missing` option and every `blocking` finding, or answers
 each one in the PR. A `follow-up` is fixed or filed as an issue, and the PR says which. The fix
 then gets the delta pass, and that report is the earlier report for the next fix. The loop ends
-when a report has no mismatch, `missing` option or `blocking` finding left that is not fixed or
-answered. The person signs only after reading the report, the "read these closely" places, and
-a skim of the rest. What that signature covers is set out in
+when no mismatch, `missing` option or `blocking` finding is left that is not fixed or answered,
+and every `follow-up` is fixed or filed. The person signs only after reading the report, the
+"read these closely" places, and a skim of the rest. What that signature covers is set out in
 [`docs/SIGNOFF.md`](../../../docs/SIGNOFF.md).
 
 The shape a practice doc is expected to have, and why, is in
