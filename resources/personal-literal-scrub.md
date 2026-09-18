@@ -1,7 +1,7 @@
 ---
 pairs_with: docs/private-literal-scrub.md
 harnesses: all — the scrub is a Python script run by GitHub Actions on pull requests; it does not depend on the agent's harness (see docs/harnesses.md). It needs GitHub Actions secrets, which fork pull requests do not receive.
-cost: one step in the gitleaks job per pull request (Python 3.12, a walk of the checkout); a repository secret someone must create and keep current; a red check on every fork pull request
+cost: one step in the gitleaks job per pull request (Python 3.12, a walk of the checkout); a repository secret someone must create and keep current; no real check on fork pull requests (an unedited run fails; a fork can edit the step to pass)
 ---
 
 # Personal-literal scrub
@@ -23,7 +23,8 @@ required check.
 
 **Not covered:** packed git history, commit messages, pull request and issue text (the walk does
 include plaintext files under `.git`, such as refs); any
-variant of a literal (case, spacing, a split across lines); fork pull requests, which fail. The
+variant of a literal (case, spacing, a split across lines); fork pull requests, which get no secret: an
+unedited run fails, but a fork can edit the step to pass, so no fork result counts. The
 push has already happened when it runs. Keep each literal specific enough that it cannot occur by
 chance, or every pull request goes red. The job log masks the secret by exact match only, so the
 script must never print the list or a transformed form of it.
@@ -36,7 +37,7 @@ script must never print the list or a transformed form of it.
   proves nothing — that is what it printed with no list at all
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
 - **No list:** the step fails with "No personal literals configured: set the PERSONAL_LITERALS
-  repository secret…". On a fork pull request this is expected.
+  repository secret…". On an unedited fork pull request this is expected.
 - **Catches something:** never plant a real entry — the branch is public the moment you push it.
   Add a canary to the secret, a random string that means nothing (`canary-7f3c9a`), then put that
   string in a file on a throwaway branch and open a pull request; the step must fail and name the

@@ -222,9 +222,11 @@ check, only review stops it — see "At more than one developer".
 
 ## How to choose
 
-Most options below read markdown: 2, 3 and 4's tools, 6's MD043, and 7's relative-link checks
-(lychee reads other formats as plain text, so it still finds URLs there, but not relative links).
-For reStructuredText or AsciiDoc, what is left is Vale (6), a script (8), a model check (9), review alone (1), and the
+Most options below read markdown: the tools in 2, 3 and 4, MD043 in 6, and the relative-link
+checks in 7. lychee reads other formats as plain text and extracts URLs on a best-effort basis,
+so it still checks absolute URLs there; relative links need `--preprocess` to convert the file
+first. For reStructuredText or AsciiDoc, what is left is Vale (6), a script (8), a model check
+(9), review alone (1), lychee for absolute URLs (7), and the
 generator's own warnings-as-errors, as in 7 — for Sphinx that is `-W`, which will "Turn warnings into errors …
 exits with exit status 1 if any warnings are generated"
 ([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4
