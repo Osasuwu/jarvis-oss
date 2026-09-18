@@ -63,4 +63,4 @@ def test_fix_commits_get_a_delta_pass():
     delta = text.split("## Delta pass — a fix commit", 1)[1].split("\n## ", 1)[0]
     assert "not the session that made the fix" in delta
     assert "`git diff <reviewed commit>..<fix commit>`" in delta
-    assert "even if the diff never touched that file" in delta
+    assert "search the whole repo for its old wording" in delta

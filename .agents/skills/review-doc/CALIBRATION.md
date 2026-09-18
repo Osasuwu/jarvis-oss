@@ -166,10 +166,10 @@ here.
 
 **What changed.** Pass 3 marks each finding `blocking` or `follow-up`. A finding is `blocking` only
 when the reviewer names a setup and what goes wrong for it, or quotes both sides of a
-contradiction; otherwise it is `follow-up`. The writer must fix or answer every `blocking` one; a
-`follow-up` is fixed or filed. A fix commit now gets a delta pass: one fresh reviewer, given the
-earlier report and the diff, says which findings are fixed, checks what the fix added, and
-searches the doc and the files in scope for mentions the fix left disagreeing.
+contradiction that cannot both be true; otherwise it is `follow-up`. The writer must fix or answer
+every `blocking` one; a `follow-up` is fixed or filed. A fix commit now gets a delta pass: one
+fresh reviewer, given the earlier report and the diff, says which findings are fixed or answered,
+checks what the fix added, and searches the repo for mentions the fix left disagreeing.
 
 **Why.** PR #75 and PR #81 each drew 10–15 findings per round, all weighted the same, and neither
 converged: every fix round was reviewed ad hoc, and two rounds of #75 went on defects the fixes
@@ -187,8 +187,9 @@ any result.
   `follow-up`. Reviewed twice, given only the copy and the new pass 3 text.
 - **B, clean, pass 3:** the doc as merged.
 - **D, delta:** a git repo with the seeded doc set as the reviewed commit, and a fix commit on top
-  of it. The reviewer got an earlier report of five findings, the diff, and the repo to read and
-  search. It could fetch from the web.
+  of it. The reviewer got an earlier report of five findings, the diff, the repo to read and
+  search, and the web. Run twice: D1 with a draft of the delta pass, D2 with the whole skill as
+  merged here.
 
 ### Pass 3 plants
 
@@ -200,65 +201,73 @@ any result.
 | F1 | trade-off: "6 costs a stored base and some upkeep" | follow-up | not reported | follow-up |
 | F2 | row 6 → "keeping its base sensibly outside what the person edits" | follow-up | blocking | blocking |
 
-**3 of 3 blocking plants caught and marked `blocking` in both runs.** F2 was meant as loose
-wording, but both runs named the same setup: copier keeps its answers file inside the repo, so
-"sensibly" can be answered either way and changes whether 6 is left. That is the rule applied as
-written. The plant was not as harmless as the planter thought, so it is not counted as a miss.
+**Scored as written down before the run:** the three `blocking` plants were caught and marked
+`blocking` in both runs, 6 of 6. The `follow-up` plants scored 1 of 4: F1 was missed once, and
+F2 was marked `blocking` both times, a severity miss by the pre-set rule.
+
+On reading the results, F2's two misses look like planter error, not reviewer error. Both runs
+named the same setup: copier keeps its answers file inside the repo, so "sensibly" can be
+answered either way, and the answer changes whether 6 is left. That is the rule applied as
+written. This reading came after the results, so it does not change the score.
 
 Both runs also marked as `blocking` that our own choice's fallback, option 3, is now ruled out
 for formats without `#`. That follows from B1, and holds. A2 marked one more as `blocking`: our
 choice uses option 3, whose status is `sourced`. That is a status question for pass 1, not a
-contradiction with option 3's section, and should have been `follow-up`. Every other extra
-finding was `follow-up`. Both runs passed the value test.
+contradiction with option 3's section, so it should have been `follow-up`. Every other extra
+finding was `follow-up`. The seeded doc passed the value test in both runs.
 
 ### Clean doc
 
-Run B reported ten findings: **2 `blocking`, 8 `follow-up`.** Under Run 2's pass 3, the clean doc
-drew ten findings of one weight.
+Run B reported ten findings: **2 `blocking`, 8 `follow-up`.** For comparison, Run 2's pass 3,
+which had no severity, drew ten findings of one weight on an earlier commit (`8a79a4d`).
 
 - Both `blocking` findings are judgement filters, each with a named setup: "Prose the person may
   already state their own way" decides whether option 7 applies to a linter's line in
   `AGENTS.md`, and "the person accepts editing" decides whether the split row is left for git's
-  second config file. Both hold on reading the doc.
-- The eight `follow-up` findings are wording or trade-offs named more loosely than an option's
+  second config file. Both hold on reading the doc. They are tracked in #90.
+- The eight `follow-up` findings are wording, or trade-offs named more loosely than an option's
   cost. None names a setup that goes wrong. None is false.
 
 ### Delta plants
 
-The fix commit fixed three findings correctly, left one unfixed, and brought in four new errors.
+The fix commit fixed three findings correctly, left one unfixed, and changed our own choice from
+option 3 to 2 in the doc only. It also brought in three new errors.
 
-| # | In the fix commit | Expected | Run D |
-|---|---|---|---|
-| — | finding 1 (row 3) fixed correctly | `fixed`, no new finding | `fixed`, no new finding |
-| D2 | finding 4 (option 6's cost) left as it was | `not fixed` | `not fixed` |
-| D1 | finding 3 fixed with "a bare line can break YAML" | mismatch: `package.json` is JSON | caught |
-| D4 | finding 2 fixed with a git quote reworded to "as if it had been found at the end of the including file" | pass 1 mismatch | caught, against the fetched git-config docs |
-| D3 | finding 5: our choice moved from option 3 to 2 in the doc only | leftovers in the resource and the example | caught in both files, and in `.agents/skills/jarvis-setup/SKILL.md` |
+| # | In the fix commit | Expected | D1 | D2 |
+|---|---|---|---|---|
+| — | finding 1 (row 3) fixed correctly | `fixed`, no new finding | `fixed`, no new finding | `fixed`, confirmed |
+| D2 | finding 4 (option 6's cost) left as it was | `not fixed` | `not fixed` | `not fixed` |
+| D1 | finding 3 fixed with "a bare line can break YAML" | mismatch: `package.json` is JSON | caught | caught, npm docs fetched |
+| D4 | finding 2 fixed with a git quote reworded to "as if it had been found at the end of the including file" | pass 1 mismatch | caught | caught, git-config fetched |
+| D3 | finding 5: our choice moved from option 3 to 2 in the doc only | leftovers | caught in the resource, the example and `jarvis-setup`'s SKILL.md | the same, and a test |
 
-**All four plants caught, 0 false positives.** The run also reported four real defects the
-changed choice created, none planted:
+**Both runs caught all four plants, with 0 false positives.** In D2 all three leftover files, and
+`tests/test_jarvis_setup_skill.py`, came from the whole-repo search the skill now asks for. D1
+found the `jarvis-setup` file by going past its draft, which searched only the files in scope.
+Both runs also reported the defects the changed choice made, which were not planted:
 
-- option 7 says "With 3 or 4", but our choice now carries it by 2;
+- row 2, "a line or two", rules our own choice out for a block of rules;
 - "both carry an update and an uninstall step" contradicts option 2's "Substring: neither";
-- row 2, "a line or two", rules option 2 out for a rules file of prose;
-- `jarvis-setup`'s own SKILL.md says "This is option 3".
+- option 7 says "With 3 or 4", but our choice now carries it by 2.
 
-It called finding 5 `not fixed` rather than `fixed`: the change answered it but made the doc
-worse. That is a defensible call.
+D2 scored finding 5 `fixed` and reported the damage as new findings, as the skill now says. D1,
+which had no rule for this, called it `not fixed`. D2 also put the reversed design choice on its
+"read these closely" list.
 
 ### Variance between runs
 
-- A1 and A2 agreed on every plant's severity. A1 did not report F1; A2 did.
+- A1 and A2 gave every plant the same severity. A1 did not report F1; A2 did.
 - Of the extra findings, the two runs agreed only on the one that follows from B1.
-- The delta pass ran once. Its catch rate is not known.
+- D1 and D2 caught the same plants and the same three unplanted defects. D2 filed the leftover
+  files as `mismatch` and option 7's line as a how-to-choose `follow-up`.
 
 ### Limits of this run
 
-- The delta reviewer was given pass 1's text and the report format, but not pass 3's. It took
-  severity from the report format's closing rule instead. A real delta run has the whole skill.
+- D1 ran on a draft: it had pass 1's text and the report format, but not pass 3's. D2 had the
+  whole skill.
 - The planter chose which edits were meant to be harmless, and one of the two was not. Severity
   plants need a second reader before the run.
-- One doc again, and the same doc as Runs 1 and 2.
+- Every run used the same doc as Runs 1 and 2, and the delta plants and fix are one commit pair.
 
 ## Limits seen
 
