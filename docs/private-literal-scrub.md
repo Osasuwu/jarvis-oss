@@ -144,14 +144,15 @@ and the workflow file comes from the merge commit, so it includes the fork's edi
 edit the step to pass, it just never sees the list. A fork's run checks nothing, whatever it shows.
 On GitLab a fork's merge request pipeline runs in the fork, with the fork's CI config; a project
 member can instead run it in the parent project, with the fork's config and the parent's
-variables — the same risk as below. Under
+unprotected variables — the same risk as below; "Merge request pipelines from forked repositories
+cannot access these protected resources" ([merge request pipelines](https://docs.gitlab.com/ci/pipelines/merge_request_pipelines/#control-access-to-protected-variables-and-runners)). Under
 `pull_request_target` the job gets the secret and runs in the base repository's context: safe only
 if the fork's code "is only ever inspected as data and never executed"
 ([pull_request_target](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target)).
 The same page adds that "GitHub provides a default event policy that blocks the
-`pull_request_target` event in public repositories". It only evaluates for now; for
+`pull_request_target` event in public repositories". The policy only evaluates for now; for
 repositories that used the default policy before general availability it blocks the event from
-2026-11-02, and then the repository must allow `pull_request_target` in an event policy. Its
+2026-11-02, and from then on the repository must allow `pull_request_target` in an event policy. Its
 default checkout is the base repository's default branch, so swapping the trigger alone scans
 nothing from the fork and passes. Checking out the fork's head with `actions/checkout` needs
 `allow-unsafe-pr-checkout: true` (`git fetch` or `gh pr checkout` skip that check), and running
@@ -272,8 +273,8 @@ First, in order:
    match commit metadata, branch names and filenames, not file contents; GitLab secret push
    protection and GitHub's default patterns take no list of yours — add either alongside another.
 4. **Do people open pull requests from forks?** Yes → 6 with a committed salt. 5 reaches them only
-   through a data-only `pull_request_target` job; otherwise a fork's run checks nothing, since it
-   runs the fork's own copy of the workflow.
+   through a data-only `pull_request_target` job; otherwise a fork's run checks nothing, since the
+   workflow comes from the merge commit, which the fork can edit.
 
 | Option | Fits only if |
 |---|---|
@@ -329,8 +330,8 @@ hook (3), which would check pull request text before it is posted and close the 
 - The secret was unset until 2026-09-17. All 33 scrub runs before then, from #34 on 2026-09-16,
   logged "Scrub clean" and were green, checking nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
-  The script now fails on an empty list. Fork pull requests never get the secret, but they run
-  their own copy of the workflow, so a green run from a fork checked nothing.
+  The script now fails on an empty list. Fork pull requests never get the secret, and the workflow
+  comes from the merge commit, which they can edit, so a green run from a fork checked nothing.
 - It runs after the push, on file contents only — the checkout and plaintext files under `.git`,
   not packed history, commit messages, or pull request and issue text — and on exact strings.
 

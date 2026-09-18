@@ -35,7 +35,7 @@ Scrub clean — checked N literal(s); none found in the tree.
 ```
 
 The cost is real: with the secret unset, the gitleaks job fails on every pull request, and on
-fork pull requests it will unless the fork edits the workflow, since forks get no secrets. The secret was set later on
+fork pull requests it still fails, since forks get no secrets, unless the fork edits the workflow. The secret was set later on
 2026-09-17, and a run after that logged `Scrub clean — checked 22 literal(s)`.
 
 **What to take from it.**
