@@ -23,14 +23,15 @@ in this repo already fixed, so the earlier version is known only from the commen
 Concretely: a command shaped like `cmd <<'EOF' ... EOF\nsome_other_command`, where the heredoc is
 followed by more commands on a later line rather than a subshell close, matched neither of the
 closing alternatives the comment says the regex had before, `)` and end-of-string — the heredoc
-body was left in the string handed to the danger-pattern scan, exposed to the same false-positive risk the stripping step exists to avoid.
+body was left in the string handed to the danger-pattern scan, exposed to the same
+false-positive risk the stripping step exists to avoid.
 The fix, per the comment, added a following newline to the closing alternatives.
 
 The lesson this example carries isn't about which patterns the scanner looks for — it's that a mechanical
 tool-call-boundary hook has two places to get wrong, not one: what it looks for, and what part of
 the input it looks at. A correct pattern list scanning the wrong slice of text is still a
-correctness bug. This one erred toward over-blocking: harmless writes were refused, which is loud
-and gets noticed. A boundary drawn the other way — stripping text that is actually executed —
+correctness bug. This one erred toward over-blocking: harmless writes would be refused, which is
+loud and gets noticed. A boundary drawn the other way — stripping text that is actually executed —
 would fail quietly, letting a dangerous command through with no sign that it was never scanned.
 
 See [`agent-safety-hooks.md`](../docs/agent-safety-hooks.md) for the practice this example
