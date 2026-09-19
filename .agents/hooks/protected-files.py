@@ -13,8 +13,8 @@ subprocess, which always receives piped stdin whether or not a terminal is attac
 The accepted consequence is that this project hook also blocks the live owner's own
 local interactive edits to canonical protected files, even where a still-present
 user-level hook alone would allow them. See docs/agent-safety-hooks.md for the
-practice this hook backs; its "Our own choice" part records what was tried and
-dropped instead of this trade-off.
+practice this hook backs; its "Our own choice" part records this trade-off and
+why the presence-detection alternative was dropped.
 
 Matches Edit/Write/NotebookEdit only: a shell command that writes a protected file
 is not seen by this hook. Exits 0 on empty or unparsable input (fails open there).
