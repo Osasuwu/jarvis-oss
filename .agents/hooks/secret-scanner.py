@@ -1,9 +1,8 @@
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
-Handles four tool types:
+Handles three tool types:
 - GitHub MCP tools: scans every string value in the input, at any depth
 - Bash tool: scans command string for secrets and dangerous exfiltration patterns
-- Memory MCP tools: scans content/description fields for secrets
 - File writes (Edit/Write/NotebookEdit): scans the text being written to disk
 
 Reads tool_input from stdin (JSON). Exits 2 to block if secrets detected.
@@ -114,16 +113,6 @@ def extract_bash_command(tool_input: dict) -> str:
     """Pull command string from Bash tool input."""
     cmd = tool_input.get("command", "")
     return cmd if isinstance(cmd, str) else ""
-
-
-def extract_memory_text(tool_input: dict) -> str:
-    """Pull text fields from memory_store input."""
-    parts = []
-    for key in ("content", "description", "name"):
-        val = tool_input.get(key)
-        if isinstance(val, str):
-            parts.append(val)
-    return "\n".join(parts)
 
 
 # Fields that carry text destined for disk, per file-write tool:
@@ -265,12 +254,6 @@ def main():
         findings.extend(scan_secrets(command))
         # Check for dangerous exfiltration patterns
         findings.extend(scan_bash_dangers(command))
-    elif "memory" in tool_name:
-        # Memory MCP tools (memory_store)
-        text = extract_memory_text(tool_input)
-        if not text:
-            sys.exit(0)
-        findings.extend(scan_secrets(text))
     elif tool_name in FILE_WRITE_TOOLS:
         # File writes — the path a secret actually takes to reach git
         if is_self_test_fixture(tool_input):

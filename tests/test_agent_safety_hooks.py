@@ -158,6 +158,15 @@ def test_scanner_blocks_secret_in_a_field_name_it_has_never_seen():
     assert "permissionDecision" in result.stdout
 
 
+def test_scanner_scans_every_field_of_a_github_tool_with_memory_in_its_name():
+    # A removed branch matched any tool name containing "memory" before the
+    # GitHub branch and read only content/description/name, so `body` here
+    # went unscanned (exit 0).
+    result = _run_scanner("mcp__github__memory_note_write", {"body": f"k {FAKE_KEY}"})
+    assert result.returncode == 2
+    assert "permissionDecision" in result.stdout
+
+
 # Protected-path matching must compare canonical filesystem identity, not raw
 # strings: #74 found a case-insensitive filesystem let `.Agents/Hooks/
 # Secret-Scanner.py` through a case-sensitive string match (exit 0, should be

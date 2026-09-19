@@ -6,8 +6,7 @@ cost: no paid API calls. Runs as a local Python subprocess per matched tool call
 
 # Runnable hooks: secret scanning + protected-file enforcement
 
-Three files, ported from the source project this practice is drawn from and scrubbed of every
-project-specific literal:
+Three files, ported from the source project this practice is drawn from:
 
 - [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, the input of
   every GitHub MCP tool (reads included), and file-write tool inputs (`Edit`/`Write`/
