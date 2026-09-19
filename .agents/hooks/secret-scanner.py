@@ -1,7 +1,7 @@
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
 Handles four tool types:
-- GitHub MCP tools: scans body/title/content fields
+- GitHub MCP tools: scans every string value in the input, at any depth
 - Bash tool: scans command string for secrets and dangerous exfiltration patterns
 - Memory MCP tools: scans content/description fields for secrets
 - File writes (Edit/Write/NotebookEdit): scans the text being written to disk
@@ -136,18 +136,18 @@ def extract_memory_text(tool_input: dict) -> str:
 FILE_WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 _FILE_WRITE_KEYS = ("content", "new_string", "new_source")
 
-# This scanner's own test files exist to hold secret-SHAPED fixtures; scanning
-# them blocks the one file that must contain them. Exempt by basename only —
+# A scanner's test file may have to hold secret-SHAPED fixtures; scanning it
+# blocks the one file that must contain them. Exempt by basename only —
 # deliberately not a `tests/` prefix, because a test directory is exactly where
 # a real leaked key would otherwise hide.
+# Empty as shipped: this repo's tests/test_agent_safety_hooks.py builds its
+# fixtures by concatenation and needs no exemption.
 # CUSTOMIZE: name your own project's fixture files here.
-SELF_TEST_BASENAMES = (
-    "test_secret_scanner.py",
-)
+SELF_TEST_BASENAMES = ()
 
 
 def is_self_test_fixture(tool_input: dict) -> bool:
-    """True when the write targets this scanner's own fixture files."""
+    """True when the write targets a file named in SELF_TEST_BASENAMES."""
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not isinstance(path, str):
         return False
