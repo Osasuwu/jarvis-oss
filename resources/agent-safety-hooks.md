@@ -9,10 +9,10 @@ cost: no paid API calls. Runs as a local Python subprocess per matched tool call
 Three files, ported from the source project this practice is drawn from and scrubbed of every
 project-specific literal:
 
-- [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, GitHub MCP
-  write-tool inputs, and file-write tool inputs (`Edit`/`Write`/`NotebookEdit`) for secret-shaped
-  patterns (API key formats, private-key headers, credential assignments) and dangerous
-  `.env`-exfiltration command shapes. Denies the tool call on a match.
+- [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, the input of
+  every GitHub MCP tool (reads included), and file-write tool inputs (`Edit`/`Write`/
+  `NotebookEdit`) for secret-shaped patterns (API key formats, private-key headers, credential
+  assignments) and dangerous `.env`-exfiltration command shapes. Denies the tool call on a match.
 - [`protected-files.py`](../.agents/hooks/protected-files.py) — denies any `Edit`/`Write`/
   `NotebookEdit` targeting a path in its `PROTECTED_CANONICAL` set. Fails closed with no
   live-operator bypass, by design — see [`docs/agent-safety-hooks.md`](../docs/agent-safety-hooks.md)

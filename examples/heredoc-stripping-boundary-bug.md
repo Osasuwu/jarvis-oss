@@ -12,7 +12,8 @@ for `curl .env` shaped patterns would just be scanning documentation. The stripp
 regex, [`_HEREDOC_RE`](../.agents/hooks/secret-scanner.py), matched against the command string
 before the danger-pattern check runs.
 
-That regex carries this comment, describing a bug in its own earlier version:
+That regex carries this comment, describing a bug in its own earlier version. The regex arrived
+in this repo already fixed, so the earlier version is known only from the comment:
 
 > The closing delimiter line ends the match at a `)` (subshell close), a following newline (more
 > commands after the heredoc — the common case), or absolute end-of-string. Without the `\n`
@@ -20,10 +21,10 @@ That regex carries this comment, describing a bug in its own earlier version:
 > its full body exposed to `BASH_DANGER_PATTERNS`.
 
 Concretely: a command shaped like `cmd <<'EOF' ... EOF\nsome_other_command`, where the heredoc is
-followed by more commands on a later line rather than a subshell close, matched none of the
-regex's original closing alternatives — the heredoc body was left in the string handed to the
-danger-pattern scan, exposed to the same false-positive risk the stripping step exists to avoid.
-The fix widened the closing alternatives to include a bare following newline.
+followed by more commands on a later line rather than a subshell close, matched neither of the
+closing alternatives the comment says the regex had before, `)` and end-of-string — the heredoc
+body was left in the string handed to the danger-pattern scan, exposed to the same false-positive risk the stripping step exists to avoid.
+The fix, per the comment, added a following newline to the closing alternatives.
 
 The lesson this example carries isn't about which patterns the scanner looks for — it's that a mechanical
 tool-call-boundary hook has two places to get wrong, not one: what it looks for, and what part of
