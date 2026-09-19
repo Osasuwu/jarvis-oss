@@ -234,6 +234,15 @@ def _check_examples(root: Path) -> list[Violation]:
                     message=f"{rel} is missing required frontmatter key 'fit'",
                 )
             )
+        if "pairs_with" not in fields:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="example_missing_key:pairs_with",
+                    message=f"{rel} is missing required frontmatter key 'pairs_with'",
+                )
+            )
+        violations.extend(_check_pairs_with(root, rel, fields))
         has_own_provenance = "last_seen" in fields
         has_external_provenance = "source" in fields and "verified" in fields
         if not has_own_provenance and not has_external_provenance:
@@ -265,6 +274,20 @@ def _check_examples(root: Path) -> list[Violation]:
     return violations
 
 
+def _check_pairs_with(root: Path, rel: str, fields: dict[str, str]) -> list[Violation]:
+    # pairs_with may name several docs, comma-separated; each one must resolve.
+    targets = [t.strip() for t in fields.get("pairs_with", "").split(",") if t.strip()]
+    return [
+        Violation(
+            path=rel,
+            code="pairs_with_unresolvable",
+            message=f"{rel} pairs_with '{target}' does not resolve to a file",
+        )
+        for target in targets
+        if not (root / target).is_file()
+    ]
+
+
 def _check_resources(root: Path) -> list[Violation]:
     resources_dir = root / "resources"
     if not resources_dir.is_dir():
@@ -282,15 +305,7 @@ def _check_resources(root: Path) -> list[Violation]:
                         message=f"{rel} is missing required frontmatter key '{key}'",
                     )
                 )
-        pairs_with = fields.get("pairs_with")
-        if pairs_with and not (root / pairs_with).is_file():
-            violations.append(
-                Violation(
-                    path=rel,
-                    code="pairs_with_unresolvable",
-                    message=f"{rel} pairs_with '{pairs_with}' does not resolve to a file",
-                )
-            )
+        violations.extend(_check_pairs_with(root, rel, fields))
     return violations
 
 
