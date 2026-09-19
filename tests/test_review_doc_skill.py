@@ -48,3 +48,19 @@ def test_how_to_choose_may_leave_several_options():
     text = " ".join(_skill_text().split())
     assert "More than one option fitting a setup is intended, not a defect." in text
     assert "the step that decides" not in text
+
+
+def test_how_to_choose_findings_carry_a_severity():
+    # #87: unranked pass 3 findings gave each doc 10-15 fixes and no point where it was done.
+    text = " ".join(_skill_text().split())
+    assert "Mark each finding `blocking` or `follow-up`" in text
+    assert "If you cannot name the setup, or quote two sides that cannot both be true" in text
+
+
+def test_fix_commits_get_a_delta_pass():
+    # #87: a fix is new text; the delta pass reviews it, including files the diff did not touch.
+    text = _skill_text()
+    delta = text.split("## Delta pass — a fix commit", 1)[1].split("\n## ", 1)[0]
+    assert "not the session that made the fix" in delta
+    assert "`git diff <reviewed commit>..<fix commit>`" in delta
+    assert "search the whole repo for its old wording" in delta

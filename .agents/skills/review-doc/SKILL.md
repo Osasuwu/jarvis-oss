@@ -82,9 +82,20 @@ not report that the steps cannot reach a single option.
    - a trade-off, an example or our own choice contradicts an option's own section: how it works,
      best pick when, cost, update and uninstall;
    - a setup ends with nothing left and the section says nothing about that case.
-3. **Value test.** Find two realistic setups where the option the doc calls ours is ruled out, or
+3. **Severity.** Mark each finding `blocking` or `follow-up`:
+   - `blocking` — you name a setup from step 1 and what goes wrong for it: an option ruled out
+     that it could build, one left in that it cannot build, nothing left with no pointer, or a
+     judgement filter that the setup could answer either way, changing what is left. Also
+     `blocking`: a contradiction with an option's own section, with both sides quoted, that cannot
+     both be true.
+   - `follow-up` — everything else: wording that could be tighter, a trade-off named more loosely
+     than the option's cost, a judgement filter that sends none of your setups anywhere wrong.
+
+   If you cannot name the setup, or quote two sides that cannot both be true, the finding is
+   `follow-up`.
+4. **Value test.** Find two realistic setups where the option the doc calls ours is ruled out, or
    stays in but loses a trade-off the section names. If there are none, the doc only justifies our
-   choice. Report `fails value test`.
+   choice. Report `fails value test`; it is `blocking`.
 
 ## Pass 4 — judgement spots, and the report
 
@@ -100,6 +111,45 @@ Then it lists the places where the doc makes a **call**, not a fact:
 At most **seven**, ranked by how much a wrong call would mislead a reader. These are what the
 person reads closely.
 
+## Delta pass — a fix commit
+
+A fix is new text, and new text is unreviewed. When a commit only fixes the findings of an earlier
+report, review the fix instead of running every pass again. If the commit adds, drops or
+renumbers an option, or rewrites "how to choose" beyond what the findings named, run the whole
+skill instead.
+
+Give one fresh reviewer, not the session that made the fix:
+- the earlier report;
+- the whole diff, `git diff <reviewed commit>..<fix commit>`, not only the doc and the files in
+  scope;
+- a checkout of the repo at the fix commit, to read around each hunk and to search;
+- the PR's replies to the earlier report;
+- an absolute scratch directory, as in Rule 0.
+
+This one context runs checks from passes 1 and 3. That is the one exception to "each pass starts
+fresh": the fix is small, and the reviewer sees the earlier passes only through their report.
+
+1. **Each finding** of the earlier report gets one verdict:
+   - `fixed` — after the diff, the finding no longer holds. Judge only that; anything the
+     change breaks is a new finding from steps 2–4.
+   - `answered` — the PR links an issue the finding was filed as, or, for any finding but a
+     `follow-up`, replies to it with a reason.
+   - `not fixed` — neither.
+2. **Each added or changed claim** gets pass 1's checks and verdicts, from a source fetched now.
+3. **Each added or changed filter, trade-off, example or choice** gets pass 3's checks and
+   severity, against the option sections as they stand after the fix. If the diff changes our
+   own choice, run the value test again.
+4. **Leftovers.** For each fact the diff changes (a tool, a flag, a number, a quote, an option's
+   name or number, a filter), search the whole repo for its old wording and for every other
+   mention of it. A mention that now disagrees with the fix is a finding at its own line, even if
+   that file is outside the scope: a `mismatch` if it states a fact (a tool's behaviour, a
+   flag, a number, a quote, which option we use), otherwise a how-to-choose finding with its
+   severity.
+5. **New calls.** A call the diff adds, in the sense of pass 4, goes on a "read these closely"
+   list.
+
+Pass 2 and the earlier judgement spots stand; the delta pass does not redo them.
+
 ## The report
 
 Post the report where the doc is reviewed, as a comment on the doc's PR. Keep it to one screen
@@ -112,9 +162,9 @@ before the collapsed parts.
 1. <file:line> — <why this is a call, one line>
 ...
 
-**Mismatches (N):** <file:line> — <claim> → <fetched excerpt> (<source>)
+**Mismatches (N):** <file:line> — <claim> → <fetched excerpt> (<source>), or the line it disagrees with
 **Missing options (N):** <approach> — <source> — <why a reader could need it>
-**How to choose (N):** <file:line> — <filter, trade-off or example> → <setup that breaks it>
+**How to choose (N blocking, N follow-up):** <file:line> — blocking | follow-up — <filter, trade-off or example> → <setup that breaks it, or both quotes>
 **Value test:** passes | fails — <setup 1 → ours ruled out by <fact> | loses on <trade-off>>; <setup 2 → …>
 **Unverifiable (N):** <file:line> — <why>
 
@@ -124,9 +174,17 @@ before the collapsed parts.
 Reviewed by: fresh contexts, not the writing session. Calibration: <link to CALIBRATION.md>.
 ```
 
-The writer fixes every mismatch and every `missing` option, or answers each one in the PR, and
-then the skill runs again. The person signs only after reading the report, the "read these
-closely" places, and a skim of the rest. What that signature covers is set out in
+A delta pass posts the same report, headed `## review-doc delta: <doc path> @ <reviewed
+commit>..<fix commit>`. It opens with `**Findings fixed:** N of M, N answered`, where M counts
+every finding of the earlier report, then lists each finding that is `not fixed`. Its "read these
+closely" list holds only the calls the fix added. It has no completeness search.
+
+The writer fixes every mismatch, every `missing` option and every `blocking` finding, or answers
+each one in the PR. A `follow-up` is fixed or filed as an issue, and the PR says which. The fix
+then gets the delta pass, and that report is the earlier report for the next fix. The loop ends
+when no mismatch, `missing` option or `blocking` finding is left that is not fixed or answered,
+and every `follow-up` is fixed or filed. The person signs only after reading the report, the
+"read these closely" places, and a skim of the rest. What that signature covers is set out in
 [`docs/SIGNOFF.md`](../../../docs/SIGNOFF.md).
 
 The shape a practice doc is expected to have, and why, is in
@@ -137,6 +195,8 @@ review what it says, not which headings it has.
 
 - Pass 2 uses a model much like the one that wrote the doc, so both can share blind spots. The
   printed queries are how the person spots a narrow search.
+- Severity rests on the setups the reviewer thought of. A judgement filter is `follow-up` until
+  some reviewer builds the setup it misleads.
 - A source can change after the review. The report pins the doc's commit, not the web.
 - The skill only counts once calibrated. [`CALIBRATION.md`](CALIBRATION.md) records what it caught
   on planted errors and what it flagged on a clean doc. Re-calibrate after changing a pass.

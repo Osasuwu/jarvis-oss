@@ -197,3 +197,60 @@ def test_ci_workflow_fetches_enough_history_for_signoff_check():
         "structure-gate.yml must fetch full history (fetch-depth: 0) so the "
         "signoff same-commit check can compare commits"
     )
+
+
+_MIN_DOC = """---
+applies_when: fixture
+applies_when_not: fixture
+signed_off:
+---
+
+# Fixture doc
+"""
+
+
+def test_resource_pairs_with_accepts_several_comma_separated_docs(tmp_path):
+    """One resource can serve more than one doc (#41): every listed target must resolve."""
+    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
+    _write(tmp_path / "docs" / "b.md", _MIN_DOC)
+    _write(
+        tmp_path / "resources" / "shared.md",
+        "---\npairs_with: docs/a.md, docs/b.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
+    )
+    assert check_tree(tmp_path) == []
+
+
+def test_resource_pairs_with_fails_when_any_one_of_several_targets_is_missing(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
+    _write(
+        tmp_path / "resources" / "shared.md",
+        "---\npairs_with: docs/a.md, docs/gone.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
+    )
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [
+        ("resources/shared.md", "pairs_with_unresolvable")
+    ]
+    assert "docs/gone.md" in violations[0].message
+    assert "docs/a.md" not in violations[0].message
+
+
+def test_example_missing_pairs_with_fails(tmp_path):
+    """An example must say which doc it evidences (#41), the same as a resource."""
+    _write(
+        tmp_path / "examples" / "loose.md",
+        "---\nfit: fixture\nlast_seen: 2026-09-16\n---\n\n# Loose example\n",
+    )
+    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
+    assert ("examples/loose.md", "example_missing_key:pairs_with") in codes
+
+
+def test_example_pairs_with_must_resolve(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
+    _write(
+        tmp_path / "examples" / "paired.md",
+        "---\nfit: fixture\nlast_seen: 2026-09-16\npairs_with: docs/a.md, docs/gone.md\n---\n\n# Paired\n",
+    )
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [
+        ("examples/paired.md", "pairs_with_unresolvable")
+    ]
