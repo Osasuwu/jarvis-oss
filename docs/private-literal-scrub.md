@@ -332,7 +332,7 @@ gitleaks then the scrub, both added in the same pull request (#34). Not taken ye
 hook (3), which would check pull request text before it is posted and close the second gap below;
 6 would too, after the push. Gaps:
 
-- The secret was unset until 2026-09-17. All 33 scrub runs before then, from #34 on 2026-09-16,
+- The secret was unset until 2026-09-18. Before then 34 scrub runs, from #34 on 2026-09-16,
   logged "Scrub clean" and were green, checking nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
   The script now fails on an empty list. Fork pull requests never get the secret, and the workflow

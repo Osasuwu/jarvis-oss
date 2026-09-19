@@ -1,9 +1,8 @@
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
-Handles four tool types:
-- GitHub MCP write tools: scans body/title/content fields
+Handles three tool types:
+- GitHub MCP tools: scans every string value in the input, at any depth
 - Bash tool: scans command string for secrets and dangerous exfiltration patterns
-- Memory MCP tools: scans content/description fields for secrets
 - File writes (Edit/Write/NotebookEdit): scans the text being written to disk
 
 Reads tool_input from stdin (JSON). Exits 2 to block if secrets detected.
@@ -87,36 +86,33 @@ COMPILED_BASH = [(re.compile(p, re.IGNORECASE), label) for p, label in BASH_DANG
 # ---------------------------------------------------------------------------
 
 
+def iter_strings(value):
+    """Yield every string found in value, at any nesting depth.
+
+    A field-name whitelist enumerates instances, not the class: #74 found
+    `custom_instructions`/`rationale` (assign_copilot_to_issue*) and
+    `commit_message`/`commit_title` (merge_pull_request, permanent
+    default-branch history) unscanned because they weren't on the list.
+    """
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for v in value.values():
+            yield from iter_strings(v)
+    elif isinstance(value, list):
+        for v in value:
+            yield from iter_strings(v)
+
+
 def extract_github_text(tool_input: dict) -> str:
-    """Pull all text fields from GitHub MCP tool inputs."""
-    parts = []
-    for key in ("body", "title", "content", "message", "description", "comment", "problem_statement"):
-        val = tool_input.get(key)
-        if isinstance(val, str):
-            parts.append(val)
-    # push_files: list of {path, content}
-    files = tool_input.get("files")
-    if isinstance(files, list):
-        for f in files:
-            if isinstance(f, dict) and isinstance(f.get("content"), str):
-                parts.append(f["content"])
-    return "\n".join(parts)
+    """Pull every string value out of a GitHub MCP tool_input, any nesting depth."""
+    return "\n".join(iter_strings(tool_input))
 
 
 def extract_bash_command(tool_input: dict) -> str:
     """Pull command string from Bash tool input."""
     cmd = tool_input.get("command", "")
     return cmd if isinstance(cmd, str) else ""
-
-
-def extract_memory_text(tool_input: dict) -> str:
-    """Pull text fields from memory_store input."""
-    parts = []
-    for key in ("content", "description", "name"):
-        val = tool_input.get(key)
-        if isinstance(val, str):
-            parts.append(val)
-    return "\n".join(parts)
 
 
 # Fields that carry text destined for disk, per file-write tool:
@@ -129,18 +125,18 @@ def extract_memory_text(tool_input: dict) -> str:
 FILE_WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 _FILE_WRITE_KEYS = ("content", "new_string", "new_source")
 
-# This scanner's own test files exist to hold secret-SHAPED fixtures; scanning
-# them blocks the one file that must contain them. Exempt by basename only —
+# A scanner's test file may have to hold secret-SHAPED fixtures; scanning it
+# blocks the one file that must contain them. Exempt by basename only —
 # deliberately not a `tests/` prefix, because a test directory is exactly where
 # a real leaked key would otherwise hide.
+# Empty as shipped: this repo's tests/test_agent_safety_hooks.py builds its
+# fixtures by concatenation and needs no exemption.
 # CUSTOMIZE: name your own project's fixture files here.
-SELF_TEST_BASENAMES = (
-    "test_secret_scanner.py",
-)
+SELF_TEST_BASENAMES = ()
 
 
 def is_self_test_fixture(tool_input: dict) -> bool:
-    """True when the write targets this scanner's own fixture files."""
+    """True when the write targets a file named in SELF_TEST_BASENAMES."""
     path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
     if not isinstance(path, str):
         return False
@@ -258,12 +254,6 @@ def main():
         findings.extend(scan_secrets(command))
         # Check for dangerous exfiltration patterns
         findings.extend(scan_bash_dangers(command))
-    elif "memory" in tool_name:
-        # Memory MCP tools (memory_store)
-        text = extract_memory_text(tool_input)
-        if not text:
-            sys.exit(0)
-        findings.extend(scan_secrets(text))
     elif tool_name in FILE_WRITE_TOOLS:
         # File writes — the path a secret actually takes to reach git
         if is_self_test_fixture(tool_input):
