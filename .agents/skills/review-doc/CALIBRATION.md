@@ -1,15 +1,93 @@
 # review-doc calibration
 
-The skill counts only once it has shown what it catches and what it wrongly flags. This file
-records that. Re-calibrate after changing any pass.
+The skill counts only once it has shown what it catches. This file records that for the skill as
+it is on `main`. Re-calibrate after changing any pass: `SKILL.md`, the workflow, the pinned action
+and the resolved model are hashed into the drift key, and a change to any of them turns the review
+check red until this file carries the new key.
 
-> **Stale.** Every run below calibrated `SKILL.md` as it was before #102. That change took the
-> `blocking` and `unverifiable` labels from [`calibration/RULES.md`](calibration/RULES.md), put
-> pass 3's reasoning before its verdict, named the four reader types pass 3 walks, and added a
-> fix-induced line to the report. The skill's hash is part of the drift key, so none of these
-> results describes the current skill. The calibration of the current skill is #106.
+This file is outside the hashed path. Writing it does not change the key.
 
-## Run 1 — 2026-09-17
+## Calibration 1 — escaped-defect corpus, k = 3 (#106)
+
+### Method
+
+Committed and pushed on 2026-09-22, before the first run was dispatched. Nothing in this section
+is changed after a result is read. What the results make look wrong goes in the PR, not here.
+
+**What is measured.** Whether the review-doc skill, run by `.github/workflows/doc-review.yml` as
+it is on `main` at `67caf77`, finds again the defects in
+[`calibration/corpus.md`](calibration/corpus.md): defects a review round missed and the next round
+found. Entries are counted under [`calibration/RULES.md`](calibration/RULES.md). The corpus has 34
+counted entries and 1 held-out entry. The held-out entry is not scored into the counts; it is
+reported after them with its own number.
+
+**Snapshots.** The entries sit at 9 commits: `3d896f9`, `4074b0b`, `59a27d9`, `79bc90c`,
+`8067d67`, `9dbed9e`, `a6d0c01`, `af950ea`, `f677a54`. For each commit a branch `calib/<sha>` is
+cut from `main` at `67caf77`. On it, the doc set under review is replaced with its content at that
+commit, and nothing else changes except as below:
+
+- the doc set is each `docs/` file that holds a corpus entry at that commit, plus every file under
+  `examples/` or `resources/` that the doc links to or that names the doc in `pairs_with`: the
+  review scope `SKILL.md` gives a doc. A round N review saw those files at round N.
+- `calibration/corpus.md` is removed from the snapshot. It is the answer key: it quotes every
+  defect, and a reviewer that greps the repo for a claim would find it. It is not in the drift
+  key. `SKILL.md`, `RULES.md`, the workflow and the action stay byte-identical to `main`, so the
+  key the runs compute is the key of `main`.
+
+**How entries outside `docs/` are reviewed.** The workflow's `files` input takes `docs/*.md`
+only. Round N reviewed the resource and example entries as the in-scope files of their paired doc,
+and so do these runs: the paired doc is in `files`, and its resource or example is in the snapshot
+at the same commit. An entry whose file is not in any reviewed doc's scope is counted as not
+measurable, on its own line. The workflow is not changed to force a file in.
+
+**Runs.** Each branch gets k = 3 `workflow_dispatch` runs, `files` set to the branch's corpus docs:
+27 runs. Runs 1, 2 and 3 of a branch are its first three reviewable runs, in dispatch order. A run
+that fails as unreviewable is re-run and the failure recorded; it is never dropped silently. If
+failures are systemic, the calibration stops and reports instead. All 27 runs must resolve the same
+model ID, or the calibration stops. The artifact of each run (`report.md`, `findings.json`, and
+`comment.md`) is what is scored.
+
+**What counts as caught.** An entry is caught in a run when that run's `findings.json` and report
+name the same defect: the same claim, and the same thing wrong with it.
+
+- The line number may differ.
+- A `blocking` entry reported with the `follow-up` label counts as missed. The table shows those in
+  a separate column, "caught, wrong label". The label is the one the verdict step reads: every
+  mismatch (`M`) finding is `blocking`, as `scripts/doc_review.py` enforces.
+- A finding on the same claim that names a different thing wrong is not a catch.
+- An `unverifiable` finding on the entry's claim is scored by
+  [RULES.md's `unverifiable` section](calibration/RULES.md#unverifiable): caught if it is
+  `blocking`, missed if it is `follow-up`.
+- One finding may catch more than one entry, if it names each one's thing wrong.
+- A catch whose report gives the corpus, or the round N+1 comment that reported the defect, as its
+  evidence is still scored by the rule, and is listed as contaminated.
+- Scoring is done in a fresh context, against this rule only. Every borderline call is listed in
+  the PR with its reasoning. The scoring worksheet (entry × run → verdict, the matching finding ID
+  or "none", and a one-line reason) goes in the PR.
+
+**What is recorded.** Per class, for each of runs 1–3: caught, missed and n, the "caught, wrong
+label" count, and the spread between runs. Rows with n = 0 or caught = 0 stay in the table. Then the
+held-out entries, the not-measurable entries, links to all 27 runs, the drift key, the date and
+the `main` commit. There is no threshold and no pass mark.
+
+**What the figures are.** A floor on same-model agreement: every corpus entry was found by the same
+model that missed it in the round before, so the corpus holds only defects this model can find.
+A defect the model misses every time is not in it. The figures are not a recall figure.
+
+### Results
+
+Pending: filled in after the 27 runs.
+
+## History
+
+Everything below was measured under the old scheme: seeded errors planted in one doc, and runs by
+hand, before the corpus, the drift key and the CI workflow existed. Every run below calibrated
+`SKILL.md` as it was before #102. That change took the `blocking` and `unverifiable` labels from
+[`calibration/RULES.md`](calibration/RULES.md), put pass 3's reasoning before its verdict, named
+the four reader types pass 3 walks, and added a fix-induced line to the report. None of these
+results describes the current skill; Calibration 1 above does.
+
+### Run 1 — 2026-09-17
 
 **Doc:** `docs/writing-into-user-owned-files.md` at `c1325d3` (merged in #58), with its three
 examples and one resource.
@@ -23,7 +101,7 @@ examples and one resource.
 Passes 1, 3 and 4 ran once per copy. Pass 2 is blind, so it ran once and both copies' pass 4
 used its result. That makes seven fresh subagents in total, none of which had written the doc.
 
-### Planted errors
+#### Planted errors
 
 | # | Planted error | Kind | Caught by |
 |---|---|---|---|
@@ -37,7 +115,7 @@ used its result. That makes seven fresh subagents in total, none of which had wr
 
 **7 of 7 caught.**
 
-### False positives on the clean doc
+#### False positives on the clean doc
 
 Every mismatch the clean run reported was checked against its source by the session that planted
 the errors. All five were real:
@@ -64,7 +142,7 @@ reach one table row, and that they send the doc's own case to a different option
 doc picks. Both hold on reading the steps. The first is no longer a finding: pass 3 changed after
 this run (below), and several options fitting one setup is now intended.
 
-### Variance between runs
+#### Variance between runs
 
 The two pass 1 runs covered the same examples but did not flag the same things:
 
@@ -79,7 +157,7 @@ Matching in pass 4 also varied on borderline cases:
 
 A single run misses things another run would catch. Treat the report as a floor, not a proof.
 
-## Pass 3 change — 2026-09-17
+### Pass 3 change — 2026-09-17
 
 **What changed.** Pass 3 used to build setups that "land on an option", cite "the step that
 decides", and report `option X via step K`. It now checks a section that rules options out with
@@ -104,7 +182,7 @@ walked 16 setups and did not push toward one option. It found four real defects,
 
 **Seeded run:** Run 2, below.
 
-## Run 2 — pass 3 only, 2026-09-17
+### Run 2 — pass 3 only, 2026-09-17
 
 **Doc:** `docs/writing-into-user-owned-files.md` at `8a79a4d` (after #65), checked against itself.
 
@@ -119,7 +197,7 @@ pass 3 text. None was told errors were planted, and none read the repo or the we
 
 What counts as a catch was written down before any result was read.
 
-### Planted errors
+#### Planted errors
 
 | # | Planted error | Check | Run A1 | Run A2 |
 |---|---|---|---|---|
@@ -134,7 +212,7 @@ What counts as a catch was written down before any result was read.
 
 **7 of 7 caught in both runs.** Copy C failed the value test, and copy B passed it.
 
-### Findings on the clean doc
+#### Findings on the clean doc
 
 Run B reported ten findings. The session that set up the run checked each against the doc: eight
 hold, two are wording calls, none is false. The seeded runs and run C, which share the unchanged
@@ -158,7 +236,7 @@ Round seven of #61 had already reported the split row and the plain append, and 
 unfixed. The nothing-left fallback was round seven's own suggestion, and B and C now find it
 flawed. The other defects are new.
 
-### Variance between runs
+#### Variance between runs
 
 - A1 and A2 caught the same seven plants, and agreed on none of the extra findings except
   "any layout".
@@ -168,7 +246,7 @@ Every plant was a single edit that contradicts text elsewhere in the same doc. A
 outside knowledge, such as a filter that is wrong about a tool, is pass 1's job and was not planted
 here.
 
-## Pass 3 severity and delta pass — 2026-09-18
+### Pass 3 severity and delta pass — 2026-09-18
 
 **What changed.** Pass 3 marks each finding `blocking` or `follow-up`. A finding is `blocking` only
 when the reviewer names a setup and what goes wrong for it, or quotes both sides of a
@@ -181,7 +259,7 @@ checks what the fix added, and searches the repo for mentions the fix left disag
 converged: every fix round was reviewed ad hoc, and two rounds of #75 went on defects the fixes
 had brought in. Most of those findings were wording a signer can live with.
 
-## Run 3 — pass 3 severity and the delta pass, 2026-09-18
+### Run 3 — pass 3 severity and the delta pass, 2026-09-18
 
 **Doc:** `docs/writing-into-user-owned-files.md` at `7e7ee20`.
 
@@ -197,7 +275,7 @@ any result.
   search, and the web. Run twice: C1 with a draft of the delta pass, C2 with the skill as of the
   PR's first review fixes.
 
-### Pass 3 plants
+#### Pass 3 plants
 
 | # | Planted error | Meant | Run A1 | Run A2 |
 |---|---|---|---|---|
@@ -222,7 +300,7 @@ choice uses option 3, whose status is `sourced`. That is a status question for p
 contradiction with option 3's section, so it should have been `follow-up`. Every other extra
 finding was `follow-up`. The seeded doc passed the value test in both runs.
 
-### Clean doc
+#### Clean doc
 
 Run B reported ten findings: **2 `blocking`, 8 `follow-up`.** For comparison, Run 2's pass 3,
 which had no severity, drew ten findings of one weight on an earlier commit (`8a79a4d`).
@@ -234,7 +312,7 @@ which had no severity, drew ten findings of one weight on an earlier commit (`8a
 - The eight `follow-up` findings are wording, or trade-offs named more loosely than an option's
   cost. None names a setup that goes wrong. None is false.
 
-### Delta plants
+#### Delta plants
 
 The fix commit fixed one finding correctly and left one unfixed. The other three fixes each
 brought in an error: a wrong reason, a reworded quote, and our own choice changed from option 3
@@ -261,14 +339,14 @@ C2 scored finding 5 `fixed` and reported the damage as new findings, as the skil
 which had no rule for this, called it `not fixed`. C2 also put the reversed design choice on its
 "read these closely" list.
 
-### Variance between runs
+#### Variance between runs
 
 - A1 and A2 gave the same severity to every plant both reported. A1 did not report F1; A2 did.
 - Of the extra findings, the two runs agreed only on the one that follows from B1.
 - C1 and C2 caught the same plants and the same three unplanted defects. C2 filed the leftover
   files as `mismatch` and option 7's line as a how-to-choose `follow-up`.
 
-### Limits of this run
+#### Limits of this run
 
 - C1 ran on a draft: it had pass 1's text and the report format, but not pass 3's. C2 had the
   whole skill, before the second round of review fixes to the delta pass.
@@ -276,7 +354,7 @@ which had no rule for this, called it `not fixed`. C2 also put the reversed desi
   Severity plants need a second reader before the run.
 - Every run used the same doc as Runs 1 and 2, and the delta plants and fix are one commit pair.
 
-## Limits seen
+### Limits seen
 
 - Planted errors were the kind the planter thought of. Subtler errors, such as a true quote used
   to support a false conclusion, were not planted.

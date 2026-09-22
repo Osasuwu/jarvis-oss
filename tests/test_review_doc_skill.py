@@ -136,12 +136,14 @@ def test_pass_3_walks_the_four_reader_types_and_the_attended_axis():
     assert "**attended**" in pass3 and "**unattended**" in pass3
 
 
-def test_calibration_record_is_marked_stale_with_a_pointer():
-    # #102 changed SKILL.md, whose hash is in the drift key; #106 is the new calibration.
-    text = " ".join((SKILL_DIR / "CALIBRATION.md").read_text(encoding="utf-8").split())
-    head = text.split("## Run 1", 1)[0]
-    assert "**Stale.**" in head
-    assert "#106" in head
+def test_calibration_record_keeps_old_runs_under_history_as_the_old_scheme():
+    # #102 changed SKILL.md, whose hash is in the drift key; #106 recalibrated on the corpus and
+    # moved the seeded runs under "History", marked as measured under the old scheme.
+    text = (SKILL_DIR / "CALIBRATION.md").read_text(encoding="utf-8")
+    current, history = text.split("\n## History\n", 1)
+    assert "## Calibration 1" in current and "(#106)" in current
+    assert "### Run 1 — 2026-09-17" in history and "## Run 1" not in current
+    assert "measured under the old scheme" in " ".join(history.split())
 
 
 def test_fix_commits_get_a_delta_pass():
