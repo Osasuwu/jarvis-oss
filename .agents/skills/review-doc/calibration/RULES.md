@@ -170,6 +170,22 @@ Limits of the draw:
 - The draw covers the doc file only, not the examples it links to.
 - A new commit changes the draw. The audit that counts is the one on the head SHA that is merged.
 
+## Reader reports
+
+A `doc-error` issue (the template at `.github/ISSUE_TEMPLATE/doc-error.yml`) is a reader's report
+of a wrong fact, quote or link. It is not a review round; filing one does not move the drift key.
+
+1. **Triage.** The agent reproduces the report against the doc at the issue's target commit: it
+   confirms the quoted text is present and checks it against the claim, or says why it could not
+   reproduce it. It labels the defect by the classes and blocking rules above, as if it were a
+   review finding.
+2. **Fix.** The agent fixes the doc through the normal PR path (write-doc, then review-doc), the
+   same as any other doc change. The PR says which issue it closes.
+3. **Corpus entry.** The report becomes a corpus entry with selection source `reader` only after a
+   human opens the report's source link and confirms the claim — the same click-check the
+   click-audit uses on a drawn claim. Until that check happens, the doc may already be fixed, but
+   the report is not yet counted.
+
 ## Changing this file
 
 A change to these rules is its own PR, merged by the human. The PR lists every corpus entry whose

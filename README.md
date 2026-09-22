@@ -19,5 +19,7 @@ Skills dir column of [`docs/harnesses.md`](docs/harnesses.md) for where that is 
 
 - Works on my machines. It may work on yours.
 - Versions are content snapshots. There is no compatibility between them.
-- Questions go to Discussions. Issues are only for a broken resource, with no promised turnaround.
+- Questions go to Discussions.
+- Issues accept doc errors — a wrong fact, a bad quote, a broken link — through the
+  [doc error template](.github/ISSUE_TEMPLATE/doc-error.yml). There is no turnaround promise.
 - There is no update schedule.
