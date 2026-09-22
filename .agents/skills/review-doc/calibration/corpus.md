@@ -21,7 +21,8 @@ counts.
 - **Location.** The path and lines are at the round N commit (`commit`). The finding may cite
   other line numbers, because it was written against the round N+1 commit.
 - **Evidence.** `escape` links the comment that posted the round N+1 finding. On PR #81, round 2's
-  findings were posted only as the writer's replies, so the link goes to that reply.
+  findings were posted only as the writer's replies, so the link goes to that reply. Each `defect`
+  line links the doc text at round N, which is the source of the words it quotes from the doc.
 - **Quoted text.** Defect lines quote the public repo only. Where a line could carry personal
   detail, it is paraphrased.
 - **Held-out.** Each commit that edited the reviewer skill, or a file it loads, was checked
@@ -44,7 +45,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: The Go generated-file header rule is quoted as "before the first non-comment text"; Go's source says "non-comment, non-blank".
+- defect: The Go generated-file header rule is quoted as "before the first non-comment text"; Go's source says "non-comment, non-blank". ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L38))
 
 ### 62-puppet
 
@@ -56,7 +57,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: "Puppet's `file_line` does the same with `match`": with `ensure => absent`, `match` is ignored unless `match_for_absence` is set, so removal by pattern does not follow.
+- defect: "Puppet's `file_line` does the same with `match`": with `ensure => absent`, `match` is ignored unless `match_for_absence` is set, so removal by pattern does not follow. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L67))
 
 ### 62-ansible
 
@@ -68,7 +69,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: The `blockinfile` repeated-insertion quote is credited to Ansible's notes; it is in the `marker` parameter description, and the wording differs.
+- defect: The `blockinfile` repeated-insertion quote is credited to Ansible's notes; it is in the `marker` parameter description, and the wording differs. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L110-L111))
 
 ### 62-exit5
 
@@ -80,7 +81,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: git config exit status 5 applies "unless you pass `--replace-all`"; that flag covers set only, unset needs `--unset-all` or a value pattern.
+- defect: git config exit status 5 applies "unless you pass `--replace-all`"; that flag covers set only, unset needs `--unset-all` or a value pattern. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L186-L187))
 
 ### 62-today
 
@@ -92,7 +93,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: "The skill today does 7 with show-before-writing and a plain append"; the jarvis-setup skill also offers an optional `@import` route (option 4).
+- defect: "The skill today does 7 with show-before-writing and a plain append"; the jarvis-setup skill also offers an optional `@import` route (option 4). ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L310))
 
 ### 62-bare
 
@@ -104,7 +105,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `8067d67` → [round N+1 finding at `59a27d9`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712324855)
-- defect: States that switching to bare import lines fixed the load failure; the linked example records that the confirming check was not run.
+- defect: States that switching to bare import lines fixed the load failure; the linked example records that the confirming check was not run. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/8067d67615e8912e1ea05cf51c631fdd12947362/docs/writing-into-user-owned-files.md#L153))
 
 ### 62-substr
 
@@ -116,7 +117,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `59a27d9` → [round N+1 finding at `4074b0b`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712717663)
-- defect: "A substring guard does not recognise a changed line as yours", with nvm as the example; nvm's guard matches any line containing `/nvm.sh`, so it does.
+- defect: "A substring guard does not recognise a changed line as yours", with nvm as the example; nvm's guard matches any line containing `/nvm.sh`, so it does. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/59a27d9b9fd573d9fc63e66a897c7babbcc9a09d/docs/writing-into-user-owned-files.md#L77))
 
 ### 62-equiv
 
@@ -128,7 +129,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `4074b0b` → [round N+1 finding at `f677a54`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712985215)
-- defect: "if the person already has an equivalent line outside the block, the block adds a second one"; conda, the lead example, comments out earlier equivalent lines first.
+- defect: "if the person already has an equivalent line outside the block, the block adds a second one"; conda, the lead example, comments out earlier equivalent lines first. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/4074b0bd19617bfdc10e506c7ce5c66465c0bd25/docs/writing-into-user-owned-files.md#L128))
 
 ### 62-subst
 
@@ -140,7 +141,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `4074b0b` → [round N+1 finding at `f677a54`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5712985215)
-- defect: "present in substance" is in quotation marks; the skill says "already states it in substance".
+- defect: "present in substance" is in quotation marks; the skill says "already states it in substance". ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/4074b0bd19617bfdc10e506c7ce5c66465c0bd25/docs/writing-into-user-owned-files.md#L265))
 
 ### 62-nvmq
 
@@ -152,7 +153,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `f677a54` → [round N+1 finding at `a6d0c01`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713336602)
-- defect: The quoted nvm message drops the leading `=> ` of the source string, so it is not verbatim.
+- defect: The quoted nvm message drops the leading `=> ` of the source string, so it is not verbatim. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/f677a5447aeef021cb6c3258cf38888cb0d1cdad/docs/writing-into-user-owned-files.md#L70))
 
 ### 62-persist
 
@@ -164,7 +165,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `f677a54` → [round N+1 finding at `a6d0c01`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713336602)
-- defect: "secrets never land in any persistent surface" differs in case from the quoted jarvis-setup SKILL.md line.
+- defect: "secrets never land in any persistent surface" differs in case from the quoted jarvis-setup SKILL.md line. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/f677a5447aeef021cb6c3258cf38888cb0d1cdad/docs/writing-into-user-owned-files.md#L257))
 
 ### 62-res
 
@@ -176,7 +177,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `f677a54` → [round N+1 finding at `a6d0c01`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713336602)
-- defect: The cost line claims "a yes/no confirmation before the full write"; the skill asks one trial-or-full question at the start and has no confirmation before the write.
+- defect: The cost line claims "a yes/no confirmation before the full write"; the skill asks one trial-or-full question at the start and has no confirmation before the write. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/f677a5447aeef021cb6c3258cf38888cb0d1cdad/resources/jarvis-setup-skill.md#L4))
 
 ### 62-tried
 
@@ -188,7 +189,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `a6d0c01` → [round N+1 finding at `9dbed9e`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713920022)
-- defect: A `tried:` run of `git config -f main.cfg --includes --get` against a missing include target has no trace in the repo; the behaviour is right, the status is not.
+- defect: A `tried:` run of `git config -f main.cfg --includes --get` against a missing include target has no trace in the repo; the behaviour is right, the status is not. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/a6d0c01a2aa06a0ec1d69fff42c6af6511e048aa/docs/writing-into-user-owned-files.md#L157))
 
 ### 62-rustup
 
@@ -200,7 +201,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `a6d0c01` → [round N+1 finding at `9dbed9e`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713920022)
-- defect: Link target: the rustup claim links `shell.rs`, but the append it describes is in `unix.rs`.
+- defect: Link target: the rustup claim links `shell.rs`, but the append it describes is in `unix.rs`. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/a6d0c01a2aa06a0ec1d69fff42c6af6511e048aa/docs/writing-into-user-owned-files.md#L139))
 
 ### 62-systemd
 
@@ -212,7 +213,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `a6d0c01` → [round N+1 finding at `9dbed9e`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713920022)
-- defect: "systemd reads `.d/` files"; systemd merges only `.conf` files from a drop-in directory.
+- defect: "systemd reads `.d/` files"; systemd merges only `.conf` files from a drop-in directory. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/a6d0c01a2aa06a0ec1d69fff42c6af6511e048aa/docs/writing-into-user-owned-files.md#L147))
 
 ### 62-backup
 
@@ -224,7 +225,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `a6d0c01` → [round N+1 finding at `9dbed9e`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713920022)
-- defect: "keep a backup, as Ansible's `template` does"; the module's `backup` option is off by default.
+- defect: "keep a backup, as Ansible's `template` does"; the module's `backup` option is off by default. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/a6d0c01a2aa06a0ec1d69fff42c6af6511e048aa/docs/writing-into-user-owned-files.md#L283))
 
 ### 62-npm
 
@@ -236,7 +237,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `9dbed9e` → [round N+1 finding at `8bc6712`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5714260724)
-- defect: `npm pkg set` is offered as keeping formatting ("respect the existing indentation"); a re-run showed it rewrites untouched content, failing the row that requires formatting kept.
+- defect: `npm pkg set` is offered as keeping formatting ("respect the existing indentation"); a re-run showed it rewrites untouched content, failing the row that requires formatting kept. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/9dbed9e25a4c252ce679ba0485064bf913c13260/docs/writing-into-user-owned-files.md#L192))
 
 ### 75-ledger
 
@@ -248,7 +249,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299527)
-- defect: "one structure-gate run per pull request"; a workflow `on: pull_request:` with default types runs on every opened, synchronize and reopened event.
+- defect: "one structure-gate run per pull request"; a workflow `on: pull_request:` with default types runs on every opened, synchronize and reopened event. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/resources/review-hold-and-signoff-ledger.md#L4))
 
 ### 75-pro
 
@@ -260,7 +261,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: "Paying for Pro, or making the repo public, turns this to yes"; Pro is a personal-account plan, so a private organisation repo on Free needs Team. Reader: a private repo owned by an organisation on Free.
+- defect: "Paying for Pro, or making the repo public, turns this to yes"; Pro is a personal-account plan, so a private organisation repo on Free needs Team. Reader: a private repo owned by an organisation on Free. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L231-L232))
 
 ### 75-reauth
 
@@ -272,7 +273,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299527)
-- defect: Row 5 lists "re-authentication" with no plan condition; the GitLab re-authentication approval setting needs a paid tier. Reader: GitLab Free.
+- defect: Row 5 lists "re-authentication" with no plan condition; the GitLab re-authentication approval setting needs a paid tier. Reader: GitLab Free. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/publishing-discipline.md#L249))
 
 ### 75-mkdocs
 
@@ -284,7 +285,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: MkDocs' and Docusaurus' link checking "counts as 7", but both can fail a build on a front-matter rule (an MkDocs hook raising `PluginError`, Docusaurus `parseFrontMatter`), so option 5 is reachable. Setup: MkDocs with a review-date rule.
+- defect: MkDocs' and Docusaurus' link checking "counts as 7", but both can fail a build on a front-matter rule (an MkDocs hook raising `PluginError`, Docusaurus `parseFrontMatter`), so option 5 is reachable. Setup: MkDocs with a review-date rule. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L240-L241))
 
 ### 75-madr
 
@@ -296,7 +297,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: Step 3 offers the Structured MADR action for any docs with fixed headings; it checks MADR records only and runs only as a GitHub Action. Setup: runbooks on GitLab.
+- defect: Step 3 offers the Structured MADR action for any docs with fixed headings; it checks MADR records only and runs only as a GitHub Action. Setup: runbooks on GitLab. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L236-L238))
 
 ### 75-gs
 
@@ -308,7 +309,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: Row 3 sends owner and review-date key rules to option 3, but that option's built-in rule checks its own fixed field names only.
+- defect: Row 3 sends owner and review-date key rules to option 3, but that option's built-in rule checks its own fixed field names only. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L247))
 
 ### 75-row1
 
@@ -320,7 +321,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: Row 1 requires "docs are few and one person reviews all of them"; option 1's own section says "or". Setup: a five-person team with one reviewer.
+- defect: Row 1 requires "docs are few and one person reviews all of them"; option 1's own section says "or". Setup: a five-person team with one reviewer. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L245))
 
 ### 75-mail
 
@@ -332,7 +333,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299527)
-- defect: Calls the mailing-list reply the proof, which conflicts with row 6 (it needs option 2, 3 or 5) and with the earlier section on what counts as proof.
+- defect: Calls the mailing-list reply the proof, which conflicts with row 6 (it needs option 2, 3 or 5) and with the earlier section on what counts as proof. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/publishing-discipline.md#L268-L271))
 
 ### 75-pls1
 
@@ -344,7 +345,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726330075)
-- defect: Step 1 and row 1 drop option 1's condition that the agent does not need the private strings for the public work. Setup: a CI agent that summarises private incident notes.
+- defect: Step 1 and row 1 drop option 1's condition that the agent does not need the private strings for the public work. Setup: a CI agent that summarises private incident notes. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/private-literal-scrub.md#L243-L245))
 
 ### 81-gitleaks
 
@@ -356,7 +357,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `79bc90c` → [round N+1 finding at `af950ea`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465546)
-- defect: Names `.gitleaks.toml` among "here" review-gate files outside the sandbox default; the repo has no `.gitleaks.toml`.
+- defect: Names `.gitleaks.toml` among "here" review-gate files outside the sandbox default; the repo has no `.gitleaks.toml`. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/79bc90c792845883cf8bb6def53f52f7395bf4bb/docs/agent-safety-hooks.md#L136-L138))
 
 ### 81-expires
 
@@ -368,7 +369,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `79bc90c` → [round N+1 finding at `af950ea`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465546)
-- defect: "Tokens multiply, and each expires"; the source allows tokens with no expiry.
+- defect: "Tokens multiply, and each expires"; the source allows tokens with no expiry. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/79bc90c792845883cf8bb6def53f52f7395bf4bb/docs/agent-safety-hooks.md#L178))
 
 ### 81-openhands
 
@@ -380,7 +381,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `79bc90c` → [round N+1 finding at `af950ea`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465546)
-- defect: A classifier "approves or blocks" risky calls, citing OpenHands' security analyzer; OpenHands' page says its policy confirms rather than blocks.
+- defect: A classifier "approves or blocks" risky calls, citing OpenHands' security analyzer; OpenHands' page says its policy confirms rather than blocks. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/79bc90c792845883cf8bb6def53f52f7395bf4bb/docs/agent-safety-hooks.md#L245-L247))
 
 ### 81-res
 
@@ -392,7 +393,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `79bc90c` → [round N+1 finding at `af950ea`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465546)
-- defect: Says the four `CUSTOMIZE` constants ship as placeholders naming this repo's hook files and `.gitleaks.toml`; one ships empty and two list key formats and variable names instead.
+- defect: Says the four `CUSTOMIZE` constants ship as placeholders naming this repo's hook files and `.gitleaks.toml`; one ships empty and two list key formats and variable names instead. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/79bc90c792845883cf8bb6def53f52f7395bf4bb/resources/agent-safety-hooks.md#L66-L70))
 
 ### 81-files
 
@@ -404,7 +405,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `af950ea` → [round N+1 finding at `86ad376`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465682)
-- defect: "Claude Code's rules reach commands that name a file"; the source covers recognised file commands and redirects only.
+- defect: "Claude Code's rules reach commands that name a file"; the source covers recognised file commands and redirects only. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/af950ea377866fd98c59de6a54a082554248e826/docs/agent-safety-hooks.md#L92-L93))
 
 ### 81-steer
 
@@ -416,7 +417,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `af950ea` → [round N+1 finding at `86ad376`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465682)
-- defect: "a crafted input can steer it" is not in the linked post, and the vendor says tool results are stripped from classifier requests.
+- defect: "a crafted input can steer it" is not in the linked post, and the vendor says tool results are stripped from classifier requests. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/af950ea377866fd98c59de6a54a082554248e826/docs/agent-safety-hooks.md#L332))
 
 ### 81-cost
 
@@ -428,7 +429,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `af950ea` → [round N+1 finding at `86ad376`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465682)
-- defect: "Each call costs a model request"; reads and in-directory edits skip the classifier.
+- defect: "Each call costs a model request"; reads and in-directory edits skip the classifier. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/af950ea377866fd98c59de6a54a082554248e826/docs/agent-safety-hooks.md#L332-L333))
 
 ### 81-heredoc
 
@@ -440,7 +441,7 @@ open finding at that commit, and its pass 4 ran at that commit.
 - held_out: no
 - selection_source: model
 - escape: round N `af950ea` → [round N+1 finding at `86ad376`](https://github.com/Osasuwu/jarvis-oss/pull/81#issuecomment-5740465682)
-- defect: "a heredoc's content is text being written, not a command being executed"; false when the heredoc feeds `bash`, `sh`, `python` or `ssh` (reproduced).
+- defect: "a heredoc's content is text being written, not a command being executed"; false when the heredoc feeds `bash`, `sh`, `python` or `ssh` (reproduced). ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/af950ea377866fd98c59de6a54a082554248e826/examples/heredoc-stripping-boundary-bug.md#L9-L11))
 
 ## n per class
 
@@ -467,8 +468,8 @@ Held-out entries are excluded from caught, missed and n above.
 
 The call on 75-ghd has low confidence. PR #88 edits the write-doc skill, which review-doc's
 `SKILL.md` links to, and its body names GHD012 and GHD063. Whether a linked skill counts as
-"anything it loads" is a reading of the rule. The entry is held out because that is the reading
-that cannot overstate the reviewer.
+"anything it loads" is a reading of the [held-out rule](RULES.md#held-out). The entry is held
+out because that is the reading that cannot overstate the reviewer.
 
 ### 75-ghd
 
@@ -481,7 +482,7 @@ that cannot overstate the reviewer.
 - held_out_by: PR #88 (c10f7b2)
 - selection_source: model
 - escape: round N `3d896f9` → [round N+1 finding at `8238d21`](https://github.com/Osasuwu/jarvis-oss/pull/75#issuecomment-5726299772)
-- defect: GHD012 and GHD063 are quoted as sentences; the source is a table row, so neither quote is verbatim.
+- defect: GHD012 and GHD063 are quoted as sentences; the source is a table row, so neither quote is verbatim. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/3d896f994d9d8971213967d97a24847ab46dea61/docs/doc-structure-gate.md#L166-L167))
 
 ## Excluded
 
@@ -503,8 +504,8 @@ PR #75:
 - Hugo `ref` / `relref`: these fail on an unresolved target by default, so the claim is not clearly
   wrong.
 - "entries" read as non-blank lines: a reasonable reading.
-- The environment-reviewer line, one proof-example item, one row-6 item and three private-literal-
-  scrub items: a partner line the defect depends on was changed between the rounds.
+- The environment-reviewer line, one proof-example item, one row-6 item and three items in the
+  private-literal-scrub doc: a partner line the defect depends on was changed between the rounds.
 - The "5 with an admin token" example: round 2 reported the same defect at step 2, so it was
   caught.
 - Four items the reviewer marked "(low)", or judgement calls with no named reader: no reader is
@@ -544,8 +545,8 @@ Other PRs:
 ## Judgement notes
 
 - **missing-option is 0 by method, not by absence.** Several rounds reported missing options.
-  None became an entry: an absent option has no defective lines, so "text unchanged since round N"
-  cannot be tested. Counting them would need a rule for what "unchanged" means for an absence.
+  None became an entry: an absent option has no defective lines, so "text unchanged since
+  round N" ([Escaped](RULES.md#escaped)) cannot be tested. Counting them would need a rule for what "unchanged" means for an absence.
   That is a change to `RULES.md`, which this corpus does not make.
 - **how-to-choose entries are follow-ups.** Each names a setup, but none shows the reader led
   into (i), (ii) or (iii). They were screened only where the partner lines were also unchanged.

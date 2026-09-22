@@ -43,6 +43,9 @@ ESCAPE = re.compile(
     rf"^round N `({SHA})` → \[round N\+1 finding at `({SHA})`\]"
     r"\((https://github\.com/Osasuwu/jarvis-oss/pull/(\d+)#issuecomment-\d+)\)$"
 )
+BLOB = re.compile(
+    r"\(\[text at round N\]\(https://github\.com/Osasuwu/jarvis-oss/blob/([0-9a-f]{40})/([^#)]+)#(L\d+(?:-L\d+)?)\)\)$"
+)
 LOCATION = re.compile(r"^`[^`:]+\.md:\d+(-\d+)?`$")
 
 
@@ -148,6 +151,18 @@ def test_escape_evidence_links_the_next_round(name, fields):
     assert f"`{round_n}`" == fields["commit"], f"{name}: commit is not round N"
     assert round_n != finding, f"{name}: round N and round N+1 are the same commit"
     assert link_pr == pr.group(1), f"{name}: finding link is on another PR"
+
+
+@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
+def test_defect_links_the_text_at_round_n(name, fields):
+    path, _, lines = fields["location"].strip("`").partition(":")
+    m = BLOB.search(fields["defect"])
+    assert m, f"{name}: defect does not link the doc text at round N"
+    sha, linked_path, anchor = m.groups()
+    assert sha.startswith(fields["commit"].strip("`")), f"{name}: linked text is not at round N"
+    assert linked_path == path, f"{name}: linked text is another file"
+    first, _, last = lines.partition("-")
+    assert anchor == (f"L{first}-L{last}" if last else f"L{first}"), f"{name}: anchor != location"
 
 
 # --- held-out ---------------------------------------------------------------------------------
