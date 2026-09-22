@@ -4,9 +4,11 @@ The skill is only worth trusting if its reviewers are independent and its verdic
 fetched evidence. These are the lines that make it so; an edit that drops one fails the build.
 """
 
+import re
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).parent.parent / ".agents" / "skills" / "review-doc"
+RULES = SKILL_DIR / "calibration" / "RULES.md"
 
 
 def _skill_text() -> str:
@@ -52,9 +54,94 @@ def test_how_to_choose_may_leave_several_options():
 
 def test_how_to_choose_findings_carry_a_severity():
     # #87: unranked pass 3 findings gave each doc 10-15 fixes and no point where it was done.
+    # #102: the severity rule itself lives in the rules file; the skill only points there.
     text = " ".join(_skill_text().split())
-    assert "Mark each finding `blocking` or `follow-up`" in text
-    assert "If you cannot name the setup, or quote two sides that cannot both be true" in text
+    assert "Mark each finding `blocking` or `follow-up` by the rules file's" in text
+
+
+def _pass(text: str, heading: str) -> str:
+    return text.split(heading, 1)[1].split("\n## ", 1)[0]
+
+
+def _anchor(heading: str) -> str:
+    # GitHub's heading anchors: lower case, punctuation other than '-' and ' ' dropped,
+    # spaces to '-'.
+    slug = re.sub(r"[^\w\- ]", "", heading.strip().lower())
+    return slug.replace(" ", "-")
+
+
+def test_labels_point_at_the_rules_file_and_resolve():
+    # #102: `blocking` and `unverifiable` have one definition, in RULES.md.
+    text = _skill_text()
+    rules = RULES.read_text(encoding="utf-8")
+    anchors = {_anchor(h) for h in re.findall(r"^## (.+)$", rules, re.M)}
+    links = re.findall(r"\]\(calibration/RULES\.md#([^)]+)\)", text)
+    assert "blocking-or-follow-up" in links
+    assert "unverifiable" in links
+    for link in links:
+        assert link in anchors, f"SKILL.md links RULES.md#{link}, which has no such heading"
+
+
+def test_skill_carries_no_second_definition_of_the_labels():
+    # #102: wording the rules file replaced. If it comes back, the two files can diverge again.
+    text = " ".join(_skill_text().split())
+    for phrase in (
+        "source unreachable, paywalled, or the claim names no source",
+        "one left in that it cannot build, nothing left with no pointer",
+        "If you cannot name the setup, or quote two sides that cannot both be true",
+        "`follow-up` — everything else",
+        "Report `fails value test`; it is `blocking`.",
+    ):
+        assert phrase not in text, phrase
+
+
+def test_pass_3_writes_reasoning_before_verdict():
+    # #102: a label written first is then argued for.
+    pass3 = " ".join(_pass(_skill_text(), "## Pass 3").split())
+    assert pass3.index("**Reasoning, then verdict.**") < pass3.index("**Severity.**")
+    assert "Write each finding's reasoning before its label" in pass3
+
+
+def test_report_template_puts_reasoning_before_verdict():
+    report = _skill_text().split("## The report", 1)[1]
+    template = report.split("```", 2)[1]
+    lines = {line.split(":**", 1)[0]: line for line in template.splitlines() if ":**" in line}
+    how = lines["**How to choose (N blocking, N follow-up)"]
+    assert how.index("<setup and what goes wrong for it") < how.index("blocking | follow-up")
+    value = lines["**Value test"]
+    assert value.index("<setup 1") < value.index("passes | fails")
+    for key in ("**Missing options (N blocking, N follow-up)",
+                "**Unverifiable (N blocking, N follow-up)"):
+        line = lines[key]
+        assert line.rstrip().endswith("blocking | follow-up"), key
+
+
+def test_report_has_a_fix_induced_line():
+    # #102: /doc-loop reads it for its stop message.
+    report = _skill_text().split("## The report", 1)[1]
+    template = report.split("```", 2)[1]
+    assert "**Fix-induced (N):** <finding IDs>" in template
+    assert "**Fix-induced (0):** none" in report
+
+
+def test_pass_3_walks_the_four_reader_types_and_the_attended_axis():
+    pass3 = " ".join(_pass(_skill_text(), "## Pass 3").split())
+    for reader in (
+        "solo, without money;",
+        "solo, with money;",
+        "a team of up to three, without money;",
+        "a team of up to three, with money.",
+    ):
+        assert reader in pass3, reader
+    assert "**attended**" in pass3 and "**unattended**" in pass3
+
+
+def test_calibration_record_is_marked_stale_with_a_pointer():
+    # #102 changed SKILL.md, whose hash is in the drift key; #106 is the new calibration.
+    text = " ".join((SKILL_DIR / "CALIBRATION.md").read_text(encoding="utf-8").split())
+    head = text.split("## Run 1", 1)[0]
+    assert "**Stale.**" in head
+    assert "#106" in head
 
 
 def test_fix_commits_get_a_delta_pass():
