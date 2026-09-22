@@ -1,0 +1,13 @@
+# Default gitleaks rules plus one allowlist. A `drift-key:` line in a review-doc
+# CALIBRATION.md (real or test fixture) is a SHA-256 of public inputs — workflow
+# file, action SHA, model ID, SKILL.md — not a credential (#104). The default
+# generic-api-key rule flags it on entropy alone.
+[extend]
+useDefault = true
+
+# Singular `[allowlist]`: in gitleaks 8.24.3 a `[[allowlists]]` table under
+# `[extend] useDefault` did not suppress the finding (checked locally).
+[allowlist]
+description = "review-doc drift key: sha256 of public inputs"
+regexTarget = "line"
+regexes = ['''drift-key: [0-9a-f]{64}(?: \(model: [^\s()]+\))?\s*$''']
