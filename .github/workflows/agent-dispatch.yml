@@ -1,0 +1,137 @@
+name: Agent Dispatch
+
+# Headless worker for issues routed by `/dispatch`: fires once per issue when
+# the `agent:dispatch` label is added. Ported from Osasuwu/jarvis
+# `.github/workflows/agent-dispatch.yml` (7b20ed9), with three deliberate
+# differences for this repo:
+#
+# - No auto-merge step. Here the human merges content PRs (the agent-review
+#   design under #38; the deny hook in #99). The worker opens a PR and stops.
+# - The worker cannot edit labels. `gh issue edit` would let it remove
+#   `waiting-human-review` from a PR (PRs are issues to that command), so it
+#   is not on the allowlist; escalation is a comment, and a deterministic
+#   post-step applies `status:owner-queue`.
+# - This repo has no AGENTS.md, so the prompt carries the whole process.
+#
+# Only users with triage access can add a label, so a stranger's issue runs
+# nothing until someone with access routes it. The issue body is still
+# untrusted text inside the worker's prompt; the allowlist and the path
+# denials below are what bound a bad turn, not the prompt.
+on:
+  issues:
+    types: [labeled]
+
+# One worker per issue; re-labeling (remove + add, to retry) cancels an
+# in-flight run for the same issue instead of racing it.
+concurrency:
+  group: agent-dispatch-issue-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  worker:
+    if: github.event.label.name == 'agent:dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run unattended worker
+        # Step-level timeout, under the job's: a timed-out step fails rather
+        # than cancels, so the owner-queue step below still runs.
+        timeout-minutes: 40
+        uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Fine-grained PAT scoped to this repo (contents, issues,
+          # pull-requests: write), NOT the default GITHUB_TOKEN: a push or PR
+          # made with GITHUB_TOKEN triggers no other workflow, so the required
+          # checks (structure-gate, gitleaks, waiting-human-review) would never
+          # report on the worker's PR and it could never merge.
+          github_token: ${{ secrets.AGENT_DISPATCH_PAT }}
+          prompt: |
+            Implement GitHub issue #${{ github.event.issue.number }} in
+            ${{ github.repository }}, end to end, unattended. Nobody is
+            watching this run: do not ask questions. Make the best call and
+            write it down, or escalate per step 5.
+
+            1. `gh issue view ${{ github.event.issue.number }} --json
+               title,body,labels,milestone` and read the whole body,
+               including `## Decisions`, `## Blocked by` and `## Notes`.
+            2. Preflight: stop and do nothing if the issue is already
+               claimed (an assignee, `status:in-progress`, an open PR that
+               closes it, or an existing
+               `claude/issue-${{ github.event.issue.number }}-*` branch), or
+               if any issue under `## Blocked by` is still open.
+            3. Branch from `main`:
+               `claude/issue-${{ github.event.issue.number }}-<slug>`.
+            4. Meet every acceptance-criteria checkbox. Tests verify the
+               requirement, not your implementation; never weaken a test to
+               make it pass. Run `python -m pytest tests/ -q` before each
+               commit and fix failures first. Docs follow the repo's
+               structure gate (`tests/structure_gate.py`).
+            5. If you are blocked (ambiguous scope, an acceptance criterion
+               contradicts the code, a human decision is needed, or the
+               change requires a file you are denied below), do NOT guess:
+               post one comment on the issue naming the blocker, and stop
+               without opening a PR.
+            6. Otherwise commit, push the branch, and open a PR whose body
+               has `Closes #${{ github.event.issue.number }}` on its own
+               line, then each acceptance criterion with how it is met, the
+               test output summary, and anything left undone.
+
+            Never merge a PR, never touch labels, never touch branch
+            protection: the human merges every PR in this repo. Never edit
+            `.github/workflows/**`, `.agents/hooks/**` or `.claude/**`:
+            that is your own execution environment and the hooks that guard
+            it. Edits there are denied mechanically as well; if the issue
+            needs one, that is a step-5 escalation. Never write a real
+            personal name, path, host or account into any file, commit,
+            comment or PR; use obvious placeholders.
+          claude_args: |
+            --max-turns 100
+            --allowed-tools "Read,Write,Edit,Glob,Grep,Bash(git status:*),Bash(git branch:*),Bash(git checkout:*),Bash(git switch:*),Bash(git add:*),Bash(git commit:*),Bash(git push:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh issue view:*),Bash(gh issue list:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh label list:*),Bash(python -m pytest:*),Bash(pytest:*),Bash(python tests/structure_gate.py:*),Bash(python scripts/check_quotes.py:*),Bash(python scripts/scrub_personal_literals.py:*)"
+            --disallowed-tools "Edit(./.github/workflows/**)" "Write(./.github/workflows/**)" "Edit(./.agents/hooks/**)" "Write(./.agents/hooks/**)" "Edit(./.claude/**)" "Write(./.claude/**)" "Bash(git push --force:*)" "Bash(git push -f:*)" "Bash(git push --force-with-lease:*)" "Bash(git commit --amend:*)" "Bash(git reset --hard:*)" "Bash(gh pr merge:*)" "Bash(gh pr edit:*)" "Bash(gh issue edit:*)" "Bash(gh api:*)"
+
+      # Deterministic, not left to the model: a run that ended without a PR
+      # (escalated, blocked, timed out or crashed) goes to the owner queue so
+      # it shows up in the next status read instead of looking dispatched
+      # forever. A run cancelled by a re-label is superseded, not failed, so
+      # it is skipped; the replacing run makes the call.
+      # Runs with GITHUB_TOKEN: adding a label needs no downstream workflow.
+      - name: Route to owner queue when no PR was opened
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE: ${{ github.event.issue.number }}
+          PR_BRANCH_PREFIX: claude/issue-${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # Exact branch or `<prefix>-<slug>`; the trailing `-` keeps
+          # claude/issue-10 from matching issue 100's branch. Output goes into
+          # a variable first so an early awk exit cannot SIGPIPE gh.
+          raw=$(gh pr list --state open --limit 100 \
+                  --json number,headRefName \
+                  --jq '.[] | "\(.headRefName)\t\(.number)"')
+          pr=$(awk -F'\t' -v p="$PR_BRANCH_PREFIX" \
+                 '$1 == p || index($1, p "-") == 1 { print $2; exit }' <<< "$raw")
+          if [ -n "$pr" ]; then
+            echo "::notice::Worker opened PR #${pr}; the human merges it."
+            exit 0
+          fi
+          gh issue edit "$ISSUE" --add-label "status:owner-queue"
+          echo "::notice::No PR on ${PR_BRANCH_PREFIX}[-*]; #${ISSUE} routed to status:owner-queue."
