@@ -150,6 +150,11 @@ def _urls(paragraph: str) -> tuple[str, ...]:
     return urls + tuple(u.rstrip(".,;:") for u in bare)
 
 
+def paragraphs(text: str) -> list[tuple[int, str, tuple[str, ...]]]:
+    """(first line number, joined text, links) for each body paragraph; code fences are dropped."""
+    return [(line, para, _urls(para)) for line, para in _paragraphs(text)]
+
+
 def doc_urls(text: str) -> tuple[str, ...]:
     """Every link in the doc body, once each."""
     return tuple(dict.fromkeys(u for _, para in _paragraphs(text) for u in _urls(para)))
