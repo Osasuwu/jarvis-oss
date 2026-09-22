@@ -328,16 +328,19 @@ no — the agent's global instructions load a private repository into its contex
 public repo is written directly. Step 3: no, a personal account on GitHub.com. Step 4: no fork
 pull requests so far. That leaves 3, 5 and 6 — 10's row does not hold, because our private strings
 live in no file here. We took 2 plus 5: [`gitleaks.yml`](../.github/workflows/gitleaks.yml) runs
-gitleaks then the scrub, both added in the same pull request (#34). Not taken yet: a harness
-hook (3), which would check pull request text before it is posted and close the second gap below;
-6 would too, after the push. Gaps:
+gitleaks then the scrub, both added in the same pull request (#34). Since #100 we also run 3,
+twice: a git pre-push hook over the commits being pushed, messages included, and a harness hook
+over pull request and issue text before it is sent. All three match variants of each literal
+(case, separators, path forms), not only the exact string. 6 is not taken. Gaps:
 
 - The secret was unset until 2026-09-18. Before then 34 scrub runs, from #34 on 2026-09-16,
   logged "Scrub clean" and were green, checking nothing
   ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
   The script now fails on an empty list. Fork pull requests never get the secret, and the workflow
   comes from the merge commit, which includes their edits, so a green run from a fork checked nothing.
-- It runs after the push, on file contents only — the checkout and plaintext files under `.git`,
-  not packed history, commit messages, or pull request and issue text — and on exact strings.
+- The scrub runs after the push, on file contents only. The two hooks cover commits and pull
+  request text before they leave, but only on machines where they are installed and the list is
+  set; `git push --no-verify` skips the git hook. None of them catches a typo of a literal (8).
 
-The script and how to tell it ran: [`personal-literal-scrub.md`](../resources/personal-literal-scrub.md).
+The scrub and how to tell it ran: [`personal-literal-scrub.md`](../resources/personal-literal-scrub.md).
+The two hooks, their install and a canary check: [`pre-push-leak-gate.md`](../resources/pre-push-leak-gate.md).
