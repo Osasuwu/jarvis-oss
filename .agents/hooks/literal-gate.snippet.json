@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*github",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2"
+          }
+        ]
+      }
+    ]
+  }
+}

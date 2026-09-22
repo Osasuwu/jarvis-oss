@@ -11,8 +11,10 @@ runs it:
 
 - **Script:** [`scripts/scrub_personal_literals.py`](../scripts/scrub_personal_literals.py). Reads
   `PERSONAL_LITERALS` (one literal per line, blank lines ignored), walks `GITHUB_WORKSPACE`, and
-  fails if any file (`.git` included) contains any literal as an exact substring. A hit prints the file path with
-  "values withheld" — never the literal. An empty or unset list fails.
+  fails if any file (`.git` included) contains any literal in any of its variants: any case,
+  words joined by `-`, `_`, `.`, space or nothing, camelCase, and the path forms of a path
+  (`C:\Users\x`, `C:/Users/x`, `/c/Users/x`). A hit prints the file path with "values withheld" —
+  never the literal. An empty or unset list fails, and so does a list with no letter or digit in it.
 - **Workflow:** [`gitleaks.yml`](../.github/workflows/gitleaks.yml), on every pull request, after
   gitleaks. The secret is passed only to the scrub step's environment.
 - **Secret:** `PERSONAL_LITERALS`, a repository secret — one entry per line.
@@ -22,8 +24,9 @@ To adopt: copy the script and the step, then create the secret
 required check.
 
 **Not covered:** packed git history, commit messages, pull request and issue text (the walk does
-include plaintext files under `.git`, such as refs); any
-variant of a literal (case, spacing, a split across lines); fork pull requests, which get no secret: an
+include plaintext files under `.git`, such as refs) — the local hooks in
+[`pre-push-leak-gate.md`](pre-push-leak-gate.md) cover commits and that text before they leave;
+a typo of a literal, or one split across lines; fork pull requests, which get no secret: an
 unedited run fails, but a fork can edit the step to pass, so no fork result counts. The
 push has already happened when it runs. Keep each literal specific enough that it cannot occur by
 chance, or every pull request goes red. The job log masks the secret by exact match only, so the
@@ -41,4 +44,4 @@ script must never print the list or a transformed form of it.
 - **Catches something:** never plant a real entry — the branch is public the moment you push it.
   Add a canary to the secret, a random string that means nothing (`canary-7f3c9a`), then put that
   string in a file on a throwaway branch and open a pull request; the step must fail and name the
-  file. If it passes, the secret does not hold what you think; matching is exact.
+  file. If it passes, the secret does not hold what you think.
