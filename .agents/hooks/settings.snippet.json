@@ -31,6 +31,24 @@
             "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
+          }
+        ]
+      },
+      {
+        "matcher": "^mcp__.*github",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
+          }
+        ]
       }
     ]
   }

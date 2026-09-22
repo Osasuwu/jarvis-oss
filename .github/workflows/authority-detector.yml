@@ -1,0 +1,75 @@
+name: Authority detector
+
+# The other half of .agents/hooks/github-authority-guard.py. The agent works
+# under the human's account, so the hook is a hold, not proof. This workflow
+# records every release of the `waiting-human-review` hold and every
+# branch-protection change in one rolling issue: actor, event, target, time.
+# The human reads it and knows whether each act was theirs (#99, #38).
+#
+# `branch_protection_rule` only fires for a workflow on the default branch,
+# and `pull_request_target` runs the base copy, so a PR cannot edit this
+# detector to silence itself. No checkout, no PR content executed.
+on:
+  branch_protection_rule:
+    types: [created, edited, deleted]
+  pull_request_target:
+    types: [unlabeled]
+
+permissions:
+  issues: write
+
+# Serialize, so two near-simultaneous events cannot both create the issue.
+concurrency:
+  group: authority-detector
+  cancel-in-progress: false
+
+jobs:
+  record:
+    if: >-
+      github.event_name == 'branch_protection_rule' ||
+      github.event.label.name == 'waiting-human-review'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Append to the authority log
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const TITLE = "Authority log: hold releases and protection changes";
+            const { owner, repo } = context.repo;
+            const p = context.payload;
+
+            let target;
+            if (context.eventName === "branch_protection_rule") {
+              const rule = p.rule || {};
+              target = `branch protection rule \`${rule.name || rule.pattern || rule.id}\``;
+            } else {
+              target = `\`${p.label.name}\` removed from PR #${p.pull_request.number}`;
+            }
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const entry = [
+              `- **actor:** @${p.sender.login}`,
+              `- **event:** \`${context.eventName}.${p.action}\``,
+              `- **target:** ${target}`,
+              `- **time:** ${new Date().toISOString()}`,
+              `- **run:** ${runUrl}`,
+            ].join("\n");
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", creator: "github-actions[bot]", per_page: 100,
+            });
+            let log = open.find((i) => i.title === TITLE && !i.pull_request);
+            if (!log) {
+              ({ data: log } = await github.rest.issues.create({
+                owner, repo, title: TITLE,
+                body:
+                  "One comment per release of the `waiting-human-review` hold or change to " +
+                  "branch protection, written by `.github/workflows/authority-detector.yml`.\n\n" +
+                  "The agent runs under the same account, so the actor alone does not say who " +
+                  "acted. Read each entry and confirm it was yours. An entry you did not make " +
+                  "is the return condition for a separate agent identity (#99).",
+              }));
+            }
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: log.number, body: entry,
+            });
+            core.info(`Recorded on #${log.number}:\n${entry}`);

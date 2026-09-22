@@ -40,6 +40,7 @@ import sys
 # CUSTOMIZE: replace with the files in your own repo that gate review itself.
 PROTECTED_CANONICAL = {
     ".agents/hooks/protected-files.py",
+    ".agents/hooks/github-authority-guard.py",
     ".agents/hooks/secret-scanner.py",
     ".agents/hooks/settings.snippet.json",
     ".gitleaks.toml",
