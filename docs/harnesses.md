@@ -38,7 +38,7 @@ Every claim below has a verbatim-quote source in [Verification notes](#verificat
 ## Verification notes
 
 Verbatim excerpts backing each `Include support` claim above, fetched 2026-09-17 directly from
-each harness's own primary documentation (not a mirror or a secondary summary).
+each harness's own primary documentation (not a mirror or a secondary summary). 
 
 - **Claude Code** — https://code.claude.com/docs/en/memory — "Imported files can recursively
   import other files, with a maximum depth of four hops." "Both relative and absolute paths are
