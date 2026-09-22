@@ -41,7 +41,7 @@ Verbatim excerpts backing each `Include support` claim above, fetched 2026-09-17
 each harness's own primary documentation (not a mirror or a secondary summary).
 
 - **Claude Code** — https://code.claude.com/docs/en/memory — "Imported files can recursively
-  import other files, with a maximum depth of four hops." "Both relative and absolute paths are
+  import other files, with a maximum depth of eight hops." "Both relative and absolute paths are
   allowed." A home-dir import is shown explicitly: `- @~/.claude/my-project-instructions.md`. This
   pass also found a second, separate mechanism not in the prior row: "Place markdown files in your
   project's `.claude/rules/` directory... All `.md` files are discovered recursively, so you can
