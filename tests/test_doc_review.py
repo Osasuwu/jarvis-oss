@@ -165,6 +165,16 @@ def test_plan_doc_ignores_runs_on_the_head_commit_so_a_rerun_repeats_the_decisio
     assert dr.plan_doc("docs/a.md", HEAD, after_rerun, read).kind == "delta"
 
 
+def test_unreviewable_runs_are_not_prior_reviews():
+    """Live check on #104: a run whose review step failed must not turn the next commit into a
+    delta against text nobody reviewed."""
+    failed = dr.parse_blocks([_bot(dr.render_block(
+        {"commit": PREV, "docs": {"docs/a.md": "full"}, "findings": [], "status": "unreviewable"}))])
+    plan = dr.plan_doc("docs/a.md", HEAD, failed, lambda rev, path: DOC)
+    assert (plan.kind, plan.reviewed_commit, plan.first_reviewed_commit) == ("full", None, None)
+    assert dr.count_rounds(failed) == 0
+
+
 def test_plan_doc_without_earlier_runs_is_full():
     plan = dr.plan_doc("docs/a.md", HEAD, [], lambda rev, path: DOC)
     assert (plan.kind, plan.reviewed_commit, plan.first_reviewed_commit) == ("full", None, None)
@@ -489,6 +499,7 @@ def test_cli_unresolved_model_is_unreviewable(monkeypatch, tmp_path):
     assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 1
     comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
     assert "unreviewable: cannot resolve the 'opus' model" in comment
+    assert "**Rounds (full reviews on distinct commits):** 0" in comment
 
 
 # --- workflow contract ----------------------------------------------------

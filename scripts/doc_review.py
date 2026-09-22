@@ -413,9 +413,15 @@ def union_blocking(blocks: list[dict], commit: str) -> list[tuple[str, int | Non
     return sorted(keys, key=lambda k: (k[0], k[1] or 0, k[2]))
 
 
+def completed_reviews(blocks: list[dict]) -> list[dict]:
+    """Blocks of runs where the review actually ran. An unreviewable run reviewed nothing, so it
+    is neither a prior review for full or delta nor a round."""
+    return [b for b in blocks if b.get("status") != "unreviewable"]
+
+
 def count_rounds(blocks: list[dict]) -> int:
-    """Distinct commits with a full review of any doc."""
-    return len({b["commit"] for b in blocks if "full" in b["docs"].values()})
+    """Distinct commits with a completed full review of any doc."""
+    return len({b["commit"] for b in completed_reviews(blocks) if "full" in b["docs"].values()})
 
 
 @dataclass(frozen=True)
@@ -430,12 +436,12 @@ class DocPlan:
 def plan_doc(
     doc: str, head: str, blocks: list[dict], read_blob
 ) -> DocPlan:
-    """Full or delta for one doc, from the earlier runs on other commits.
+    """Full or delta for one doc, from the earlier completed runs on other commits.
 
-    Runs on the head commit itself are ignored, so a re-run on the same commit repeats the same
+    Unreviewable runs are ignored: they reviewed nothing. Runs on the head commit itself are ignored, so a re-run on the same commit repeats the same
     decision.
     """
-    prior = [b for b in blocks if b["commit"] != head and doc in b["docs"]]
+    prior = [b for b in completed_reviews(blocks) if b["commit"] != head and doc in b["docs"]]
     has_prior_full = any(b["docs"][doc] == "full" for b in prior)
     last = prior[-1]["commit"] if prior else None
     old_text = read_blob(last, doc) if last else None
@@ -795,10 +801,10 @@ def run_verdict(
     }
     blocks = parse_blocks(comments) + [block]
     union = union_blocking(blocks, head)
-    rounds = count_rounds(blocks)
     verdict = decide(unreviewable=unreviewable, drift_state=drift_state,
                      drift_message=drift_message, open_blocking=len(union))
     block["status"] = verdict.status
+    rounds = count_rounds(blocks)  # after status: an unreviewable run is not a round
     body = render_comment(
         verdict=verdict, commit=head, kinds=kinds, rounds=rounds, drift_message=drift_message,
         model=model, union=union, report=report, block=block,
