@@ -76,7 +76,65 @@ A defect the model misses every time is not in it. The figures are not a recall 
 
 ### Results
 
-Pending: filled in after the 27 runs.
+Runs dispatched and finished on 2026-09-22, against `main` at `67caf77`. All 27 runs were
+reviewable on the first attempt: none was re-run. Every run resolved the model `claude-opus-5`,
+and every run computed the drift key below. Scoring was done in fresh contexts, one per
+snapshot, against the Method only; the worksheet and every borderline call are in the PR.
+
+Each cell is caught / missed / n. "Missed" includes "caught, wrong label", which has its own
+column.
+
+| Class | Run 1 | Run 2 | Run 3 | Caught, wrong label (runs 1 / 2 / 3) | Spread of caught |
+|---|---|---|---|---|---|
+| status | 0 / 1 / 1 | 0 / 1 / 1 | 0 / 1 / 1 | 0 / 0 / 0 | 0 |
+| quote | 0 / 5 / 5 | 0 / 5 / 5 | 2 / 3 / 5 | 0 / 0 / 0 | 2 |
+| plan | 0 / 2 / 2 | 0 / 2 / 2 | 0 / 2 / 2 | 0 / 0 / 0 | 0 |
+| fact | 2 / 18 / 20 | 1 / 19 / 20 | 1 / 19 / 20 | 1 / 0 / 0 | 1 |
+| dead-end | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| missing-option | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| how-to-choose | 0 / 6 / 6 | 1 / 5 / 6 | 2 / 4 / 6 | 0 / 0 / 0 | 2 |
+| other | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| **all** | 2 / 32 / 34 | 2 / 32 / 34 | 5 / 29 / 34 | 1 / 0 / 0 | 3 |
+
+Six of the 34 entries were caught in at least one run (`62-go`, `62-ansible`, `62-today`,
+`62-systemd`, `75-mkdocs`, `75-gs`); one, `62-today`, in all three. No catch was contaminated.
+
+**Held out.** 1 entry, `75-ghd` (quote, `blocking`): missed in runs 1, 2 and 3. Not in the
+counts above.
+
+**Not measurable.** None: every entry outside `docs/` was in its paired doc's scope.
+
+**Snapshots that could not show the defect as it was.** A snapshot is `main` with the doc set
+replaced, so a file `main` gained after the corpus commit is present. Two entries are affected;
+both are scored as missed under the Method and counted above:
+
+- `81-gitleaks`: the defect is a claim about `.gitleaks.toml`, which `main` added in `67caf77`.
+  In the snapshot the claim is true.
+- `62-tried`: the defect is a claim with no trace in the repo;
+  `examples/git-include-missing-target-silent.md`, added in `9803c6c`, is that trace, and the
+  runs found it.
+
+**Runs.**
+
+| Snapshot | Docs reviewed | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|---|
+| `calib/3d896f9` | `docs/doc-structure-gate.md`, `docs/private-literal-scrub.md`, `docs/publishing-discipline.md` | [35736148530](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736148530) | [35736250894](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736250894) | [35736367646](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736367646) |
+| `calib/4074b0b` | `docs/writing-into-user-owned-files.md` | [35736162076](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736162076) | [35736265300](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736265300) | [35736381347](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736381347) |
+| `calib/59a27d9` | `docs/writing-into-user-owned-files.md` | [35736169824](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736169824) | [35736272869](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736272869) | [35736395640](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736395640) |
+| `calib/79bc90c` | `docs/agent-safety-hooks.md` | [35736183371](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736183371) | [35736286349](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736286349) | [35736403886](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736403886) |
+| `calib/8067d67` | `docs/writing-into-user-owned-files.md` | [35736198111](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736198111) | [35736301523](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736301523) | [35736417592](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736417592) |
+| `calib/9dbed9e` | `docs/writing-into-user-owned-files.md` | [35736207257](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736207257) | [35736315402](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736315402) | [35736431149](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736431149) |
+| `calib/a6d0c01` | `docs/writing-into-user-owned-files.md` | [35736215411](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736215411) | [35736329506](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736329506) | [35736439821](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736439821) |
+| `calib/af950ea` | `docs/agent-safety-hooks.md` | [35736228290](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736228290) | [35736344055](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736344055) | [35736454778](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736454778) |
+| `calib/f677a54` | `docs/writing-into-user-owned-files.md` | [35736242385](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736242385) | [35736352452](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736352452) | [35736463954](https://github.com/Osasuwu/jarvis-oss/actions/runs/35736463954) |
+
+**What these figures are.** A floor on same-model agreement, as the Method says: not a recall
+figure. They carry no threshold and no pass mark.
+
+**Drift key**, of the workflow, the action pin, the model and `SKILL.md` on `main` at `67caf77`;
+the key every one of the 27 runs computed:
+
+drift-key: ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2 (model: claude-opus-5)
 
 ## History
 

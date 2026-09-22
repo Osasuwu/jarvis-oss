@@ -215,9 +215,20 @@ def test_stored_key_malformed_is_an_error():
         dr.parse_stored_key(f"drift-key: {'a' * 64}\ndrift-key: {'b' * 64}\n")
 
 
-def test_current_calibration_file_has_no_key_so_runs_say_uncalibrated():
+def test_committed_key_matches_the_current_inputs():
+    """#106: the key in CALIBRATION.md is the one a run on these inputs computes. An edit to the
+    workflow, the action pin or SKILL.md without a recalibration fails here, before any run."""
     text = (ROOT / dr.CALIBRATION_PATH).read_text(encoding="utf-8")
-    assert dr.parse_stored_key(text) is None
+    stored = dr.parse_stored_key(text)
+    assert stored is not None, "CALIBRATION.md has no drift-key line"
+    key, model = stored
+    assert model, "the key line names no model"
+    # read_text gives LF line ends, as git stores them and the runner checks them out, also on a
+    # Windows checkout that converts to CRLF.
+    skill = (ROOT / dr.SKILL_PATH).read_text(encoding="utf-8").encode()
+    assert key == dr.drift_key(workflow=WORKFLOW.encode(), action=dr.action_sha(WORKFLOW),
+                               model=model, skill=skill)
+    assert dr.check_drift(stored, key, model)[0] == "calibrated"
 
 
 def test_fixture_key_mismatch_with_other_model_is_drift_model_changed():
@@ -498,6 +509,24 @@ def test_cli_matching_key_and_no_blocking_passes(monkeypatch, tmp_path):
                                     report=CLEAN_REPORT)
     assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 0
     assert "calibrated: drift key matches" in (work / "out" / "comment.md").read_text("utf-8")
+
+
+def test_calibration_record_is_outside_the_hashed_path(monkeypatch, tmp_path):
+    """#106: recording results in CALIBRATION.md must not change the key they record. The same
+    key line under two different records is calibrated both times."""
+    key = dr.drift_key(workflow=WORKFLOW.encode(), action=dr.action_sha(WORKFLOW), model=MODEL,
+                       skill=(ROOT / dr.SKILL_PATH).read_bytes())
+    line = dr.format_key_line(key, MODEL) + "\n"
+    records = ("", "# results\n\n| class | caught |\n|---|---|\n| fact | 3 |\n")
+    for n, record in enumerate(records):
+        run = tmp_path / str(n)
+        run.mkdir()
+        state, work, execution = _state(run, record + line, findings=[], report=CLEAN_REPORT)
+        assert _run_cli(monkeypatch, run, state, work, execution) == 0, record
+        comment = (work / "out" / "comment.md").read_text("utf-8")
+        assert "calibrated: drift key matches" in comment, record
+        [block] = dr.parse_blocks([_bot(comment)])
+        assert block["drift_key"] == key, record
 
 
 def test_cli_uncalibrated_reports_and_blocking_from_an_earlier_run_still_fails(monkeypatch,
