@@ -1,0 +1,40 @@
+name: Doc error
+description: Report a wrong fact, a bad quote, or a broken link in a doc.
+title: "doc-error: "
+labels: ["doc-error"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public on GitHub. Do not include personal data — yours or
+        anyone else's. There is no turnaround promise; see the README's Support
+        section.
+  - type: input
+    id: doc
+    attributes:
+      label: Which doc
+      description: The path or URL of the doc with the error.
+      placeholder: docs/harnesses.md
+    validations:
+      required: true
+  - type: textarea
+    id: quote
+    attributes:
+      label: Quote or line
+      description: Paste the exact text that is wrong, or point to the line or section it is in.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong
+      description: What is wrong with it, and what you think it should say instead.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source link
+      description: Optional. A link to a source that shows the correct fact.
+    validations:
+      required: false
