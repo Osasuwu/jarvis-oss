@@ -234,3 +234,36 @@ def test_line_number_ignores_words_inside_a_comment():
     text = 'See [d](https://a.example) <!-- exit here -->\nand then\n"exit code two blocks".\n'
     [quote] = extract_quotes(text)
     assert quote.line == 3
+
+
+# --- CI check (#98) -------------------------------------------------------------
+
+
+def test_ci_not_found_exits_nonzero_and_summary_counts_it(tmp_path, capsys, monkeypatch):
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    doc = _doc(tmp_path, 'The [docs](https://a.example) say "exit code two blocks".')
+    assert main([str(doc)], fetch=_fetcher({"https://a.example": "other"})) == 1
+    assert "1 NOT FOUND" in capsys.readouterr().out
+
+
+def test_ci_unfetchable_only_exits_zero_and_prints_the_count(tmp_path, capsys, monkeypatch):
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    body = (
+        'See [a](https://a.example) and [b](https://b.example): "exit code two blocks".\n\n'
+        'Also [c](https://c.example) says "a third quote here".'
+    )
+    assert main([str(_doc(tmp_path, body))], fetch=_fetcher({})) == 0
+    out = capsys.readouterr().out
+    assert "unfetchable sources: 3" in out
+    assert "0 NOT FOUND" in out
+    assert "unfetchable sources: 3" in summary.read_text(encoding="utf-8")
+
+
+def test_ci_unfetchable_source_is_counted_once_across_quotes_and_docs(tmp_path, capsys):
+    one = tmp_path / "one.md"
+    one.write_text('[a](https://a.example) says "exit code two blocks".\n', encoding="utf-8")
+    two = tmp_path / "two.md"
+    two.write_text('[a](https://a.example) says "another quote right here".\n', encoding="utf-8")
+    assert main([str(one), str(two)], fetch=_fetcher({})) == 0
+    assert "unfetchable sources: 1" in capsys.readouterr().out

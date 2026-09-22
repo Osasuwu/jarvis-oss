@@ -1,0 +1,28 @@
+name: Tests
+
+# The whole tests/ directory, on every PR and every push to main. No paths filter: the job
+# always runs and reports, so it can be made a required check later without freezing merges.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run the full test suite
+        run: python -m pytest tests -v

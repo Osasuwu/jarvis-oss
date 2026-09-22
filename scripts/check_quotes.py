@@ -19,13 +19,17 @@ Each quote gets one verdict:
 - ``unfetchable`` — no candidate source could be fetched, or each came back near-empty (a
   script-rendered page, a bot check, a rate limit). Check these by hand.
 
-Exits 1 if any quote is ``NOT FOUND``. This checks wording only, not whether the doc's claim
-around the quote matches the source; that stays review-doc's job.
+Exits 1 if any quote is ``NOT FOUND``, and only then: an unfetchable source never fails the run.
+The last line counts the ``NOT FOUND`` quotes and the sources that could not be fetched; in
+GitHub Actions it is also added to the job summary (``$GITHUB_STEP_SUMMARY``). This checks
+wording only, not whether the doc's claim around the quote matches the source; that stays
+review-doc's job.
 """
 
 from __future__ import annotations
 
 import html
+import os
 import re
 import sys
 import time
@@ -291,17 +295,34 @@ def main(argv: list[str], fetch=fetch_url) -> int:
     if not argv:
         print(__doc__)
         return 2
-    failed = False
+    quotes = not_found = 0
+    unfetched_sources: set[str] = set()
     for name in argv:
         for quote, verdict, unfetched in check(Path(name), fetch=fetch):
+            quotes += 1
+            unfetched_sources.update(unfetched)
             if verdict != "found":
                 print(f"{name}:{quote.line}: {verdict}: \"{quote.text}\"")
                 if verdict == "NOT FOUND":
                     print(f"    tried: {', '.join(quote.urls)}")
-                    failed = True
+                    not_found += 1
                 if unfetched:
                     print(f"    could not fetch: {', '.join(unfetched)}")
-    return 1 if failed else 0
+    summary = (
+        f"{len(argv)} doc(s), {quotes} quote(s): {not_found} NOT FOUND; "
+        f"unfetchable sources: {len(unfetched_sources)} (not a failure; check those by hand)"
+    )
+    print(summary)
+    _write_step_summary(summary)
+    return 1 if not_found else 0
+
+
+def _write_step_summary(line: str) -> None:
+    """In GitHub Actions, also add the summary line to the job summary page."""
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        with open(path, "a", encoding="utf-8") as out:
+            out.write(f"**Quote check:** {line}\n")
 
 
 if __name__ == "__main__":
