@@ -6,7 +6,8 @@ cost: no paid API calls. Runs as a local Python subprocess per matched tool call
 
 # Runnable hooks: secret scanning + protected-file enforcement
 
-Three files, ported from the source project this practice is drawn from:
+Three files, ported from the source project this practice is drawn from and scrubbed of every
+project-specific literal:
 
 - [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, the input of
   every GitHub MCP tool (reads included), and file-write tool inputs (`Edit`/`Write`/
@@ -32,10 +33,9 @@ is not something a normal session will ever surface on its own. Two ways to chec
    scratch file, or attempt to edit a path listed in `protected-files.py`'s `PROTECTED_CANONICAL`.
    A wired-up hook returns a `permissionDecision: deny` with a `BLOCKED:` reason and the tool call
    is refused; the agent sees this in its own transcript, not a separate log. A hook that fails to
-   *launch* — `python3` missing, or too old to run the script — also blocks the call, but with
-   the shell's error text and no `BLOCKED:` reason: each command in `settings.snippet.json` is
-   `python3 "…" || exit 2`, so a launch failure exits 2 too, instead of the non-blocking non-zero
-   exit the harness would otherwise see.
+   *launch* — `python3` missing, or too old to run the script — denies the same way: each command
+   in `settings.snippet.json` is `python3 "…" || exit 2`, so a launch failure exits 2 too, instead
+   of the non-blocking non-zero exit the harness would otherwise see.
 2. **`claude --debug`** (or the equivalent flag for your harness) writes each hook invocation
    and its exit code to a debug log (Claude Code: `~/.claude/debug/<session-id>.txt`, not the
    terminal), including the ones that exit 0 and produce no other output — this is the only place
@@ -65,8 +65,7 @@ field name the scanner's source has never named, not a fixed field list to re-ch
 
 `PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS` in
 `secret-scanner.py` are marked `CUSTOMIZE` at their definition, and `SECRET_PATTERNS` in that
-file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files and a
-`.gitleaks.toml`, `PROTECTED_MIRROR` is empty, and the other two list common provider key
-formats and env-var names — placeholders, not a claim that they are right for every reader's
-repo. Point them at whatever your own project's review-gate files and credential-shaped env
-vars actually are.
+file's docstring — they ship as
+placeholders naming this repo's own hook files and `.gitleaks.toml`, not a claim that those are
+the right files for every reader's repo. Point them at whatever your own project's review-gate
+files and credential-shaped env vars actually are.
