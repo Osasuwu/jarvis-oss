@@ -35,4 +35,5 @@ three mechanisms we ran, and it presented the ledger split as a review. It was r
 ([#52](https://github.com/Osasuwu/jarvis-oss/pull/52)), the review hold was added
 ([#54](https://github.com/Osasuwu/jarvis-oss/pull/54)), and docs now land with `signed_off:` empty,
 signed in a later pull request. None of that makes a signature unforgeable while the agent holds
-the account's token — see the doc's "Our own choice".
+the account's token — see "Our own choice" in
+[`publishing-discipline.md`](../docs/publishing-discipline.md).

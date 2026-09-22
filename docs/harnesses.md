@@ -50,8 +50,10 @@ each harness's own primary documentation (not a mirror or a secondary summary).
 - **OpenCode** — https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/rules.mdx —
   "All instruction files are combined with your `AGENTS.md` files." The `instructions` array in
   `opencode.json` accepts glob patterns (example given: `packages/*/AGENTS.md`) and remote URLs
-  (5s fetch timeout). This corrects the previous row, which claimed "No documented import/include
-  mechanism" and cited the skills doc rather than the rules doc.
+  (5s fetch timeout). This corrects the
+  [previous row](https://github.com/Osasuwu/jarvis-oss/blob/0397c401ea665c2fa6d39cf5e83b2dc8dd09f776/docs/harnesses.md),
+  which claimed "No documented import/include mechanism" and cited the skills doc rather than the
+  rules doc.
 
 - **Codex CLI** — https://learn.chatgpt.com/docs/agent-configuration/agents-md — "Codex reads
   `AGENTS.override.md` if it exists. Otherwise, Codex reads `AGENTS.md`" and "Codex concatenates
