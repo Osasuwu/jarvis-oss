@@ -1,0 +1,93 @@
+name: Machinery guard
+
+# A `pull_request` workflow runs from the PR's own merge ref, so a PR can
+# rewrite a gate and still report green under the gate's name. This check is
+# defined by the base branch instead: `pull_request_target` runs the workflow
+# as it is on `main`. It never checks out or executes PR content. It only
+# reads the changed-file list through the API.
+#
+# When a PR touches reviewer machinery, every push re-applies
+# `waiting-human-review` and the check stays red while the label is present.
+# The human removes the label, the check re-runs on `unlabeled` and goes
+# green, and the next push puts the label back. This is a hold plus a
+# detector, not proof: the agent works under the same account (#97, #38).
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - labeled
+      - unlabeled
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  machinery-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hold PRs that touch reviewer machinery
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        with:
+          script: |
+            // Reviewer machinery: the workflows, the skills and their
+            // calibration set, the hooks, the agent's own settings, the
+            // gate scripts, and every test (tests are what the gates are
+            // measured against). A path matches if it starts with an entry.
+            const MACHINERY = [
+              ".github/",
+              ".agents/",
+              ".claude/",
+              "scripts/",
+              "tests/",
+            ];
+            const LABEL = "waiting-human-review";
+
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner, repo, pull_number, per_page: 100,
+            });
+            // A rename counts from both ends: moving a gate out of its
+            // directory changes the machinery as much as editing it does.
+            const touched = files
+              .flatMap((f) => [f.filename, f.previous_filename])
+              .filter((p) => p && MACHINERY.some((m) => p.startsWith(m)));
+
+            if (touched.length === 0) {
+              core.info(`No reviewer machinery touched (${files.length} files checked).`);
+              return;
+            }
+
+            // Re-fetch: labels in the payload are as of the event, and
+            // this run may be the one that has to re-apply the hold.
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number });
+            let held = pr.labels.some((l) => l.name === LABEL);
+
+            // Only a new push (or a fresh open) re-applies the hold. A
+            // "Re-run jobs" replays the stored payload, so gate on the first
+            // attempt, or re-running an old run would undo the human's release.
+            const action = context.payload.action;
+            const isPush = ["opened", "synchronize", "reopened"].includes(action);
+            if (isPush && process.env.RUN_ATTEMPT === "1" && !held) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: pull_number, labels: [LABEL],
+              });
+              held = true;
+            }
+
+            const list = [...new Set(touched)].map((p) => `  ${p}`).join("\n");
+            if (held) {
+              core.setFailed(
+                `Reviewer machinery touched; held by the ${LABEL} label until a human ` +
+                  `removes it. The next push re-applies it.\n${list}`
+              );
+            } else {
+              core.info(`Reviewer machinery touched; hold released by a human.\n${list}`);
+            }
