@@ -249,6 +249,32 @@ def resolve_model(messages: list, alias: str) -> str:
     return family[0]
 
 
+_DENIAL_KEYS = ("file_path", "path", "command", "pattern", "url", "skill", "subagent_type")
+
+
+def session_notes(messages: list, *, text_limit: int = 2000) -> list[str]:
+    """What the log needs when a review produced nothing usable.
+
+    claude-code-action hides the session output, so the verdict step logs the permission
+    denials (tool and target only) and the model's final text from the result message.
+    """
+    results = [m for m in messages if isinstance(m, dict) and m.get("type") == "result"]
+    if not results:
+        return ["no result message"]
+    result = results[-1]
+    notes = [f"turns: {result.get('num_turns')}, subtype: {result.get('subtype')}"]
+    for denial in result.get("permission_denials") or []:
+        if not isinstance(denial, dict):
+            continue
+        tool_input = denial.get("tool_input") if isinstance(denial.get("tool_input"), dict) else {}
+        target = next((str(tool_input[k]) for k in _DENIAL_KEYS if k in tool_input), "")
+        notes.append(f"denied: {denial.get('tool_name')} {target[:200]}".rstrip())
+    text = result.get("result")
+    if isinstance(text, str) and text.strip():
+        notes.append("final text: " + text.strip()[:text_limit])
+    return notes
+
+
 # --- findings -------------------------------------------------------------
 
 
@@ -840,6 +866,14 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     _summary(body)
     _set_output("rounds", str(rounds))
     print(f"doc-review: {verdict.message} (rounds: {rounds})")
+    execution_file = env.get("EXECUTION_FILE")
+    if verdict.status == "unreviewable" and execution_file and Path(execution_file).is_file():
+        try:
+            messages = json.loads(Path(execution_file).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            messages = []
+        for note in session_notes(messages if isinstance(messages, list) else []):
+            print(f"doc-review session: {note}")
     return 0 if verdict.passed else 1
 
 

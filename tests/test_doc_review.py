@@ -271,6 +271,23 @@ def test_unresolvable_model_is_unreviewable_never_the_alias(msgs):
         dr.resolve_model(msgs, "opus")
 
 
+def test_session_notes_name_denied_tools_and_final_text():
+    msgs = [_result({MODEL: {}}, num_turns=24, result="Could not write the report.",
+                    permission_denials=[
+                        {"tool_name": "Bash", "tool_use_id": "t1",
+                         "tool_input": {"command": "python scripts/check_quotes.py docs/a.md"}},
+                        {"tool_name": "Write", "tool_use_id": "t2",
+                         "tool_input": {"file_path": "/tmp/x.md", "content": "secret body"}},
+                    ])]
+    notes = dr.session_notes(msgs)
+    assert notes[0] == "turns: 24, subtype: success"
+    assert "denied: Bash python scripts/check_quotes.py docs/a.md" in notes
+    assert "denied: Write /tmp/x.md" in notes
+    assert not any("secret body" in n for n in notes)
+    assert notes[-1] == "final text: Could not write the report."
+    assert dr.session_notes([]) == ["no result message"]
+
+
 # --- findings -------------------------------------------------------------
 
 
