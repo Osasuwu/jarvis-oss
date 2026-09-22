@@ -27,8 +27,8 @@ closes that gap, and brings its own ways to go wrong:
 - **The writer edits the check** — the pull request that breaks the shape also loosens the rule.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc.
+from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
+two review runs on the pull request that added this doc.
 
 ## The options
 
@@ -39,7 +39,7 @@ and a reviewer compares. Our [`write-doc`](../.agents/skills/write-doc/SKILL.md)
 and [log4brains](https://github.com/thomvaill/log4brains) generates architecture decision records
 from a "Customizable template (default: MADR)"; its README describes no validation. Editor
 extensions such as Front Matter CMS added "Schema and validation for front matter in markdown
-files" ([v10.10.0](https://frontmatter.codes/updates/v10.10.0)) — in the editor, not in CI.
+files" ([changelog](https://frontmatter.codes/changelog)) — in the editor, not in CI.
 
 **Best pick when** docs are few, one person reviews all of them, or the shape is still changing
 weekly.
@@ -72,9 +72,7 @@ have few users; check they are maintained before depending on them.
 **How it works.** A tool with ready rules instead of a schema. Giant Swarm's
 [frontmatter-validator](https://github.com/giantswarm/frontmatter-validator) checks, for example,
 `REVIEW_TOO_LONG_AGO` — "the `last_review_date` is older than the expiration period (default 365
-days…)", per its
-[checks list](https://github.com/giantswarm/frontmatter-validator/blob/main/docs/checks.md) — and
-runs as a pre-commit hook. [flint](https://github.com/hay-kot/flint) has required
+days…)" — and runs as a pre-commit hook. [flint](https://github.com/hay-kot/flint) has required
 fields, regexes, enums, dates, lengths and "Asset Existence", which checks that a path named in a
 field exists.
 
@@ -129,8 +127,7 @@ example points at a doc; it does not say every doc has an example. A collection 
 frontmatter, not links.
 
 **Lifecycle.** Part of the site config. Status: sourced. Dropped on merit: Contentlayer — its
-[README](https://github.com/contentlayerdev/contentlayer/blob/main/packages/contentlayer/README.md)
-says it "is no longer maintained due to lack of funding".
+README says it "is no longer maintained due to lack of funding".
 
 ### 6. A markdown or prose linter
 
@@ -166,8 +163,8 @@ local files and block network requests"; [remark-validate-links](https://github.
 ### 8. A custom script in CI
 
 **How it works.** Code that parses the files and applies whatever rules you need, run as a
-required check. GitHub Docs builds custom rules on markdownlint, including GHD012, "Frontmatter
-must conform to the schema", and a cross-file one, GHD063, "Children frontmatter paths must exist"
+required check. GitHub Docs builds custom rules on markdownlint, including "GHD012: Frontmatter
+must conform to the schema" and a cross-file one, "GHD063: Children frontmatter paths must exist"
 ([content linter](https://docs.github.com/en/contributing/collaborating-on-github-docs/using-the-content-linter)).
 Kubernetes' [`verify-toc-vs-template.sh`](https://github.com/kubernetes/enhancements/blob/master/hack/verify-toc-vs-template.sh)
 diffs each changed proposal's headings against the template's, so the template is the rule — but
@@ -177,7 +174,7 @@ this doc's "Advisory only" failure mode written into the script.
 changes and its companion file does not. [conftest](https://www.conftest.dev/options/)
 `--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
 own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
-frontmatter keys, a 30000-byte cap, relative links that must resolve, `pairs_with` targets that
+frontmatter keys, a 20000-byte cap, relative links that must resolve, `pairs_with` targets that
 must exist, example provenance and staleness, and the sign-off ledger rules.
 
 **Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
@@ -210,9 +207,7 @@ project's frontmatter script sat in the repo while its only workflow was disable
 found it is titled "The doc-frontmatter check runs in no workflow, and accumulated 40 new
 offenders in four weeks", and says "Without a job that runs the check, the count returns"
 ([`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md)). A pre-commit hook
-alone never counts: it can be skipped — but the same config runs in CI, since "adding
-`pre-commit run --all-files` as a CI step will ensure everything stays in tip-top shape"
-([pre-commit](https://pre-commit.com/)), and that job can be required. On a self-hosted forge a server-side `pre-receive` hook can
+alone never counts: it can be skipped. On a self-hosted forge a server-side `pre-receive` hook can
 reject the push itself.
 
 Required checks need branch protection or rulesets. On GitHub Free, private repositories have
@@ -225,17 +220,9 @@ check, only review stops it — see "At more than one developer".
 
 ## How to choose
 
-Most options below read markdown: the tools in 2, 3 and 4, MD043 in 6, and the relative-link
-checks in 7. lychee reads other formats as plain text and extracts URLs on a best-effort basis,
-so it still checks absolute URLs there; relative links need `--preprocess` to convert the file
-plus `--default-extension md` or `html`, since lychee picks the parser from the original file's
-extension. Either way, name those files as paths or pass `--extensions rst` (or `adoc`): a
-directory scan skips files "not matching the specified extensions", and the default list has
-neither. For reStructuredText or AsciiDoc, what is left is Vale (6), a script (8), a model check
-(9), review alone (1), lychee without `--offline` for absolute URLs, and the generator's own warnings-as-errors, as in 7 — for Sphinx that is `-W`, which will "Turn warnings into errors …
-exits with exit status 1 if any warnings are generated"
-([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4
-accordingly.
+Most options below read markdown: 2, 3, 4 and 7's tools, and 6's MD043. For reStructuredText or
+AsciiDoc, what is left is Vale (6), a script (8), and whatever the generator's own build checks
+(5) — answer step 3 and 4 accordingly.
 
 First, in order:
 
@@ -279,21 +266,10 @@ Make the check required and apply it to administrators, or someone will merge ar
 code owners on the check files, a ruleset that restricts those paths, an organization ruleset
 that requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow
 from the base repository's **default** branch — not the branch the pull request targets — and
-under which you must never run the pull request's code. All four are GitHub. Rulesets themselves
-are free on a public repository, but restricting paths is a *push* ruleset, "available for the
-GitHub Team plan in internal and private repositories"
-([available rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)),
-and the organization ruleset that requires a workflow from another repo is documented for
-Enterprise Cloud and Enterprise Server
-([Enterprise Cloud](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
-Code owners work on a public repository on Free, but an author cannot approve their own pull
-request, so with one account a required code-owner review is never given and you merge around it.
-GitLab's code owners are "Premium, Ultimate". So for one developer on a personal account, code
-owners and those two rulesets are all out: `pull_request_target` and review are what is left. On
-GitLab Free, the CI config can live in another project
-([custom CI/CD configuration file](https://docs.gitlab.com/ci/pipelines/settings/#specify-a-custom-cicd-configuration-file)),
-out of the merge request's reach; without that, review alone stands between a pull request and
-the check it fails. Check only changed files —
+under which you must never run the pull request's code. All four are GitHub, and rulesets are
+"for customers on GitHub Team and GitHub Enterprise plans"; GitLab's code owners are "Premium,
+Ultimate". On GitLab Free, or a personal GitHub account, none of them is available and review is
+the only thing between a pull request and the check it fails. Check only changed files —
 [changed-files](https://github.com/tj-actions/changed-files) lists them,
 [reviewdog](https://github.com/reviewdog/reviewdog) `-filter-mode` filters findings — or, when
 adopting a check on a tree that already fails it, record a baseline and fail only on new offences
@@ -308,7 +284,7 @@ where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its 
 [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
 **Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
-sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 319-line
+sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 317-line
 script and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
 below; 9, since a person reviews substance. Gaps: sections and option fields are not checked, so a doc can drop "How to
 choose" and pass; nothing checks that every doc has an example and a resource — `pairs_with`

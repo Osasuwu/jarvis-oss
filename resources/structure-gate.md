@@ -12,7 +12,7 @@ as this repo runs it:
 - **Rules:** [`tests/structure_gate.py`](../tests/structure_gate.py) — `check_tree(root)` returns
   a list of violations, each with a path and a code:
   - docs under `docs/`: `doc_missing_key:<key>` for `applies_when`, `applies_when_not`,
-    `signed_off`; `doc_over_size_cap` over 30000 bytes; `boundary_evidence_unresolvable` for a
+    `signed_off`; `doc_over_size_cap` over 20000 bytes; `boundary_evidence_unresolvable` for a
     relative link that does not resolve to a file;
   - examples: `example_missing_key:fit` / `:pairs_with`, `example_missing_provenance` (needs
     `last_seen`, or `source` + `verified`), `example_last_seen_stale` after 180 days;
@@ -28,10 +28,9 @@ as this repo runs it:
 
 To adopt: copy the script and its tests, change the key tuples and the size cap to your contract,
 and make the job a required check. The frontmatter parser reads flat `key: value` lines only
-([`structure_gate.py:47-62`](../tests/structure_gate.py)): a YAML list is recorded as the key with
-an empty value; a `- ` item with no colon is dropped, and one like `- a: b` becomes a bogus key
-`- a`. So a required key written as a list passes with nothing in it — silently, not as a parse
-error.
+([`structure_gate.py:45-60`](../tests/structure_gate.py)): a YAML list is recorded as the key with
+an empty value and its `- ` items are dropped, so a required key written as a list passes with
+nothing in it — silently, not as a parse error.
 
 Not checked: section headings and their order, option fields, and whether every doc has an
 example and a resource pointing at it.

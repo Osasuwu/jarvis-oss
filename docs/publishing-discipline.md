@@ -9,7 +9,7 @@ signed_off:
 ## The problem
 
 An agent can draft a change, open the pull request, and — if it runs with your account — approve,
-label, sign and merge it too. Every review record your forge keeps can then be produced by the
+label, sign and merge it too. Every record of review your forge keeps can then be produced by the
 thing under review. The question is not "is there a review step" but "could the agent have
 completed it alone". What goes wrong:
 
@@ -19,7 +19,8 @@ completed it alone". What goes wrong:
   (two commits, a date, a label removed), while nobody read anything.
 - **Shared identity** — the agent uses the person's token, SSH key or unlocked signing key, so the
   forge cannot tell their actions apart.
-- **Removable hold** — whoever holds the credential can clear the hold, or bypass it as an admin.
+- **Removable hold** — the hold can be cleared, or bypassed by an admin, by whoever holds the
+  credential.
 - **Stale approval** — a change is approved, then edited, and the approval still counts.
 - **Rubber stamp** — a real person approves without reading, or nobody does: one study found
   about 80% of AI-co-authored pull requests from non-owners merged with no explicit review
@@ -27,8 +28,8 @@ completed it alone". What goes wrong:
 - **Nobody else** — one developer has no second person to approve.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc.
+from the tool's documentation). Quotes were checked against the linked pages on 2026-09-17, in
+two review runs on the pull request that added this doc.
 
 ## The options
 
@@ -72,14 +73,12 @@ pull request ([owners](https://github.com/kubernetes/community/blob/master/contr
 
 **Cost.** Needs a second account that the agent cannot use. The required-reviews page above adds
 that "Repository owners and administrators can merge a pull request even if it hasn't received an
-approving review"; the protected-branches page lets you "optionally apply the restrictions to
-administrators"; a [ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
-instead names who may bypass — "users with a certain role, such as repository administrator, or …
-specific teams or GitHub Apps". The protected-branches page linked above says of its own bypass
-lists that "Actors may only be added to bypass lists when the repository belongs to an
-organization"; the rulesets page states no such condition. On GitHub, protected branches on private
+approving review" unless the rule is
+applied to administrators; a [ruleset](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+instead names who may bypass — roles, teams or apps — but "Actors may only be added to bypass
+lists when the repository belongs to an organization". On GitHub, protected branches on private
 repos need a paid plan; on GitLab the author and committer rules are Premium. If Copilot code
-review may approve, its approval counts toward required approvals
+review is allowed to approve, its approval counts toward required approvals
 ([changelog, 2026-09-01](https://github.blog/changelog/2026-09-01-copilot-code-review-can-now-approve-pull-requests/)),
 so "another account" can be a bot — leave that off. Approval proves a click, not reading.
 
@@ -89,7 +88,7 @@ so "another account" can be a bot — leave that off. Approval proves a click, n
 ### 3. Give the agent its own identity
 
 **How it works.** The agent opens and pushes pull requests as a separate account, so the person is
-no longer the author and may approve under option 2. Choices: a GitHub App ("not tied to
+no longer the author and their approval counts under option 2. Choices: a GitHub App ("not tied to
 a user account and do not consume a seat",
 [GitHub Apps](https://docs.github.com/en/apps/creating-github-apps/about-creating-github-apps/deciding-when-to-build-a-github-app));
 a machine user
@@ -99,21 +98,21 @@ request" and GitHub "Prevents the user who asked Copilot cloud agent to create a
 approving it"
 ([risks and mitigations](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/risks-and-mitigations)).
 [Claude Code Action](https://github.com/anthropics/claude-code-action) runs as an app, but by
-default the person opens the pull request, making them its author again.
+default the person opens the pull request, which makes them its author again.
 
 A weaker variant keeps the agent on your machine and takes the merge away from it: a harness deny
 rule or pre-call hook on `gh pr merge` and `gh pr review --approve`
-([`agent-safety-hooks.md`](agent-safety-hooks.md)). The agent still holds a token that merges
+([`agent-safety-hooks.md`](agent-safety-hooks.md)). The agent still holds a token that can merge
 through any command the rule does not name, so this is a hold (4), not proof.
 
-**Best pick when** you are one developer who wants the merge click to be yours: a hosted agent
-that cannot merge, with you merging by hand. Add option 2 only if you are allowed to approve
+**Best pick when** you are one developer who wants to know that the merge click was yours: a hosted
+agent that cannot merge, with you merging by hand. Add option 2 only if you are allowed to approve
 — Copilot bars the person who asked it, so for one developer 2 with Copilot never merges.
 
-**Cost.** The separation holds only while the agent never has your token, SSH key or signing key;
-in your terminal it inherits your `gh` login and git credentials unless you remove them. Leave "Allow GitHub Actions to create and approve
-pull requests" off — the default for a repository on a personal account; an organization's
-repositories inherit the organization's setting
+**Cost.** The separation holds only while the agent never has your token, SSH key or signing key.
+An agent running in your terminal as you inherits your `gh` login and git credentials unless you
+remove them. Leave "Allow GitHub Actions to create and approve
+pull requests" off, as it is by default
 ([Actions settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository)).
 One more identity to create, scope and rotate.
 
@@ -130,11 +129,11 @@ A label plus a required status check fails while the label is on
 if/unless a certain combination of labels are applied").
 
 **Best pick when** you have one account and want a pause the agent is told not to clear. Drafts
-need no repository settings; the label variant needs required checks, which private repos on
-GitHub Free lack.
+need no repository settings; a label with a required check needs required checks, which private
+repos on GitHub Free lack.
 
-**Cost.** Anyone with write access can mark ready or remove a label — an agent holding your token
-included — and the event log shows the account, not the person. It records intent, not reading.
+**Cost.** Anyone with write access can mark ready or remove a label — including an agent holding
+your token — and the event log shows the account, not the person. It records intent, not reading.
 
 **Lifecycle.** A workflow file plus a required check, or a habit (drafts). Status: tried — our
 `waiting-human-review` check; see
@@ -150,17 +149,18 @@ user PIN is provided and the YubiKey touch sensor is triggered"
 re-authentication (password or SAML) to approve" (Premium). A deployment environment with required reviewers and
 "**Prevent self-review**"
 ([environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)),
-which gates a job, not the merge — for one developer it leaves nobody to approve, and without it
-your own token approves over the API. Keyless signing with
+which gates a job rather than the merge — for one developer that rule leaves nobody to approve,
+and without it your own token approves over the API. Keyless signing with
 [gitsign](https://github.com/sigstore/gitsign) ties a signature to an OIDC login instead of a key,
-but its cache means "you only need to auth once every 10 minutes" — inside that window an agent
-can sign.
+but with its credential cache "you only need to auth once every 10 minutes" — inside that window an
+agent can sign.
 
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
-**Cost.** A CI check you write ("HEAD carries a tag signed by key X"), which blocks only where
-required checks exist and only while the agent's token cannot administer the repo or merge around
-it; hardware — a software key the agent can reach proves nothing; a touch per sign-off. Below Enterprise, required reviewers are "only available for public
+**Cost.** A CI check you write (for example, "HEAD carries a tag signed by key X"), which blocks
+only where required checks exist and only while the agent's token cannot administer the repo or
+merge around it; hardware — a software key the agent can reach proves nothing; a
+touch per sign-off. Below Enterprise, required reviewers are "only available for public
 repositories". Still proves presence, not reading.
 
 **Lifecycle.** Enrol the key, add the check; remove the check to undo. Status: sourced.
@@ -192,21 +192,19 @@ freshness metadata and notes: sourced.
 ### 7. Make the reading checkable
 
 **How it works.** Instead of asking the person to read everything, a context that did not write
-the change checks facts against sources and lists what to read closely; the sign-off records the
+the change checks facts against sources and lists what to read closely; the sign-off records that
 report. Our [`review-doc`](../.agents/skills/review-doc/SKILL.md) skill does this, and a ledger
-entry names it (`facts: <report URL>`). Tools that push toward evidence of reading:
+entry names it (`facts: <report URL>`). Two tools push toward evidence of reading:
 [Reviewable](https://docs.reviewable.io/files.html) tracks "the reviewed state of each file, at
-each revision, for each reviewer", while GitHub's own
-[mark as viewed](https://github.blog/news-insights/product-news/mark-files-as-viewed/)
-resets when a file changes — either way a checkbox, and whether it blocks a merge is the
-repository's own condition;
+each revision, for each reviewer"; whether that blocks a merge is up to the repository's own
+completion condition;
 [pr-quiz](https://github.com/dkamm/pr-quiz) is "A GitHub Action that uses AI to generate a quiz
 from your pull request" — which an agent holding your token could also answer.
 
 **Best pick when** changes are long and fact-heavy, and rubber-stamping is the likely failure.
 
-**Cost.** A model run per change and a report to keep. The reviewer can be wrong. It narrows what
-the person reads; it does not prove they read it, which is why the row asks for a written answer. 96% of developers do not fully trust AI
+**Cost.** Adds a model run per change and a report to keep. The reviewer can be wrong. It narrows
+what the person reads; it does not prove they read it. 96% of developers do not fully trust AI
 code and "only 48%" always check it
 ([Sonar](https://www.sonarsource.com/company/press-releases/sonar-data-reveals-critical-verification-gap-in-ai-coding/)).
 
@@ -231,12 +229,12 @@ First, in order:
 1. **Is there a second person with write access, and can required approvals be turned on here?**
    They exist on public repos and on paid private plans; GitLab's approval rules are Premium. Both
    yes → 2, with most-recent-push approval, stale approvals dismissed and no bypass — as long as no
-   agent can use the approver's credentials. Two people each running an agent as themselves do not.
+   agent can use the approver's credentials. Two people each running an agent as themselves do not
+   satisfy that.
 2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the
    `gh` login, the git credential helper, a loaded `ssh-agent` or `gpg-agent` — not only the token
    the agent was given. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
-   credentials away), or 5 (require something the agent lacks) if that same token cannot administer
-   the repo and switch the check off. No → the merge click is the
+   credentials away) or 5 (require something the agent lacks). No → the merge click is the
    person's, and 4 and 6 record who it was.
 3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
    rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
@@ -250,7 +248,7 @@ First, in order:
 | 4 | drafts: any repo; a label and required check: required checks are available |
 | 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
-| 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
+| 7 | the review runs in a context that did not write the change, and a person reads its report |
 
 Among what is left: for two people, 2 is the proof. For one developer, 3 with a hosted agent that
 cannot merge makes the merge click yours, and costs an identity and sometimes a plan; 5 needs a
@@ -264,8 +262,8 @@ credential rule still applies: an agent shared by the team must not run as any o
 
 **Examples.** One developer whose agent runs as a GitHub App on a public repo: 3 plus 2 with
 most-recent-push approval, applied to administrators — the app cannot approve its own pull request
-and the person's approval is theirs, so a label adds nothing; push to the branch yourself,
-though, nobody may approve. This points away from our choice. A four-person team on a paid
+and the person's approval is theirs, so a label adds nothing; push to the branch yourself, though,
+and nobody is left who may approve. This points away from our choice. A four-person team on a paid
 plan: 2 with code owners on `docs/` and stale approvals dismissed, plus 7 for long docs. One
 developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI — or
 4 with the gap stated. A mailing-list project: 6's trailers, where the mailing-list reply, not the
@@ -276,15 +274,16 @@ trailer, is the proof; see
 token — so 2 is out *on fit*, and every record we can produce is intent. We use 4 (a
 `waiting-human-review` label and required check), 6 (an empty `signed_off:` on the drafting pull
 request, then a date and a [`SIGNOFF.md`](SIGNOFF.md) line in a separate commit) and 7 (a
-`review-doc` report named in the entry). It costs a label clear and a follow-up pull request per doc. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
+`review-doc` report named in the entry). It costs one label clear and one follow-up pull request
+per doc. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
 ([`self-signed-signoff-pr-50.md`](../examples/self-signed-signoff-pr-50.md)); a ledger line
-was removed and re-added seven seconds apart, pushed straight to `main`, satisfying the
+was removed and re-added seven seconds apart, pushed straight to `main`, to satisfy the
 separate-commit rule
 ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); we emptied the
-ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
-and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
-hardware-signed tag), either of which closes the first gap below. Open gaps: the same account
-can clear the label, as #70's was, with no way to tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
+ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep 6 for its
+dates and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
+hardware-signed tag), either of which would close the first gap below. Open gaps: the same account
+can clear the label, and #70's was cleared by it with no way to tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
 The hold, the ledger and its checks:
 [`review-hold-and-signoff-ledger.md`](../resources/review-hold-and-signoff-ledger.md). The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure

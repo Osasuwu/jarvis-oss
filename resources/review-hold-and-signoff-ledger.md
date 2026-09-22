@@ -1,7 +1,7 @@
 ---
 pairs_with: docs/publishing-discipline.md
 harnesses: all — the hold and the ledger checks run in GitHub Actions, not in the agent's harness; review-doc is a skill file any harness that loads skills can run (see docs/harnesses.md). The hold needs GitHub branch protection with required status checks.
-cost: one Actions job per pull request event on the hold, one structure-gate run per push to a pull request; one label clear and one follow-up sign-off pull request per doc; a model run per review-doc pass
+cost: one Actions job per pull request event on the hold, one structure-gate run per pull request; one label clear and one follow-up sign-off pull request per doc; a model run per review-doc pass
 ---
 
 # Review hold, sign-off ledger and review report
