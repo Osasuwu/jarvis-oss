@@ -72,6 +72,13 @@ jobs:
         run: |
           mkdir -p "$HOME/.claude/skills"
           ln -s "$GITHUB_WORKSPACE/.agents/skills/review-doc" "$HOME/.claude/skills/review-doc"
+      - name: Install bubblewrap
+        if: steps.classify.outputs.status == 'review'
+        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs it; without it Claude Code
+        # refuses to start.
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends bubblewrap
       - name: Review
         id: review
         if: steps.classify.outputs.status == 'review'
