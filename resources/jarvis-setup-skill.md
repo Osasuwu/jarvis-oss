@@ -13,9 +13,6 @@ show-before-writing trial mode:
 
 ## How you know it ran
 
-Trial mode prints the delta as a fenced block and writes nothing. Full mode writes via option 4
-on include-capable harnesses (an owned file, e.g. `.claude/jarvis.md`, plus one bare `@import`
-line — `/context` should list the owned file as loaded) or via option 3 elsewhere (a
-`<!-- jarvis-setup:begin -->` … `<!-- jarvis-setup:end -->` block in the rules file) — `git diff`
-after running shows exactly what changed. A re-run replaces that file or block whole, and the
-skill's own §7 documents how to remove it again.
+Trial mode prints the delta as a fenced block and writes nothing; full mode leaves a new
+`## Jarvis` section (or a brand-new rules file) in the repo's rules file — `git diff` on that
+file after running shows exactly what changed.

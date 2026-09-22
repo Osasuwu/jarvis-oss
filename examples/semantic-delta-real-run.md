@@ -57,55 +57,10 @@ nothing was written.
 - It kept everything already in the file and did not duplicate itself. Those are the two things
   it was built for.
 - A well-developed rules file still received the whole block. The persona line duplicates an
-  identity the person already delivers through a user-level import. At the time of this run the
-  skill read only one file, so it could not see that — closed below.
+  identity the person already delivers through a user-level import. The skill reads one file, so
+  it cannot see that.
 - The secrets verdict rests on a judgement that could have gone the other way.
-- At the time of this run, nothing marked the appended lines as written by the skill: a later
-  version with different invariant wording would have found these lines already stated in
-  substance and left them alone, and uninstalling the skill would have left them too. Closed
-  below (#57).
-
-## Update, uninstall, and reading imports (#57)
-
-The gap above — no marker, no update, no uninstall, and reading only the rules file — was closed
-by adding a managed marker block (option 3) for harnesses without includes, an owned-file
-`@import` path for harnesses with them, an uninstall step for both, and import-following in §2.
-This section is a genuine recorded run of the fixed mechanism, on a small scratch rules file
-(not the `music-intel-mcp` copy above — the marker-block path needed its own clean baseline):
-
-**Baseline** (`git init`, then commit):
-
-```
-# Rules
-
-- Identity (`SOUL.md`) — inherited from user-level `~/.claude/SOUL.md`. No per-repo override yet.
-- `/grill` is mandatory before any product code.
-- No hardcoded secrets — `.env.example` declares the metadata; values live in `.env`.
-```
-
-**Full run** (no include support assumed → option 3, marker block). `git diff --stat` showed
-`CLAUDE.md | 11 +++++++++++`: the marker block was appended, wrapped in
-`<!-- jarvis-setup:begin -->` / `<!-- jarvis-setup:end -->`.
-
-**Re-run after a wording change** (the secrets invariant line was edited to add "including
-partial values in logs"). §3's substance check excludes the skill's own marker block from the
-diff, so the new wording is not found "already stated" — the skill rewrites the block whole.
-`git diff` on the re-run touched only the one changed line, inside the markers:
-
-```diff
--- Secrets never land in any persistent surface — metadata OK, values never.
-+- Secrets never land in any persistent surface, including partial values in logs — metadata OK, values never.
-```
-
-Nothing outside the markers changed across either run.
-
-**Uninstall** (§7): delete everything from `<!-- jarvis-setup:begin -->` through
-`<!-- jarvis-setup:end -->` inclusive. `git diff` showed the file returned to exactly its
-three original baseline lines — byte-for-byte, modulo a trailing newline. Nothing the reader
-authored was touched by either the update or the uninstall.
-
-**What this closes:** update and uninstall are both now possible without touching the reader's
-own content, because the delta always lives inside a marker the skill owns (or, on an
-include-capable harness, inside a file the skill owns). The persona-check limitation from the
-run above is addressed separately, in §2's import-following: a rules file that only points at a
-user-level file is no longer read as if it said nothing.
+- Nothing marks the appended lines as written by the skill. The run did not test what follows
+  from that, but it follows: a later version with different invariant wording would find these
+  lines already stated in substance and leave them alone, and uninstalling the skill would leave them
+  too.
