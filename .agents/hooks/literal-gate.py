@@ -3,13 +3,15 @@
 Covers the text the pre-push gate cannot see, because it never passes through git:
 pull request and issue titles and bodies, comments, reviews, release notes and `gh api` writes.
 
-- GitHub MCP tools (matcher `^mcp__github__`, the whole server): every string in the tool
-  input, at any depth. A field list would miss the next tool's field.
-- Bash (matcher `Bash`): only `gh` commands that send text (`gh pr|issue create/edit/comment/
+- GitHub MCP tools (matcher `^mcp__.*github`, the whole server under any prefix, as the
+  authority guard wires it): every string in the tool input, at any depth. A field list would
+  miss the next tool's field.
+- Bash and PowerShell (matcher `Bash|PowerShell`): only `gh` commands that send text (`gh pr|issue create/edit/comment/
   review/merge/close/reopen`, `gh release|gist create/edit`, and `gh api` with a field, an
   input file or a write method). The command text is scanned, minus leading `cd <dir> &&`
-  steps and the paths of body files, which are not sent; the body files' contents are read
-  and scanned instead. A body file that cannot be read, or a body piped in on stdin, blocks.
+  (or `Set-Location <dir>;`) steps and the paths of body files, which are not sent; the body files' contents are read
+  and scanned instead. A body file that cannot be read blocks, and so does a body piped in on stdin, unless it
+  comes from a heredoc or a PowerShell here-string in the same command.
 
 Literals come from `PERSONAL_LITERALS`, the source the CI scrub and the pre-push gate read,
 and match in any variant (case, separators, path forms). Exit 2 blocks the call and names
@@ -30,6 +32,7 @@ import sys
 from pathlib import Path
 
 BLOCK = 2
+SHELL_TOOLS = ("Bash", "PowerShell")
 PREFIX = "literal-gate"
 
 try:
@@ -44,7 +47,7 @@ except Exception as exc:  # noqa: BLE001 - any import failure must block, not pa
     sys.exit(BLOCK)
 
 _ARG = r"(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
-_LEADING_CD = re.compile(rf"^\s*cd\s+{_ARG}\s*(?:&&|;)\s*")
+_LEADING_CD = re.compile(rf"^\s*(?:cd|Set-Location)\s+{_ARG}\s*(?:&&|;)\s*", re.IGNORECASE)
 _GH = r"\bgh\s+(?:(?:-R|--repo)(?:\s+|=)\S+\s+)?"
 _GH_WRITE = re.compile(
     _GH + r"(?:(?:pr|issue)\s+(?:create|edit|comment|review|merge|close|reopen)"
@@ -137,12 +140,12 @@ def check_bash(tool_input: dict, cwd: Path) -> int:
             continue
         sent_text = sent_text[: match.start(2)] + sent_text[match.end(2) :]
         if path == "-":
-            if "<<" not in command:
+            if not any(h in command for h in ("<<", "@'", '@"')):
                 return deny(
                     f"{flag} - reads the body from a pipe, which this hook cannot see. Write "
-                    "the body to a file and pass its path, or use a heredoc."
+                    "the body to a file and pass its path, or use a heredoc or here-string."
                 )
-            continue  # a heredoc body is part of the command text, scanned below
+            continue  # a heredoc or here-string body is in the command text, scanned below
         shown = "<path withheld: it matches>" if matcher.search(path) else path
         try:
             contents = resolve(path, base).read_text(encoding="utf-8", errors="replace")
@@ -196,8 +199,8 @@ def main() -> int:
     tool_input = data.get("tool_input")
     if not isinstance(tool_name, str):
         return deny("hook input names no tool, so nothing was checked.")
-    is_github = tool_name.startswith("mcp__github__")
-    if not is_github and tool_name != "Bash":
+    is_github = tool_name.startswith("mcp__") and "github" in tool_name.lower()
+    if not is_github and tool_name not in SHELL_TOOLS:
         return 0
     if not isinstance(tool_input, dict):
         return deny("hook input has no tool_input object, so nothing was checked.")

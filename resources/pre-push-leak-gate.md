@@ -18,16 +18,18 @@ separators `-`, `_`, space and none, and path forms), and never print a matched 
   names and messages of annotated tags. A literal that is added and then removed within the same
   push still blocks, because the commit that added it is being published. Removed lines and
   author identity are not scanned. It exits 1 on a hit, and on any git error.
-- **`.agents/hooks/literal-gate.py`**, a Claude Code PreToolUse hook. On the GitHub MCP server
-  (matcher `^mcp__github__`) it checks every string in the tool input, at any depth. On `Bash`
-  it checks only the `gh` commands that send text: `pr` and `issue` create, edit, comment,
-  review, merge, close and reopen; `release` and `gist` create and edit; and `gh api` with a
-  field, an input file or a write method. It reads the files named by `--body-file`, `-F` or
+- **`.agents/hooks/literal-gate.py`**, a Claude Code PreToolUse hook, wired with the same
+  matchers as the authority guard in `settings.snippet.json`. On the GitHub MCP server, under
+  any prefix (matcher `^mcp__.*github`), it checks every string in the tool input, at any
+  depth. On `Bash` and `PowerShell` it checks only the `gh` commands that send text: `pr`
+  and `issue` create, edit, comment, review, merge, close and reopen; `release` and `gist`
+  create and edit; and `gh api` with a field, an input file or a write method. It reads the files named by `--body-file`, `-F` or
   `--input` and scans their contents. It blocks when a body file cannot be read, and when a body
-  comes in on a pipe. It exits 2 on a hit.
+  comes in on a pipe, unless it is a heredoc or a PowerShell here-string in the same command.
+  It exits 2 on a hit.
 
 With no usable list (`PERSONAL_LITERALS` unset, empty, or with no letter or digit in it), both
-block and say that nothing was checked. A Bash call that sends nothing to GitHub is let through.
+block and say that nothing was checked. A shell call that sends nothing to GitHub is let through.
 
 ## Install, per device
 

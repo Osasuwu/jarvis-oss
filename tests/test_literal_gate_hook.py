@@ -1,8 +1,8 @@
 """Tests for the literal-gate PreToolUse hook (#100 AC3).
 
 Mechanism under test: `.agents/hooks/literal-gate.py`, wired by the matchers in
-`.agents/hooks/literal-gate.snippet.json` on `Bash` and on the whole GitHub MCP server
-(`^mcp__github__`). It reads the tool call as JSON on stdin and exits 2 to block when the text
+`.agents/hooks/literal-gate.snippet.json` on `Bash|PowerShell` and on the whole GitHub MCP
+server under any prefix (`^mcp__.*github`), the same matchers as the authority guard (#99). It reads the tool call as JSON on stdin and exits 2 to block when the text
 about to be sent to GitHub (a PR or issue title/body, a comment, a review, a release note, a
 `gh api` write) holds any variant of a personal literal. The hook never prints the literal.
 
@@ -125,6 +125,7 @@ def test_body_file_contents_are_scanned(tmp_path: Path):
     body.write_text("## Summary\nthanks zorblax quint\n", encoding="utf-8")
     result = _run(_bash(f'gh pr create --title x --body-file "{body.as_posix()}"'))
     _assert_blocked_quietly(result)
+    assert "could not read" not in result.stderr.lower()
     assert "body file" in result.stderr
 
 
@@ -132,6 +133,7 @@ def test_body_file_short_flag_and_relative_path_resolve_against_cwd(tmp_path: Pa
     (tmp_path / "body.md").write_text("ZORBLAX_QUINT\n", encoding="utf-8")
     result = _run(_bash("gh issue create -t x -F body.md", cwd=tmp_path))
     _assert_blocked_quietly(result)
+    assert "could not read" not in result.stderr.lower()
     assert "body file" in result.stderr
 
 
@@ -142,6 +144,7 @@ def test_body_file_relative_to_a_cd_in_the_same_command(tmp_path: Path):
     command = f'cd "{sub.as_posix()}" && gh pr comment 3 --body-file body.md'
     result = _run(_bash(command, cwd=tmp_path))
     _assert_blocked_quietly(result)
+    assert "could not read" not in result.stderr.lower()
     assert "body file" in result.stderr
 
 
@@ -150,6 +153,7 @@ def test_gh_api_field_from_file_is_scanned(tmp_path: Path):
     command = "gh api repos/o/r/issues/1/comments -F body=@b.md"
     result = _run(_bash(command, cwd=tmp_path))
     _assert_blocked_quietly(result)
+    assert "could not read" not in result.stderr.lower()
     assert "body file" in result.stderr
 
 
@@ -207,6 +211,49 @@ def test_body_from_a_pipe_is_blocked_because_it_cannot_be_seen():
     assert result.returncode == 2
 
 
+def _powershell(command: str) -> dict:
+    return {"tool_name": "PowerShell", "tool_input": {"command": command}}
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr create --title x --body 'zorblax quint'",
+        "Set-Location C:/x; gh issue comment 5 --body 'ZorblaxQuint'",
+        "@'\nsummary\nzorblax quint\n'@ | gh pr create --title x --body-file -",
+    ],
+)
+def test_powershell_gh_write_with_a_literal_variant_is_blocked(command):
+    _assert_blocked_quietly(_run(_powershell(command)))
+
+
+def test_powershell_body_file_relative_to_a_set_location(tmp_path: Path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "body.md").write_text("zorblax quint\n", encoding="utf-8")
+    command = f'Set-Location "{sub.as_posix()}"; gh pr comment 3 --body-file body.md'
+    payload = _powershell(command)
+    payload["cwd"] = str(tmp_path)
+    result = _run(payload)
+    _assert_blocked_quietly(result)
+    assert "could not read" not in result.stderr.lower()
+    assert "body file" in result.stderr
+
+
+def test_powershell_here_string_piped_as_the_body_is_scanned_not_refused():
+    command = "@'\nnothing private\n'@ | gh pr create --title x --body-file -"
+    result = _run(_powershell(command))
+    assert result.returncode == 0, result.stderr
+
+
+def test_github_mcp_server_under_another_prefix_is_scanned():
+    payload = {
+        "tool_name": "mcp__plugin_github_github__create_pull_request",
+        "tool_input": {"title": "x", "body": "zorblax quint"},
+    }
+    _assert_blocked_quietly(_run(payload))
+
+
 def test_clean_gh_write_is_allowed():
     result = _run(_bash('gh pr create --title "fix" --body "nothing private"'))
     assert result.returncode == 0, result.stderr
@@ -261,11 +308,12 @@ def test_unparseable_input_is_blocked():
 # --- wiring -------------------------------------------------------------------------------
 
 
-def test_snippet_wires_bash_and_the_whole_github_server_fail_closed():
+def test_snippet_wires_both_shells_and_the_whole_github_server_fail_closed():
+    """Same matchers as the authority guard in settings.snippet.json (#99)."""
     snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
     entries = snippet["hooks"]["PreToolUse"]
     matchers = {e["matcher"]: e["hooks"] for e in entries}
-    assert set(matchers) == {"Bash", "^mcp__github__"}
+    assert set(matchers) == {"Bash|PowerShell", "^mcp__.*github"}
     for hooks in matchers.values():
         (hook,) = hooks
         assert ".agents/hooks/literal-gate.py" in hook["command"]
