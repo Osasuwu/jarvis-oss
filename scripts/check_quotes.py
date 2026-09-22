@@ -7,7 +7,7 @@ the doc is tried, which catches a quote credited to the wrong page. Matching ign
 whitespace, markdown emphasis, table pipes, and curly-versus-straight quotes and dashes. A quote
 with "…" is checked piece by piece.
 
-    python scripts/check_quotes.py docs/some-doc.md [more.md ...]
+    python scripts/check_quotes.py [--json report.json] docs/some-doc.md [more.md ...]
 
 Each quote gets one verdict:
 
@@ -24,11 +24,16 @@ The last line counts the ``NOT FOUND`` quotes and the sources that could not be 
 GitHub Actions it is also added to the job summary (``$GITHUB_STEP_SUMMARY``). This checks
 wording only, not whether the doc's claim around the quote matches the source; that stays
 review-doc's job.
+
+``--json PATH`` also writes the run as JSON: the counts, and every quote not marked ``found`` with
+its doc, line, verdict, candidate sources and the ones that could not be fetched. The weekly run
+(``.github/workflows/quote-cron.yml``) reads it to decide what goes in its rolling issue.
 """
 
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import sys
@@ -297,16 +302,27 @@ def check(doc: Path, fetch=fetch_url) -> list[tuple[Quote, str, tuple[str, ...]]
 
 
 def main(argv: list[str], fetch=fetch_url) -> int:
+    report_path = None
+    if argv[:1] == ["--json"]:
+        report_path, argv = (argv[1], argv[2:]) if len(argv) > 1 else (None, [])
     if not argv:
         print(__doc__)
         return 2
     quotes = not_found = 0
     unfetched_sources: set[str] = set()
+    findings: list[dict] = []
     for name in argv:
         for quote, verdict, unfetched in check(Path(name), fetch=fetch):
             quotes += 1
             unfetched_sources.update(unfetched)
             if verdict != "found":
+                findings.append(
+                    {
+                        "doc": name, "line": quote.line, "verdict": verdict,
+                        "quote": quote.text, "tried": list(quote.urls),
+                        "unfetched": list(unfetched),
+                    }
+                )
                 print(f"{name}:{quote.line}: {verdict}: \"{quote.text}\"")
                 if verdict == "NOT FOUND":
                     print(f"    tried: {', '.join(quote.urls)}")
@@ -319,6 +335,12 @@ def main(argv: list[str], fetch=fetch_url) -> int:
     )
     print(summary)
     _write_step_summary(summary)
+    if report_path:
+        report = {
+            "docs": len(argv), "quotes": quotes, "not_found": not_found,
+            "unfetchable_sources": sorted(unfetched_sources), "findings": findings,
+        }
+        Path(report_path).write_text(json.dumps(report, indent=2), encoding="utf-8")
     return 1 if not_found else 0
 
 

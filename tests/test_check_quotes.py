@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -267,3 +268,30 @@ def test_ci_unfetchable_source_is_counted_once_across_quotes_and_docs(tmp_path, 
     two.write_text('[a](https://a.example) says "another quote right here".\n', encoding="utf-8")
     assert main([str(one), str(two)], fetch=_fetcher({})) == 0
     assert "unfetchable sources: 1" in capsys.readouterr().out
+
+
+# --- JSON report for the weekly run (#105) ----------------------------------------
+
+
+def test_json_report_lists_each_quote_not_found_with_its_unfetched_sources(tmp_path):
+    body = (
+        'The [docs](https://a.example) and [b](https://b.example) say "exit code two blocks".\n\n'
+        'The [c](https://c.example) page says "this one is found".'
+    )
+    doc = _doc(tmp_path, body)
+    report = tmp_path / "out.json"
+    pages = {"https://a.example": "other", "https://c.example": "this one is found"}
+    assert main(["--json", str(report), str(doc)], fetch=_fetcher(pages)) == 1
+    data = json.loads(report.read_text(encoding="utf-8"))
+    assert (data["docs"], data["quotes"], data["not_found"]) == (1, 2, 1)
+    assert data["unfetchable_sources"] == ["https://b.example"]
+    [finding] = data["findings"]
+    assert finding == {
+        "doc": str(doc), "line": 5, "verdict": "NOT FOUND", "quote": "exit code two blocks",
+        "tried": ["https://a.example", "https://b.example"], "unfetched": ["https://b.example"],
+    }
+
+
+def test_json_flag_without_a_path_or_docs_prints_usage():
+    assert main(["--json"]) == 2
+    assert main(["--json", "out.json"]) == 2
