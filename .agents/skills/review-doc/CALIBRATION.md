@@ -97,6 +97,95 @@ column.
 | **all** | 2 / 32 / 34 | 2 / 32 / 34 | 5 / 29 / 34 | 1 / 0 / 0 | 3 |
 
 Six of the 34 entries were caught in at least one run (`62-go`, `62-ansible`, `62-today`,
+`62-systemd`, `75-mkdocs`, `75-gs`); one, `62-today`, in all three. No catch cited the corpus
+or the round N+1 comment. The table above is the pre-registered figure: all 2 / 34, 2 / 34,
+5 / 34.
+
+**Held out.** 1 entry, `75-ghd` (quote, `blocking`): missed in runs 1, 2 and 3. Not in the
+counts above.
+
+**Post-hoc audit.** Everything in this block was found after scoring. It does not change the
+table; it says how far the table can be trusted.
+
+- **The snapshots were not the repo as it was.** Each `calib/<sha>` branch is `main` at
+  `67caf77` with only the doc set replaced, so every other file is at `main`'s state:
+  `.gitleaks.toml`, examples and resources added later, and
+  `.agents/skills/jarvis-setup/SKILL.md`, which is at post-#69/#70 `main`, not at `8067d67`.
+- **Not measurable: `81-gitleaks`, `62-tried`.** `81-gitleaks` is a claim that `.gitleaks.toml`
+  exists, and `main` added it in `67caf77`, so in the snapshot the claim is true. `62-tried` is
+  a claim with no trace in the repo, and `examples/git-include-missing-target-silent.md`
+  (added in `9803c6c`) is that trace; the runs found it.
+- **Contaminated: `62-today`.** It was caught in all three runs, but each run's M1 cites lines
+  of `.agents/skills/jarvis-setup/SKILL.md` that exist only in `main`'s version of that file.
+- **Borderline, leans missed: `75-gs` run 3.** Its H10 is about the MkDocs example at `:281`;
+  the entry's claim is row 3 at `:247`.
+- **Coverage gap: `81-heredoc`.** `examples/heredoc-stripping-boundary-bug.md` was not reviewed
+  in any of the three `af950ea` runs. It is missed under the Method, but it is a coverage
+  failure, not a judgement miss.
+
+Corrected counts, both post-hoc:
+
+- **Strict**, dropping `81-gitleaks`, `62-tried`, `62-today` and `75-gs` run 3: 1 / 31, 1 / 31,
+  3 / 31.
+- **Lenient**, dropping only `81-gitleaks` and `62-tried`: 2 / 32, 2 / 32, 5 / 32.
+
+**Runs.** Each branch gets k = 3 `workflow_dispatch` runs, `files` set to the branch's corpus docs:
+27 runs. Runs 1, 2 and 3 of a branch are its first three reviewable runs, in dispatch order. A run
+that fails as unreviewable is re-run and the failure recorded; it is never dropped silently. If
+failures are systemic, the calibration stops and reports instead. All 27 runs must resolve the same
+model ID, or the calibration stops. The artifact of each run (`report.md`, `findings.json`, and
+`comment.md`) is what is scored.
+
+**What counts as caught.** An entry is caught in a run when that run's `findings.json` and report
+name the same defect: the same claim, and the same thing wrong with it.
+
+- The line number may differ.
+- A `blocking` entry reported with the `follow-up` label counts as missed. The table shows those in
+  a separate column, "caught, wrong label". The label is the one the verdict step reads: every
+  mismatch (`M`) finding is `blocking`, as `scripts/doc_review.py` enforces.
+- A finding on the same claim that names a different thing wrong is not a catch.
+- An `unverifiable` finding on the entry's claim is scored by
+  [RULES.md's `unverifiable` section](calibration/RULES.md#unverifiable): caught if it is
+  `blocking`, missed if it is `follow-up`.
+- One finding may catch more than one entry, if it names each one's thing wrong.
+- A catch whose report gives the corpus, or the round N+1 comment that reported the defect, as its
+  evidence is still scored by the rule, and is listed as contaminated.
+- Scoring is done in a fresh context, against this rule only. Every borderline call is listed in
+  the PR with its reasoning. The scoring worksheet (entry × run → verdict, the matching finding ID
+  or "none", and a one-line reason) goes in the PR.
+
+**What is recorded.** Per class, for each of runs 1–3: caught, missed and n, the "caught, wrong
+label" count, and the spread between runs. Rows with n = 0 or caught = 0 stay in the table. Then the
+held-out entries, the not-measurable entries, links to all 27 runs, the drift key, the date and
+the `main` commit. There is no threshold and no pass mark.
+
+**What the figures are.** A floor on same-model agreement: every corpus entry was found by the same
+model that missed it in the round before, so the corpus holds only defects this model can find.
+A defect the model misses every time is not in it. The figures are not a recall figure.
+
+### Results
+
+Runs dispatched and finished on 2026-09-22, against `main` at `67caf77`. All 27 runs were
+reviewable on the first attempt: none was re-run. Every run resolved the model `claude-opus-5`,
+and every run computed the drift key below. Scoring was done in fresh contexts, one per
+snapshot, against the Method only; the worksheet and every borderline call are in the PR.
+
+Each cell is caught / missed / n. "Missed" includes "caught, wrong label", which has its own
+column.
+
+| Class | Run 1 | Run 2 | Run 3 | Caught, wrong label (runs 1 / 2 / 3) | Spread of caught |
+|---|---|---|---|---|---|
+| status | 0 / 1 / 1 | 0 / 1 / 1 | 0 / 1 / 1 | 0 / 0 / 0 | 0 |
+| quote | 0 / 5 / 5 | 0 / 5 / 5 | 2 / 3 / 5 | 0 / 0 / 0 | 2 |
+| plan | 0 / 2 / 2 | 0 / 2 / 2 | 0 / 2 / 2 | 0 / 0 / 0 | 0 |
+| fact | 2 / 18 / 20 | 1 / 19 / 20 | 1 / 19 / 20 | 1 / 0 / 0 | 1 |
+| dead-end | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| missing-option | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| how-to-choose | 0 / 6 / 6 | 1 / 5 / 6 | 2 / 4 / 6 | 0 / 0 / 0 | 2 |
+| other | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 / 0 / 0 | 0 |
+| **all** | 2 / 32 / 34 | 2 / 32 / 34 | 5 / 29 / 34 | 1 / 0 / 0 | 3 |
+
+Six of the 34 entries were caught in at least one run (`62-go`, `62-ansible`, `62-today`,
 `62-systemd`, `75-mkdocs`, `75-gs`); one, `62-today`, in all three. No catch was contaminated.
 
 **Held out.** 1 entry, `75-ghd` (quote, `blocking`): missed in runs 1, 2 and 3. Not in the
