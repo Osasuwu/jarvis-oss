@@ -3,6 +3,12 @@
 The skill counts only once it has shown what it catches and what it wrongly flags. This file
 records that. Re-calibrate after changing any pass.
 
+> **Stale.** Every run below calibrated `SKILL.md` as it was before #102. That change took the
+> `blocking` and `unverifiable` labels from [`calibration/RULES.md`](calibration/RULES.md), put
+> pass 3's reasoning before its verdict, named the four reader types pass 3 walks, and added a
+> fix-induced line to the report. The skill's hash is part of the drift key, so none of these
+> results describes the current skill. The calibration of the current skill is #106.
+
 ## Run 1 — 2026-09-17
 
 **Doc:** `docs/writing-into-user-owned-files.md` at `c1325d3` (merged in #58), with its three

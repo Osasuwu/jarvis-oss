@@ -45,8 +45,8 @@ A signature covers two different checks, and the entry records who did each.
   line of the doc, and skims the rest.
 
 A report counts only if a context that did not write the doc produced it, against the commit
-being signed, and it ends review-doc's loop: every mismatch, `missing` option and `blocking`
-finding fixed or answered, and every `follow-up` fixed or filed.
+being signed, and it ends review-doc's loop: every mismatch and `blocking` finding fixed or
+answered, and every `follow-up` fixed or filed.
 
 ## Entry format
 
