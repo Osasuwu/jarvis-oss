@@ -6,13 +6,12 @@ cost: no paid API calls. Runs as a local Python subprocess per matched tool call
 
 # Runnable hooks: secret scanning + protected-file enforcement
 
-Three files, ported from the source project this practice is drawn from and scrubbed of every
-project-specific literal:
+Three files, ported from the source project this practice is drawn from:
 
-- [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, GitHub MCP
-  write-tool inputs, and file-write tool inputs (`Edit`/`Write`/`NotebookEdit`) for secret-shaped
-  patterns (API key formats, private-key headers, credential assignments) and dangerous
-  `.env`-exfiltration command shapes. Denies the tool call on a match.
+- [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) — scans `Bash` commands, the input of
+  every GitHub MCP tool (reads included), and file-write tool inputs (`Edit`/`Write`/
+  `NotebookEdit`) for secret-shaped patterns (API key formats, private-key headers, credential
+  assignments) and dangerous `.env`-exfiltration command shapes. Denies the tool call on a match.
 - [`protected-files.py`](../.agents/hooks/protected-files.py) — denies any `Edit`/`Write`/
   `NotebookEdit` targeting a path in its `PROTECTED_CANONICAL` set. Fails closed with no
   live-operator bypass, by design — see [`docs/agent-safety-hooks.md`](../docs/agent-safety-hooks.md)
@@ -32,7 +31,11 @@ is not something a normal session will ever surface on its own. Two ways to chec
    of `secret-scanner.py`'s patterns (e.g. a `sk-ant-` prefix followed by 20+ characters) to a
    scratch file, or attempt to edit a path listed in `protected-files.py`'s `PROTECTED_CANONICAL`.
    A wired-up hook returns a `permissionDecision: deny` with a `BLOCKED:` reason and the tool call
-   is refused; the agent sees this in its own transcript, not a separate log.
+   is refused; the agent sees this in its own transcript, not a separate log. A hook that fails to
+   *launch* — `python3` missing, or too old to run the script — also blocks the call, but with
+   the shell's error text and no `BLOCKED:` reason: each command in `settings.snippet.json` is
+   `python3 "…" || exit 2`, so a launch failure exits 2 too, instead of the non-blocking non-zero
+   exit the harness would otherwise see.
 2. **`claude --debug`** (or the equivalent flag for your harness) writes each hook invocation
    and its exit code to a debug log (Claude Code: `~/.claude/debug/<session-id>.txt`, not the
    terminal), including the ones that exit 0 and produce no other output — this is the only place
@@ -49,18 +52,21 @@ The GitHub MCP entry in `settings.snippet.json` matches every tool of the server
 (`^mcp__github__`), not a list of write tools. A list fails open when the server renames or adds a
 tool — this happened here, recorded in
 [`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md). The cost is one
-Python process per GitHub call, reads included. What still drifts is the set of input fields the
-scanner reads (`extract_github_text`):
-[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) pins the text field of each
-write tool as of its last check, and cannot see a field the server adds later. Re-check the fields
-when you upgrade the server, and change the `mcp__github__` prefix if you registered it under
-another name.
+Python process per GitHub call, reads included. `extract_github_text` has the same shape of fix:
+it scans every string value in `tool_input`, at any nesting depth, rather than reading a named
+list of fields — a field-name whitelist missed `custom_instructions`/`rationale`
+(`assign_copilot_to_issue*`) and `commit_message`/`commit_title` (`merge_pull_request`) because
+they weren't on the list.
+[`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) pins that behavior with a
+field name the scanner's source has never named, not a fixed field list to re-check. Change the
+`mcp__github__` prefix if you registered the server under another name.
 
 ## Adapting these
 
 `PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS` in
 `secret-scanner.py` are marked `CUSTOMIZE` at their definition, and `SECRET_PATTERNS` in that
-file's docstring — they ship as
-placeholders naming this repo's own hook files and `.gitleaks.toml`, not a claim that those are
-the right files for every reader's repo. Point them at whatever your own project's review-gate
-files and credential-shaped env vars actually are.
+file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files and a
+`.gitleaks.toml`, `PROTECTED_MIRROR` is empty, and the other two list common provider key
+formats and env-var names — placeholders, not a claim that they are right for every reader's
+repo. Point them at whatever your own project's review-gate files and credential-shaped env
+vars actually are.

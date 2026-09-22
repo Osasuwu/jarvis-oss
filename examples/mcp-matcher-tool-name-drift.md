@@ -18,19 +18,20 @@ Checked on 2026-09-17 against the
 `create_issue` and `create_pull_request_review` are not in its tool list. Issues are now created
 and edited through `issue_write` ("Create or update issue/pull request"), reviews through
 `pull_request_review_write`, and pull request edits through `update_pull_request`, which the old
-list never named. A live session's GitHub tool list showed the same names.
+list never named.
 
 So a secret pasted into a new issue body, a review, or an edited pull request description reached
 GitHub without the scanner running. Nothing reported it: a matcher alternative that names no existing
-tool simply never matches, and a hook that never matches produces no warning. The source project the hook
-was ported from had moved to the new names ten days earlier; the port copied an older list.
+tool simply never matches, and a hook that never matches produces no warning. The port copied an
+older list; that the private source project had already moved to the new names is known only
+from that project, not public.
 
 What caught it was reading the server's tool list while rewriting
 [`agent-safety-hooks.md`](../docs/agent-safety-hooks.md), not any run of the hook. A first fix
 listed the current write tools, and a review of that fix found three more it had missed
-(`discussion_comment_write`, `create_pull_request_with_copilot`, `projects_write`) before it merged — the same
-failure again. So the matcher now takes every tool of the server, `^mcp__github__`, and
-the scanner reads Copilot's `problem_statement` field too.
+(`discussion_comment_write`, `create_pull_request_with_copilot`, `sub_issue_write`) before it
+merged — the same failure again. So the matcher now takes every tool of the server,
+`^mcp__github__`. The scanner was first given Copilot's `problem_statement` field too; since #74
+it scans every string in the input at any nesting depth, so there is no field list to re-check.
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) checks that a tool name it has
-never seen is still matched, and that a secret in each write tool's text field is blocked. The
-field list is still a list: re-check it against the server when you upgrade.
+never seen is still matched, and that a secret in a field name it has never seen is blocked.

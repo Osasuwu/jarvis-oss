@@ -13,8 +13,8 @@ subprocess, which always receives piped stdin whether or not a terminal is attac
 The accepted consequence is that this project hook also blocks the live owner's own
 local interactive edits to canonical protected files, even where a still-present
 user-level hook alone would allow them. See docs/agent-safety-hooks.md for the
-practice this hook backs; its "Our own choice" part records what was tried and
-dropped instead of this trade-off.
+practice this hook backs; its "Our own choice" part records this trade-off and
+why the presence-detection alternative was dropped.
 
 Matches Edit/Write/NotebookEdit only: a shell command that writes a protected file
 is not seen by this hook. Exits 0 on empty or unparsable input (fails open there).
@@ -32,6 +32,7 @@ Everything else should go through ordinary PR + CI + review instead (option 1,
 """
 
 import json
+import os
 import sys
 
 # Canonical protected files: repo-relative paths, checked against every edit
@@ -62,8 +63,45 @@ def normalize_path(path: str) -> str:
     return normalized
 
 
+def _project_dir() -> str:
+    return os.environ.get("CLAUDE_PROJECT_DIR", os.getcwd())
+
+
+def _canonicalize(path: str) -> str:
+    """Resolve a path to its real, case-normalized filesystem identity.
+
+    realpath collapses symlinks and NTFS aliases (trailing dot, trailing
+    space, `::$DATA` alternate data stream) to the same underlying file;
+    normcase folds case on case-insensitive filesystems. Two paths a naive
+    string compare sees as different can still be the same file on disk —
+    #74 found a case-insensitive filesystem let `.Agents/Hooks/
+    Secret-Scanner.py` through a case-sensitive `endswith` match.
+    """
+    return os.path.normcase(os.path.realpath(path))
+
+
 def classify(path: str) -> str | None:
     """Return 'canonical', 'mirror', or None for an unprotected path."""
+    project_dir = _project_dir()
+    input_canonical = _canonicalize(
+        path if os.path.isabs(path) else os.path.join(project_dir, path)
+    )
+    canonical_matches = {
+        _canonicalize(os.path.join(project_dir, p)): p for p in PROTECTED_CANONICAL
+    }
+    mirror_matches = {
+        _canonicalize(os.path.join(project_dir, p)): p for p in PROTECTED_MIRROR
+    }
+    if input_canonical in canonical_matches:
+        return "canonical"
+    if input_canonical in mirror_matches:
+        return "mirror"
+
+    # Fallback: canonicalization can't help when the path doesn't exist on
+    # disk (realpath still normalizes it, but without a real file/symlink to
+    # resolve against, a resolved non-existent path can still coincide with
+    # or miss a real one in edge cases) — the endswith string check is a
+    # safety net, not a narrowing of what canonical comparison already caught.
     normalized = normalize_path(path)
     if any(normalized.endswith(p) for p in PROTECTED_CANONICAL):
         return "canonical"
