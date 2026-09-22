@@ -86,7 +86,7 @@ Equivalents block on exit 2 or a deny decision in
 [Gemini CLI](https://github.com/google-gemini/gemini-cli/blob/main/docs/hooks/reference.md) (`BeforeTool`),
 [Codex](https://developers.openai.com/codex/hooks) (`PreToolUse`),
 [Copilot](https://docs.github.com/en/copilot/reference/hooks-reference) (`preToolUse`);
-[Kiro](https://kiro.dev/docs/hooks/)'s Pre Tool Use hook "can validate and block tool usage";
+[Kiro](https://kiro.dev/docs/hooks/types/)'s Pre Tool Use hook "can validate and block tool usage";
 OpenCode plugins throw from `tool.execute.before` ([plugins](https://opencode.ai/docs/plugins/)).
 Vendors also ship ready-made scanners for these hooks, such as GitGuardian's ggshield.
 
