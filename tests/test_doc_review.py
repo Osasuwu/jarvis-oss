@@ -57,17 +57,24 @@ def _f(fid="M1", file="docs/a.md", line=3, cls="quote", label="blocking") -> dic
 # --- classify -------------------------------------------------------------
 
 
-def test_reviewable_docs_are_docs_markdown_except_the_signoff_ledger():
-    changed = ["docs/a.md", "docs/sub/b.md", "docs/SIGNOFF.md", "README.md", "docs/x.txt",
-               "examples/e.md", "scripts/s.py"]
-    assert dr.reviewable_docs(changed) == ["docs/a.md", "docs/sub/b.md"]
+def test_reviewable_docs_are_docs_markdown_except_the_excluded_ones():
+    changed = ["docs/a.md", "docs/sub/b.md", "docs/SIGNOFF.md", "docs/adr/0001-x.md", "README.md",
+               "docs/x.txt", "examples/e.md", "scripts/s.py", "docs/adr.md", "docs/adr-notes/y.md"]
+    assert dr.reviewable_docs(changed) == ["docs/a.md", "docs/adr-notes/y.md", "docs/adr.md",
+                                           "docs/sub/b.md"]
 
 
-def test_signoff_exclusion_matches_the_structure_gate():
+def test_doc_exclusion_is_one_rule_shared_with_the_structure_gate():
     sys.path.insert(0, str(ROOT / "tests"))
     import structure_gate
 
     assert dr.SIGNOFF_LEDGER_PATH == structure_gate.SIGNOFF_LEDGER_PATH
+    assert dr.EXCLUDED_DOC_DIRS == structure_gate.EXCLUDED_DOC_DIRS
+    for path in ["docs/SIGNOFF.md", "docs/adr/0001-x.md", "docs/adr/deep/y.md", "docs/a.md",
+                 "docs/adr.md", "docs/sub/SIGNOFF.md"]:
+        assert dr.is_excluded_doc(path) == structure_gate.is_excluded_doc(path), path
+    assert dr.is_excluded_doc("docs/adr/0001-x.md") and dr.is_excluded_doc("docs/SIGNOFF.md")
+    assert not dr.is_excluded_doc("docs/a.md")
 
 
 @pytest.mark.parametrize(
@@ -76,7 +83,7 @@ def test_signoff_exclusion_matches_the_structure_gate():
         (True, True, ["docs/a.md"], "fail", "not reviewed: fork, no secret"),
         (False, True, ["docs/a.md"], "fail", "not reviewed: draft"),
         (False, True, ["README.md"], "fail", "not reviewed: draft"),
-        (False, False, ["README.md", "docs/SIGNOFF.md"], "pass", "no doc change"),
+        (False, False, ["README.md", "docs/SIGNOFF.md", "docs/adr/0001-x.md"], "pass", "no doc change"),
         (False, False, ["docs/a.md", "README.md"], "review", "reviewing 1 doc(s)"),
     ],
 )

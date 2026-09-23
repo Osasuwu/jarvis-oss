@@ -16,6 +16,16 @@ from pathlib import Path
 STALE_AFTER_DAYS = 180
 
 SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"
+# Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
+# Mirrored byte for byte in scripts/doc_review.py; tests/test_doc_review.py pins the two equal.
+EXCLUDED_DOC_DIRS = ("docs/adr/",)
+
+
+def is_excluded_doc(path: str) -> bool:
+    """The sign-off ledger and every file under an excluded directory: one rule, shared with
+    scripts/doc_review.py."""
+    return path == SIGNOFF_LEDGER_PATH or path.startswith(EXCLUDED_DOC_DIRS)
+
 
 # Ledger entry line: "- `<repo-relative doc path>`: <signed_off date>; facts: <human | report URL>"
 # The facts part says who checked facts and completeness (#59): the signer, or a review-doc
@@ -81,7 +91,7 @@ def _check_docs(root: Path) -> list[Violation]:
     violations: list[Violation] = []
     for doc_path in sorted(docs_dir.rglob("*.md")):
         rel = _rel(doc_path, root)
-        if rel == SIGNOFF_LEDGER_PATH:
+        if is_excluded_doc(rel):
             continue
         text = doc_path.read_text(encoding="utf-8")
         fields = _parse_frontmatter(text)
@@ -171,7 +181,7 @@ def _check_signoff(root: Path) -> list[Violation]:
     violations: list[Violation] = []
     for doc_path in sorted(docs_dir.rglob("*.md")):
         rel = _rel(doc_path, root)
-        if rel == SIGNOFF_LEDGER_PATH:
+        if is_excluded_doc(rel):
             continue
         fields = _parse_frontmatter(doc_path.read_text(encoding="utf-8"))
         signed_off = fields.get("signed_off")

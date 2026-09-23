@@ -41,6 +41,9 @@ WORKFLOW_PATH = ".github/workflows/doc-review.yml"
 SKILL_PATH = ".agents/skills/review-doc/SKILL.md"
 CALIBRATION_PATH = ".agents/skills/review-doc/CALIBRATION.md"
 SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"  # same exclusion as tests/structure_gate.py
+# Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
+# Mirrored byte for byte in tests/structure_gate.py; tests/test_doc_review.py pins the two equal.
+EXCLUDED_DOC_DIRS = ("docs/adr/",)
 ACTION_REPO = "anthropics/claude-code-action"
 BOT_LOGIN = "github-actions[bot]"
 # PR replies the reviewer reads for a delta pass. Anyone can comment on a public repo; only
@@ -91,9 +94,15 @@ class Unreviewable(Exception):
 # --- classify -------------------------------------------------------------
 
 
+def is_excluded_doc(path: str) -> bool:
+    """The sign-off ledger and every file under an excluded directory: one rule, shared with the
+    structure gate."""
+    return path == SIGNOFF_LEDGER_PATH or path.startswith(EXCLUDED_DOC_DIRS)
+
+
 def is_reviewable_doc(path: str) -> bool:
-    """A reviewable doc is any docs/**/*.md except the sign-off ledger."""
-    return path.startswith("docs/") and path.endswith(".md") and path != SIGNOFF_LEDGER_PATH
+    """A reviewable doc is any docs/**/*.md except the excluded ones."""
+    return path.startswith("docs/") and path.endswith(".md") and not is_excluded_doc(path)
 
 
 def reviewable_docs(paths: list[str]) -> list[str]:

@@ -6,7 +6,9 @@ to the fields that `RULES.md` requires, so a count cannot drift away from the en
 
 from __future__ import annotations
 
+import posixpath
 import re
+import subprocess
 from collections import Counter
 from pathlib import Path
 
@@ -31,6 +33,7 @@ REQUIRED = (
     "selection_source",
     "escape",
     "defect",
+    "split",
 )
 
 ENTRIES_TITLE = "Entries"
@@ -47,6 +50,12 @@ BLOB = re.compile(
     r"\(\[text at round N\]\(https://github\.com/Osasuwu/jarvis-oss/blob/([0-9a-f]{40})/([^#)]+)#(L\d+(?:-L\d+)?)\)\)$"
 )
 LOCATION = re.compile(r"^`[^`:]+\.md:\d+(-\d+)?`$")
+SPLIT = re.compile(r"^(dev|test|held-out|excluded\(.+\))$")
+# The calibration-2 split (#144): by PR lineage, so a dev run can never see a test file.
+SPLIT_COUNTS = {"dev": 15, "test": 16, "held-out": 1, "excluded": 3}
+TEST_BLOCKING = 10
+SPLIT_PRS = {"dev": {"62"}, "test": {"75", "81"}}
+LINK = re.compile(r"\]\(([^)\s]+)\)")
 
 
 def _text() -> str:
@@ -207,3 +216,109 @@ def test_counts_match_the_entries():
     for name in CLASSES:
         assert table[name] == actual.get(name, 0), f"{name}: table {table[name]}, entries {actual.get(name, 0)}"
     assert table["total"] == len(_counted())
+
+
+# --- split (#144) -----------------------------------------------------------------------------
+
+
+def _split(fields: dict[str, str]) -> str:
+    return fields["split"].partition("(")[0]
+
+
+def _file(fields: dict[str, str]) -> str:
+    return fields["location"].strip("`").partition(":")[0]
+
+
+@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
+def test_entry_split_is_valid(name, fields):
+    assert SPLIT.match(fields["split"]), f"{name}: split is not dev, test, held-out or excluded(reason)"
+    pr = PR_LINK.match(fields["source_pr"]).group(1)
+    if _split(fields) in SPLIT_PRS:
+        assert pr in SPLIT_PRS[_split(fields)], f"{name}: PR #{pr} is not in the {_split(fields)} lineage"
+
+
+def test_held_out_section_is_exactly_the_held_out_split():
+    for name, fields in _held().items():
+        assert _split(fields) == "held-out", f"{name}: in the held-out section but split {fields['split']}"
+    for name, fields in _counted().items():
+        assert _split(fields) != "held-out", f"{name}: split held-out outside the held-out section"
+
+
+def test_split_counts_are_the_registered_ones():
+    actual = Counter(_split(fields) for _, fields in _all())
+    assert dict(actual) == SPLIT_COUNTS
+    blocking = sum(1 for _, f in _all() if _split(f) == "test" and f["label"] == "blocking")
+    assert blocking == TEST_BLOCKING
+
+
+def test_corpus_states_the_split_counts():
+    text = " ".join(_text().split())
+    assert "Counts: dev 15, test 16 (10 `blocking`), held-out 1, excluded 3." in text
+
+
+# --- the split cannot leak ----------------------------------------------------------------------
+#
+# A dev run at a dev commit reviews the docs that hold dev entries there, plus every file under
+# examples/ or resources/ that names such a doc in `pairs_with`, plus the repo-internal `.md`
+# links of all of those, one hop out (the review scope SKILL.md gives a doc, as CALIBRATION.md's
+# Method states it). None of that may be a test or held-out entry's file. Files are read at the
+# commit with `git show`, so the check is on the tree a snapshot is cut from, not on `main`.
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True, text=True)
+
+
+def _show(commit: str, path: str) -> str | None:
+    result = _git("show", f"{commit}:{path}")
+    return result.stdout if result.returncode == 0 else None
+
+
+def _pairs_with(text: str) -> set[str]:
+    head = text.split("---", 2)
+    if len(head) < 3 or head[0].strip():
+        return set()
+    m = re.search(r"^pairs_with:\s*(.+)$", head[1], re.M)
+    return {p.strip() for p in m.group(1).split(",")} if m else set()
+
+
+def _internal_links(path: str, text: str) -> set[str]:
+    out = set()
+    for target in LINK.findall(text):
+        target = target.partition("#")[0]
+        if not target or "://" in target or target.startswith("mailto:"):
+            continue
+        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
+        if resolved.endswith(".md") and not resolved.startswith(".."):
+            out.add(resolved)
+    return out
+
+
+def _dev_scope(commit: str, docs: set[str]) -> set[str]:
+    scope = set(docs)
+    listing = _git("ls-tree", "-r", "--name-only", commit, "--", "examples", "resources")
+    for path in listing.stdout.split():
+        if path.endswith(".md") and _pairs_with(_show(commit, path) or "") & docs:
+            scope.add(path)
+    for path in sorted(scope):
+        links = _internal_links(path, _show(commit, path) or "")
+        scope |= {p for p in links if _show(commit, p) is not None}  # a dangling link is no file
+    return scope
+
+
+def _dev_commits() -> list[str]:
+    return sorted({f["commit"].strip("`") for _, f in _all() if _split(f) == "dev"})
+
+
+@pytest.mark.parametrize("commit", _dev_commits() if CORPUS.is_file() else [])
+def test_a_dev_run_cannot_see_a_test_or_held_out_file(commit):
+    if _git("cat-file", "-e", f"{commit}^{{commit}}").returncode != 0:
+        pytest.fail(f"dev commit {commit} is not in this clone; fetch every branch (fetch-depth: 0)")
+    dev_files = {_file(f) for _, f in _all() if _split(f) == "dev" and f["commit"].strip("`") == commit}
+    docs = {p for p in dev_files if p.startswith("docs/")}
+    assert docs, f"{commit}: no dev doc at this commit"
+    scope = _dev_scope(commit, docs)
+    assert dev_files <= scope, f"{commit}: a dev entry's file is outside the reviewed scope"
+    off_limits = {_file(f) for _, f in _all() if _split(f) in ("test", "held-out")}
+    leaked = scope & off_limits
+    assert not leaked, f"{commit}: a dev run would review a test or held-out file: {sorted(leaked)}"

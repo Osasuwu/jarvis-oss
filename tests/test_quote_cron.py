@@ -52,6 +52,15 @@ def _uncovered(repo: Path) -> set[str]:
     return every - listed
 
 
+def _adr_files_stay_in_the_quote_checks(repo: Path) -> None:
+    """docs/adr/ is outside doc-review and the structure gate (#144) but inside the quote checks:
+    the workflow's `docs/*.md` pathspec matches nested paths, so every tracked ADR is listed."""
+    adrs = set(_git(repo, "ls-files", "--", "docs/adr/*.md"))
+    assert adrs, "no tracked ADR under docs/adr/"
+    listed = set(_git(repo, "ls-files", "--", *_pathspecs()))
+    assert adrs <= listed, sorted(adrs - listed)
+
+
 # --- contract -------------------------------------------------------------
 
 
@@ -353,3 +362,7 @@ def test_a_long_list_is_cut_to_fit_a_comment(tmp_path):
     [comment] = out["comments"]
     assert len(comment["body"]) < 65536
     assert "more in the run log" in comment["body"]
+
+
+def test_adr_files_are_inside_the_quote_cron_pathspecs():
+    _adr_files_stay_in_the_quote_checks(ROOT)

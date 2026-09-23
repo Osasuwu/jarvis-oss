@@ -186,6 +186,23 @@ def test_real_signoff_ledger_exists_with_documented_entry_format():
             assert _SIGNOFF_ENTRY_RE.match(stripped), f"malformed ledger entry: {stripped}"
 
 
+def test_excluded_doc_dirs_skip_every_doc_check(tmp_path):
+    # A decision record under docs/adr/ has no doc frontmatter and is not a reader-facing doc
+    # (#144); the same file anywhere else under docs/ fails as a doc.
+    _write(tmp_path / "docs" / "adr" / "0001-x.md", "# ADR-0001\n\nDecided.\n")
+    _write(tmp_path / "docs" / "adr" / "nested" / "0002-y.md", "# ADR-0002\n")
+    _write(tmp_path / "docs" / "SIGNOFF.md", "# Sign-off ledger\n")
+    assert check_tree(tmp_path) == []
+    _write(tmp_path / "docs" / "other" / "0001-x.md", "# Not an ADR\n\nDecided.\n")
+    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
+    assert ("docs/other/0001-x.md", "doc_missing_key:applies_when") in codes
+    assert not any(path.startswith("docs/adr/") for path, _ in codes)
+
+
+def test_real_adr_directory_holds_a_first_record():
+    assert (REPO_ROOT / "docs" / "adr" / "0001-review-doc-calibration-2.md").is_file()
+
+
 def test_real_tree_passes_structure_gate():
     assert check_tree(REPO_ROOT) == []
 
