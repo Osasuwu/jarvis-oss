@@ -151,6 +151,15 @@ the key every one of the 27 runs computed:
 
 drift-key: ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2 (model: claude-opus-5)
 
+**Drift keys.** Every key the line above has held, newest first. The line above is the only one
+`scripts/doc_review.py` reads; this table is the history the plan below promises: a calibration-2
+candidate replaces the line in its own PR and fills in the old row's `Until` (#145). A row with
+`Until` set matches no run.
+
+| Key | Model | Inputs on `main` at | Since | Until |
+|---|---|---|---|---|
+| `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | — |
+
 ## Calibration 2 — plan (#143)
 
 Committed on 2026-09-23, before any candidate run is dispatched. Everything below is fixed now;
@@ -224,8 +233,10 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   here when measured. The same run's execution file is read for per-model usage and subagent tool
   use, to confirm how subagent cost is folded into the run's cost.
 - **Re-dispatch, drift.** The candidate's `SKILL.md` and workflow edits produce a new drift key.
-  The single `drift-key:` line above is replaced in the same PR, and the old key goes into the
-  history table as a non-matching row. If the family alias resolves to a new model ID, the key
+  The single `drift-key:` line above is replaced in the same PR, the new key is the first row of
+  the **Drift keys** table under it, and the old key's row gets its `Until`. `scripts/doc_review.py`
+  and this file are outside the key, so a change to either alone keeps it: #145 changed only
+  those and the key stayed `ffc5263…`. If the family alias resolves to a new model ID, the key
   changes with it; the campaign restarts from the dry run and the old runs are kept as history.
 
 ### Scoring
@@ -244,21 +255,45 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
 ### Cost
 
 Cost is recorded per run as an estimated share of the 5-hour usage limit of the subscription the
-runs bill to: Claude Max ×20 as of 2026-09-23. The share is estimated: the denominator is taken
-from the usage UI, read once before and once after each campaign and recorded here with the
-date; the numerator is the cost the verdict step reads from the action's execution file (#145).
+runs bill to: Claude Max ×20 as of 2026-09-23. The numerator is the cost in USD the verdict step
+reads from the action's execution file and writes into the report and the PR comment, beside the
+wall-clock duration and the turn count (#145); a run whose execution file lacks a value carries
+`unknown` there and is still a run. The share is estimated because the limit is not published in
+USD; its denominator is measured per campaign:
+
+- **Readings.** Before the first dispatch and after the last verdict of a campaign, read the
+  5-hour usage percentage from the usage UI of the account the runs bill to, and record both
+  readings under **Denominator readings** below, each with date and time. The pair is valid only
+  if nothing else billed to the subscription between the readings and the 5-hour window did not
+  reset between them; otherwise the pair is recorded as void, the campaign's shares stay
+  `pending`, and the next campaign reads again.
+- **Denominator** = the sum of the campaign's run costs in USD ÷ (after − before), in USD per
+  100 % of the limit. Each run's share = its cost ÷ the denominator of its campaign, rounded to
+  0.1 %. A run whose cost is `unknown` has share `unknown`; a run of a campaign without a valid
+  pair has share `pending`, and its USD column stays the record.
+
+The caps are checked by hand on the runs table under **Records**, not in the workflow:
 
 - A doc review whose median run is over 10 % of the limit is rejected as a candidate, whatever
   its catch.
 - One dev iteration (18 runs plus the dry run) may not exceed one 5-hour limit.
 - A cheaper model is not tried until a candidate has a result on this model.
 
+**Denominator readings.** None yet. Format: `<campaign>: <before %> at <date time> → <after %> at
+<date time>; denominator <USD> per 100 %` or `void: <reason>`.
+
 ### Records
 
-After the runs, appended here and nowhere else in this section: the runs table with cost, the
-per-class table for dev and test, the A–E diagnostic for every dev miss, the held-out result, and
-the date and `main` commit. The README floor is updated to the test median with its n and date, or
-left at the calibration-1 floor if the target is not met, and says which.
+After the runs, appended here and nowhere else in this section: the rows of the runs table below,
+the per-class table for dev and test, the A–E diagnostic for every dev miss, the held-out result,
+and the date and `main` commit. The README floor is updated to the test median with its n and
+date, or left at the calibration-1 floor if the target is not met, and says which.
+
+**Runs.** One row per dispatch, the dry run and every unreviewable run included, copied from the
+run's verdict comment; the share follows the **Cost** procedure above.
+
+| Campaign | Split | Snapshot | Run | Result | Cost (USD) | Duration | Turns | cost (share of limit, est.) |
+|---|---|---|---|---|---|---|---|---|
 
 **Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
 target is unmet, and after it, until a later calibration says otherwise. It is the draw
