@@ -260,6 +260,64 @@ def resolve_model(messages: list, alias: str) -> str:
 
 _DENIAL_KEYS = ("file_path", "path", "command", "pattern", "url", "skill", "subagent_type")
 
+# What a run cost, for the calibration record (#145): read from the result message, never from
+# the review's own output. Each field is None when the message lacks it or holds a non-number.
+STAT_FIELDS = (("cost_usd", "total_cost_usd"), ("duration_ms", "duration_ms"),
+               ("turns", "num_turns"))
+
+
+def load_messages(execution_file: str | None) -> list:
+    """The execution file's message list; empty when the file is missing, unreadable or not a
+    list. The verdict path decides separately whether that makes the run unreviewable."""
+    if not execution_file or not Path(execution_file).is_file():
+        return []
+    try:
+        messages = json.loads(Path(execution_file).read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    return messages if isinstance(messages, list) else []
+
+
+def run_stats(messages: list) -> dict[str, float | int | None]:
+    """Cost in USD, wall-clock duration in ms and turn count of the run, from the last result
+    message. Independent of the verdict: a failed or unreviewable run still reports what it cost."""
+    results = [m for m in messages if isinstance(m, dict) and m.get("type") == "result"]
+    result = results[-1] if results else {}
+    stats: dict[str, float | int | None] = {}
+    for name, key in STAT_FIELDS:
+        value = result.get(key)
+        stats[name] = value if isinstance(value, (int, float)) and not isinstance(value, bool) \
+            and value >= 0 else None
+    return stats
+
+
+def format_duration(ms: float | int) -> str:
+    seconds = int(round(ms / 1000))
+    hours, rest = divmod(seconds, 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f"{hours}h {minutes:02d}m {seconds:02d}s" if hours else f"{minutes}m {seconds:02d}s"
+
+
+def format_stats(stats: dict) -> list[str]:
+    """The three record lines: `unknown` where the execution file had no usable value."""
+    cost, duration, turns = stats.get("cost_usd"), stats.get("duration_ms"), stats.get("turns")
+    return [
+        f"**Cost (USD):** {cost:.4f}" if cost is not None else "**Cost (USD):** unknown",
+        f"**Duration:** {format_duration(duration)}" if duration is not None
+        else "**Duration:** unknown",
+        f"**Turns:** {int(turns)}" if turns is not None else "**Turns:** unknown",
+    ]
+
+
+def render_stats_section(stats: dict) -> str:
+    """The run-stats section appended to report.md, the artifact that is the raw record."""
+    lines = ["## Run", ""] + format_stats(stats)
+    missing = [key for name, key in STAT_FIELDS if stats.get(name) is None]
+    if missing:
+        lines += ["", "The execution file has no usable " + ", ".join(f"`{k}`" for k in missing)
+                  + "; the field reads unknown."]
+    return "\n".join(lines) + "\n"
+
 
 def session_notes(messages: list, *, text_limit: int = 2000) -> list[str]:
     """What the log needs when a review produced nothing usable.
@@ -543,6 +601,7 @@ def render_comment(
     report: str,
     block: dict,
     run_url: str,
+    stats: dict | None = None,
 ) -> str:
     mark = "passes" if verdict.passed else "fails"
     lines = [
@@ -553,6 +612,7 @@ def render_comment(
         f"**Model:** {model or 'unresolved'}",
         f"**Reviewed:** " + ", ".join(f"`{d}` ({k})" for d, k in sorted(kinds.items())),
         f"**Rounds (full reviews on distinct commits):** {rounds}",
+        *format_stats(stats or {}),
     ]
     if union:
         lines.append("**Blocking findings open on this commit, all runs:**")
@@ -791,8 +851,12 @@ def run_verdict(
     review_outcome: str,
     alias: str,
     comments: list[dict],
-) -> tuple[Verdict, dict, str, int]:
-    """Everything verdict decides, without the network. Returns (verdict, block, body, rounds)."""
+) -> tuple[Verdict, dict, str, int, dict]:
+    """Everything verdict decides, without the network.
+
+    Returns (verdict, block, body, rounds, stats). The stats are read before the verdict path,
+    so a failed or unreviewable run still records what it cost (#145).
+    """
     plan = json.loads((state / "plan.json").read_text(encoding="utf-8"))
     head, kinds = plan["commit"], plan["docs"]
     workflow = (state / "workflow.yml").read_bytes()
@@ -805,13 +869,16 @@ def run_verdict(
     drift_state, drift_message = "unknown", "not computed: the resolved model is unknown"
     findings: dict[str, list[Finding]] = {}
     report = ""
+    messages = load_messages(execution_file)
+    stats = run_stats(messages)
     try:
         if review_outcome != "success":
             raise Unreviewable(f"review step {review_outcome or 'did not run'}")
         if not execution_file or not Path(execution_file).is_file():
             raise Unreviewable("no execution file from the review step")
-        messages = json.loads(Path(execution_file).read_text(encoding="utf-8"))
-        model = resolve_model(messages if isinstance(messages, list) else [], alias)
+        if not messages:
+            raise Unreviewable("the execution file is empty or not a JSON list of messages")
+        model = resolve_model(messages, alias)
         key = drift_key(workflow=workflow, action=action_sha(workflow.decode()), model=model,
                         skill=skill)
         try:
@@ -849,9 +916,9 @@ def run_verdict(
     body = render_comment(
         verdict=verdict, commit=head, kinds=kinds, rounds=rounds, drift_message=drift_message,
         model=model, union=union, report=report, block=block,
-        run_url=os.environ.get("RUN_URL", ""),
+        run_url=os.environ.get("RUN_URL", ""), stats=stats,
     )
-    return verdict, block, body, rounds
+    return verdict, block, body, rounds, stats
 
 
 def cmd_verdict(args: argparse.Namespace) -> int:
@@ -865,7 +932,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         comments = []
     else:
         comments = _fetch_comments(env["REPO"], env["PR_NUMBER"])
-    verdict, _block, body, rounds = run_verdict(
+    verdict, _block, body, rounds, stats = run_verdict(
         state=state,
         work=work,
         execution_file=env.get("EXECUTION_FILE"),
@@ -876,18 +943,15 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     out = work / "out"
     out.mkdir(parents=True, exist_ok=True)
     (out / "comment.md").write_text(body, encoding="utf-8")
+    with open(out / "report.md", "a", encoding="utf-8") as fh:  # the artifact is the raw record
+        fh.write("\n" + render_stats_section(stats))
     if not dispatch and not args.no_post:
         _api("POST", f"/repos/{env['REPO']}/issues/{env['PR_NUMBER']}/comments", {"body": body})
     _summary(body)
     _set_output("rounds", str(rounds))
     print(f"doc-review: {verdict.message} (rounds: {rounds})")
-    execution_file = env.get("EXECUTION_FILE")
-    if verdict.status == "unreviewable" and execution_file and Path(execution_file).is_file():
-        try:
-            messages = json.loads(Path(execution_file).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            messages = []
-        for note in session_notes(messages if isinstance(messages, list) else []):
+    if verdict.status == "unreviewable":
+        for note in session_notes(load_messages(env.get("EXECUTION_FILE"))):
             print(f"doc-review session: {note}")
     return 0 if verdict.passed else 1
 

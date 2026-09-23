@@ -464,7 +464,7 @@ def test_report_text_cannot_inject_a_state_block():
 
 
 def _state(tmp_path: Path, calibration: str, *, findings: list, report: str,
-           usage: dict | None = None) -> tuple[Path, Path, Path]:
+           usage: dict | None = None, **result_extra) -> tuple[Path, Path, Path]:
     state, work = tmp_path / "state", tmp_path / "work"
     (work / "out").mkdir(parents=True)
     state.mkdir()
@@ -478,15 +478,16 @@ def _state(tmp_path: Path, calibration: str, *, findings: list, report: str,
     (work / "out" / "findings.json").write_text(json.dumps(
         {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": findings}]}))
     execution = tmp_path / "execution.json"
-    execution.write_text(json.dumps([_result(usage or {MODEL: {}})]))
+    execution.write_text(json.dumps([_result(usage or {MODEL: {}}, **result_extra)]))
     return state, work, execution
 
 
-def _run_cli(monkeypatch, tmp_path, state, work, execution, comments=()) -> int:
+def _run_cli(monkeypatch, tmp_path, state, work, execution, comments=(),
+             review_outcome="success") -> int:
     comments_file = tmp_path / "comments.json"
     comments_file.write_text(json.dumps(list(comments)))
     monkeypatch.setenv("EXECUTION_FILE", str(execution))
-    monkeypatch.setenv("REVIEW_OUTCOME", "success")
+    monkeypatch.setenv("REVIEW_OUTCOME", review_outcome)
     monkeypatch.setenv("MODEL_ALIAS", "opus")
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
@@ -553,6 +554,107 @@ def test_cli_unresolved_model_is_unreviewable(monkeypatch, tmp_path):
     comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
     assert "unreviewable: cannot resolve the 'opus' model" in comment
     assert "**Rounds (full reviews on distinct commits):** 0" in comment
+
+
+# --- run stats: cost, duration, turns (#145) --------------------------------
+
+RUN_STATS = {"total_cost_usd": 1.23456, "duration_ms": 754_321, "num_turns": 87}
+STAT_LINES = ("**Cost (USD):** 1.2346", "**Duration:** 12m 34s", "**Turns:** 87")
+UNKNOWN_LINES = ("**Cost (USD):** unknown", "**Duration:** unknown", "**Turns:** unknown")
+
+
+def _matching_key_line() -> str:
+    key = dr.drift_key(workflow=WORKFLOW.encode(), action=dr.action_sha(WORKFLOW), model=MODEL,
+                       skill=(ROOT / dr.SKILL_PATH).read_bytes())
+    return dr.format_key_line(key, MODEL) + "\n"
+
+
+def test_run_stats_come_from_the_last_result_message():
+    stats = dr.run_stats([{"type": "assistant"}, _result({MODEL: {}}, total_cost_usd=0.5),
+                          _result({MODEL: {}}, **RUN_STATS)])
+    assert stats == {"cost_usd": 1.23456, "duration_ms": 754_321, "turns": 87}
+    assert dr.run_stats([]) == {"cost_usd": None, "duration_ms": None, "turns": None}
+    assert dr.run_stats(["not a dict", {"type": "result"}]) == \
+        {"cost_usd": None, "duration_ms": None, "turns": None}
+
+
+@pytest.mark.parametrize("value", ["1.5", None, True, -1, [1]])
+def test_run_stats_reject_a_non_number(value):
+    stats = dr.run_stats([_result({MODEL: {}}, total_cost_usd=value, duration_ms=value,
+                                  num_turns=value)])
+    assert stats == {"cost_usd": None, "duration_ms": None, "turns": None}
+
+
+def test_duration_is_rendered_in_minutes_and_seconds_or_hours():
+    assert dr.format_duration(0) == "0m 00s"
+    assert dr.format_duration(754_321) == "12m 34s"
+    assert dr.format_duration(3_600_000) == "1h 00m 00s"
+    assert dr.format_duration(5_025_499) == "1h 23m 45s"
+
+
+def test_stats_section_says_which_fields_are_unknown():
+    full = dr.render_stats_section({"cost_usd": 1.23456, "duration_ms": 754_321, "turns": 87})
+    assert full.startswith("## Run\n\n") and all(line in full for line in STAT_LINES)
+    assert "unknown" not in full
+    partial = dr.render_stats_section({"cost_usd": None, "duration_ms": 754_321, "turns": None})
+    assert "**Cost (USD):** unknown" in partial and "**Duration:** 12m 34s" in partial
+    assert "The execution file has no usable `total_cost_usd`, `num_turns`; the field reads unknown." \
+        in partial
+
+
+def test_cli_report_and_comment_carry_cost_duration_and_turns(monkeypatch, tmp_path):
+    """#145 AC1: the three values from the execution file land in the comment and the report."""
+    state, work, execution = _state(tmp_path, _matching_key_line(), findings=[],
+                                    report=CLEAN_REPORT, **RUN_STATS)
+    assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 0
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    report = (work / "out" / "report.md").read_text(encoding="utf-8")
+    for line in STAT_LINES:
+        assert line in comment and line in report, line
+    assert report.startswith(CLEAN_REPORT) and "\n## Run\n" in report
+    assert "unknown" not in comment and "unknown" not in report
+    # The stats sit in the header, before the report and the state block.
+    assert comment.index("**Turns:** 87") < comment.index("---") < comment.index("<!-- doc-review:")
+
+
+def test_cli_missing_cost_fields_read_unknown_and_the_run_still_gets_a_verdict(monkeypatch,
+                                                                                tmp_path):
+    """#145 AC2: an execution file without the cost field still produces a verdict."""
+    state, work, execution = _state(tmp_path, _matching_key_line(), findings=[],
+                                    report=CLEAN_REPORT)
+    assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 0
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    report = (work / "out" / "report.md").read_text(encoding="utf-8")
+    assert "calibrated: drift key matches" in comment
+    for line in UNKNOWN_LINES:
+        assert line in comment and line in report, line
+    assert "has no usable `total_cost_usd`, `duration_ms`, `num_turns`; the field reads unknown." \
+        in report
+    [block] = dr.parse_blocks([_bot(comment)])
+    assert block["status"] == "pass"
+
+
+def test_cli_stats_are_recorded_even_when_the_review_step_failed(monkeypatch, tmp_path):
+    """The cost of a failed run is still part of the record: the stats are read outside the
+    verdict path, so an unreviewable run reports them."""
+    state, work, execution = _state(tmp_path, _matching_key_line(), findings=[],
+                                    report=CLEAN_REPORT, **RUN_STATS)
+    assert _run_cli(monkeypatch, tmp_path, state, work, execution, review_outcome="failure") == 1
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    assert "unreviewable: review step failure" in comment
+    for line in STAT_LINES:
+        assert line in comment, line
+
+
+def test_cli_unreadable_execution_file_is_unreviewable_with_unknown_stats(monkeypatch, tmp_path):
+    state, work, execution = _state(tmp_path, _matching_key_line(), findings=[],
+                                    report=CLEAN_REPORT)
+    execution.write_text("not json", encoding="utf-8")
+    assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 1
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    assert "unreviewable: the execution file is empty or not a JSON list of messages" in comment
+    for line in UNKNOWN_LINES:
+        assert line in comment, line
 
 
 # --- workflow contract ----------------------------------------------------
