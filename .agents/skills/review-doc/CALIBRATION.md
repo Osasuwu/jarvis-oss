@@ -151,6 +151,121 @@ the key every one of the 27 runs computed:
 
 drift-key: ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2 (model: claude-opus-5)
 
+## Calibration 2 — plan (#143)
+
+Committed on 2026-09-23, before any candidate run is dispatched. Everything below is fixed now;
+after the runs, this section is edited only to append results, as `### Records` says. The decision
+is recorded in [`docs/adr/0001-review-doc-calibration-2.md`](../../../docs/adr/0001-review-doc-calibration-2.md).
+
+**Why.** Calibration 1 measured 1 / 31, 1 / 31, 3 / 31 per run on the strict set. A reviewer at
+that level does not protect the reader from the writer's mistakes, and the human reads the
+reviewer's report before the doc. Calibration 2 changes the procedure and measures again, on
+entries the changed procedure was never tuned against.
+
+### Split
+
+Every corpus entry carries `split`, documented in
+[`calibration/corpus.md`](calibration/corpus.md). The split is by PR lineage: a dev doc and a
+test doc never share a file, a `pairs_with` target or a link, and
+`tests/test_calibration_corpus.py` proves that at every dev commit with `git show`.
+
+| Split | Lineage | Entries | Snapshots | Ceiling |
+|---|---|---|---|---|
+| dev | PR #62 | 15, all `blocking` | 6: `8067d67`, `59a27d9`, `4074b0b`, `f677a54`, `a6d0c01`, `9dbed9e` | 14 / 15: `62-npm` needs the command run |
+| test | PR #75, #81 | 16: 10 `blocking`, 6 `how-to-choose` follow-ups | 3: `3d896f9`, `79bc90c`, `af950ea` | 9 / 10: `81-heredoc` needs the command run |
+| held-out | PR #75 | 1: `75-ghd` | reported, not scored | — |
+| excluded | — | 3: `81-gitleaks`, `62-tried`, `62-today` | none | — |
+
+The dev runs tune the procedure and may be read as often as needed. The test runs are scored at
+most twice for procedure candidates and once more only for a model change; after that the test
+split is spent and a new one is cut before any further scoring. An entry that #138's
+re-measurement shows contaminated moves to `excluded`; nothing else moves between splits. New
+escapes go to dev and test alternately, in filing order, unless lineage forces the side.
+
+### Target and gain rule
+
+- **Target.** The median over 3 test runs of per-run catch on `blocking` test entries is at least
+  50 %: 5 / 10. The union over the 3 runs is reported alongside, never in place of the median.
+- **Dev gain rule.** A candidate goes to the test split only if its mean per-run catch on the dev
+  split is at least the calibration-1 mean on the same 15 entries plus 3: 1.0 + 3 = 4.0 / 15.
+  Below that, the candidate is not scored on test, and the A–E diagnostic below decides the next
+  candidate.
+- **k = 3** on both splits: 18 dev runs (6 snapshots × 3) and 9 test runs (3 snapshots × 3).
+- **Model.** The family alias `claude-opus` the workflow already passes. A resolved model ID that
+  differs between runs of one campaign stops the campaign, as in calibration 1. A cheaper model is
+  a separate decision, taken only after a result on this one.
+
+### Candidates, in order
+
+1. **Candidate 1 (#146).** Per claim: a restatement, the load-bearing excerpt verbatim, and an
+   equivalence verdict from a closed list, with the reasoning before the verdict. Chunked
+   subagents of about 150 countable lines with tiling manifests that must cover every in-scope
+   file, so a report that skips a file is `unreviewable` rather than a pass. The verdict step runs
+   `if: always()`.
+2. **Candidate 2 (#147).** An adversarial per-row pass, opened only if candidate 1 misses the dev
+   gain rule and the diagnostic points at judgement, not coverage.
+
+**A–E miss diagnostic.** Every dev miss is put in one cell: A, the claim's lines were never
+examined (no manifest covers them); B, examined and judged correct; C, examined and marked
+`unverifiable`; D, a finding on the same lines names a different problem; E, needs execution or a
+sandbox. Mostly A: the coverage change did not work, and candidate 1 is reopened. Mostly B or D:
+candidate 2. E entries stay outside every candidate until an execution lever exists.
+
+### Runs
+
+- **Precondition.** #138 is merged: every `calib/<sha>` branch is rebuilt from the full tree of
+  its commit, not `main` with the doc set swapped in. No run of calibration 2, dev or test, is
+  dispatched on the calibration-1 overlay branches.
+- **Unreviewable runs** are re-dispatched until a snapshot has 3 reviewable runs, at most 2 extra
+  dispatches per snapshot; every failure is recorded in the runs table. A snapshot that cannot
+  reach 3 stops the campaign.
+- **Dry run.** Before the dev campaign, one run on `calib/af950ea` with the candidate sets
+  `--max-turns` and the job timeout: the measured turns and minutes × 1.5, rounded up, written
+  here when measured. The same run's execution file is read for per-model usage and subagent tool
+  use, to confirm how subagent cost is folded into the run's cost.
+- **Re-dispatch, drift.** The candidate's `SKILL.md` and workflow edits produce a new drift key.
+  The single `drift-key:` line above is replaced in the same PR, and the old key goes into the
+  history table as a non-matching row. If the family alias resolves to a new model ID, the key
+  changes with it; the campaign restarts from the dry run and the old runs are kept as history.
+
+### Scoring
+
+- **Caught**, as calibration 1's Method defines it, extended for sub-claims: a finding on one of
+  the entry's sub-claims that names the entry's thing wrong is a catch; a finding on a sub-claim
+  that names a different thing wrong is not. A `blocking` entry reported as `follow-up` is missed
+  and shown in the "caught, wrong label" column.
+- Scoring is done in a fresh context against this rule only, with the worksheet (entry × run →
+  verdict, finding ID or none, one-line reason) in the PR. Test scorings are also written as one
+  line each into the sign-off ledger `docs/SIGNOFF.md`, dated, with the run links, so a scoring
+  cannot be quietly redone.
+- **Budget.** At most 2 test scorings for procedure candidates and 1 for a model change. A third
+  procedure candidate needs a new test split.
+
+### Cost
+
+Cost is recorded per run as an estimated share of the 5-hour usage limit of the subscription the
+runs bill to: Claude Max ×20 as of 2026-09-23. The share is estimated: the denominator is taken
+from the usage UI, read once before and once after each campaign and recorded here with the
+date; the numerator is the cost the verdict step reads from the action's execution file (#145).
+
+- A doc review whose median run is over 10 % of the limit is rejected as a candidate, whatever
+  its catch.
+- One dev iteration (18 runs plus the dry run) may not exceed one 5-hour limit.
+- A cheaper model is not tried until a candidate has a result on this model.
+
+### Records
+
+After the runs, appended here and nowhere else in this section: the runs table with cost, the
+per-class table for dev and test, the A–E diagnostic for every dev miss, the held-out result, and
+the date and `main` commit. The README floor is updated to the test median with its n and date, or
+left at the calibration-1 floor if the target is not met, and says which.
+
+**Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
+target is unmet, and after it, until a later calibration says otherwise. It is the draw
+[`calibration/RULES.md`](calibration/RULES.md) defines: k = 5 claims, or all if there are fewer,
+drawn by `draw_click_audit.py` seeded with the PR head SHA over every quotation, every `tried` or
+`sourced` status and every other source-linking paragraph, whatever the claim's class.
+
 ## History
 
 Everything below was measured under the old scheme: seeded errors planted in one doc, and runs by

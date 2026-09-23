@@ -59,3 +59,8 @@ Check the result with `ls -l .claude/skills` (Git Bash, macOS, Linux) or `dir .c
   automatically disabled when no repository activity has occurred in 60 days"
   ([GitHub Docs](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule),
   checked 2026-09-22).
+- The reviewer that reads every doc PR catches few of the mistakes a later round finds. Its
+  measured floor is 1 / 31, 1 / 31 and 3 / 31 escaped defects caught per run on the strict set,
+  dated 2026-09-22 and pending a snapshot rebuild (#138); the method and figures are in
+  [`CALIBRATION.md`](.agents/skills/review-doc/CALIBRATION.md). The human click-audit stays on
+  every doc with a blocking-class claim.
