@@ -238,6 +238,9 @@ after the runs, this section is edited only to append results, as `### Records` 
 is recorded in [`docs/adr/0001-review-doc-calibration-2.md`](../../../docs/adr/0001-review-doc-calibration-2.md).
 Amended on 2026-09-24, still before any run, by #152: catch^3 and the hit count, the frozen split
 and the calibration-3 pool, merge-k as a gated candidate, and the exploration sessions.
+Amended again on 2026-09-24, still before any run, by #146: the precondition and the dry run
+name the `calib2/` snapshot branches, which **Snapshot branches** already requires; they named
+`calib/<sha>` branches, which that section rules out.
 
 **Why.** Calibration 1 measured 1 / 31, 1 / 31, 3 / 31 per run on the strict set. A reviewer at
 that level does not protect the reader from the writer's mistakes, and the human reads the
@@ -306,16 +309,20 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
 
 ### Runs
 
-- **Precondition.** #138 is merged: every `calib/<sha>` branch is rebuilt from the full tree of
-  its commit, not `main` with the doc set swapped in. No run of calibration 2, dev or test, is
-  dispatched on the calibration-1 overlay branches.
+- **Precondition.** #138 is merged. Every run of calibration 2, the dry run, dev and test, is
+  dispatched on a `calib2/<overlay sha7>/<sha7>` snapshot built and checked as **Snapshot
+  branches** says, with the candidate's branch as the overlay ref. None is dispatched on a
+  `calib/<sha>` branch: those stay as the record of the calibration-1 runs.
 - **Unreviewable runs** are re-dispatched until a snapshot has 3 reviewable runs, at most 2 extra
   dispatches per snapshot; every failure is recorded in the runs table. A snapshot that cannot
   reach 3 stops the campaign.
-- **Dry run.** Before the dev campaign, one run on `calib/af950ea` with the candidate sets
-  `--max-turns` and the job timeout: the measured turns and minutes × 1.5, rounded up, written
-  here when measured. The same run's execution file is read for per-model usage and subagent tool
-  use, to confirm how subagent cost is folded into the run's cost.
+- **Dry run.** Before the dev campaign, one run on the candidate's snapshot of `af950ea`,
+  `calib2/<overlay sha7>/af950ea`, sets `--max-turns` and the job timeout: the measured turns and
+  minutes × 1.5, rounded up, written here when measured. The same run's execution file is read
+  for per-model usage and subagent tool use, to confirm how subagent cost is folded into the run's
+  cost. The dry run carries the candidate's placeholder limits and their key. Writing the measured
+  limits changes the workflow, so the key is replaced as **Re-dispatch, drift** says, and the dev
+  snapshots are built from that commit, under a new overlay sha.
 - **Re-dispatch, drift.** The candidate's `SKILL.md` and workflow edits produce a new drift key.
   The single `drift-key:` line above is replaced in the same PR, the new key is the first row of
   the **Drift keys** table under it, and the old key's row gets its `Until`. `scripts/doc_review.py`
