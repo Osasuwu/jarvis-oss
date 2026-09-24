@@ -111,23 +111,45 @@ table; it says how far the table can be trusted.
   `67caf77` with only the doc set replaced, so every other file is at `main`'s state:
   `.gitleaks.toml`, examples and resources added later, and
   `.agents/skills/jarvis-setup/SKILL.md`, which is at post-#69/#70 `main`, not at `8067d67`.
-- **Not measurable: `81-gitleaks`, `62-tried`.** `81-gitleaks` is a claim that `.gitleaks.toml`
-  exists, and `main` added it in `67caf77`, so in the snapshot the claim is true. `62-tried` is
-  a claim with no trace in the repo, and `examples/git-include-missing-target-silent.md`
-  (added in `9803c6c`) is that trace; the runs found it.
-- **Contaminated: `62-today`.** It was caught in all three runs, but each run's M1 cites lines
-  of `.agents/skills/jarvis-setup/SKILL.md` that exist only in `main`'s version of that file.
+- **Re-measured on full-tree snapshots: `81-gitleaks`, `62-tried`, `62-today`.** Their
+  calibration-1 results depended on files `main` added later, so on 2026-09-23 each was run again,
+  k = 3, on a `calib2/304ed34/<sha>` branch built as **Snapshot branches** below says, with the
+  same drift key. Scored in fresh contexts, one per entry, against the Method; the worksheet is in
+  #138's PR.
+  - `81-gitleaks`: missed in runs 1, 2 and 3. `.gitleaks.toml` is absent from the snapshot; every
+    run lists it as absent, but tied to `:327`, not to the claim at `:136-138`.
+  - `62-tried`: caught in runs 1, 2 and 3, labelled `blocking`: the `tried` status at `:157` has no
+    trace in the repo. `examples/git-include-missing-target-silent.md` is absent from the snapshot.
+  - `62-today`: missed in runs 1, 2 and 3. Run 1's M4 is on the same lines but names a different
+    thing wrong (#57's state). Calibration 1's 3 / 3 was contamination: its M1s cite lines of
+    `.agents/skills/jarvis-setup/SKILL.md` that exist only in `main`'s version of that file.
+  - **Contamination in the re-measure.** One finding of 22 in `62-tried` run 1 (M4) cites commit
+    `812d2cf`, which is on `main` and not an ancestor of the snapshot, read through the residual
+    channel **Snapshot branches** describes. It is not the catch. No other finding of the 9 runs
+    cites a file or commit outside the snapshot; two (`62-today` run 1 M4, `62-tried` run 3 U5)
+    lean on #57's live state on GitHub, which no snapshot can pin.
 - **Borderline, leans missed: `75-gs` run 3.** Its H10 is about the MkDocs example at `:281`;
   the entry's claim is row 3 at `:247`.
 - **Coverage gap: `81-heredoc`.** `examples/heredoc-stripping-boundary-bug.md` was not reviewed
   in any of the three `af950ea` runs. It is missed under the Method, but it is a coverage
   failure, not a judgement miss.
 
-Corrected counts, both post-hoc:
+Corrected counts, both post-hoc, over all 34 entries: the three re-measured entries take their
+full-tree result, the other 31 keep their calibration-1 result.
 
-- **Strict**, dropping `81-gitleaks`, `62-tried`, `62-today` and `75-gs` run 3: 1 / 31, 1 / 31,
-  3 / 31.
-- **Lenient**, dropping only `81-gitleaks` and `62-tried`: 2 / 32, 2 / 32, 5 / 32.
+- **Measured**: 2 / 34, 2 / 34, 5 / 34. By class, status becomes 1 / 1 in each run and fact
+  1 / 20, 0 / 20, 0 / 20; the other rows are unchanged.
+- **Strict**, also counting `75-gs` run 3 as missed: 2 / 34, 2 / 34, 4 / 34.
+
+**Re-measure runs**, on 2026-09-23. Cost is in USD from each verdict comment; its share of the
+limit is `pending` because the reading pair is void: 10 % at 2026-09-23 18:04Z, and the after
+reading was missed when the 5-hour window reset at 19:00Z. Median run: 11.07 USD.
+
+| Snapshot | Docs reviewed | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|---|
+| `calib2/304ed34/79bc90c` | `docs/agent-safety-hooks.md` | [35900021187](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900021187), 16.88 USD | [35900036633](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900036633), 15.31 USD | [35900051625](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900051625), 11.07 USD |
+| `calib2/304ed34/a6d0c01` | `docs/writing-into-user-owned-files.md` | [35900026211](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900026211), 12.54 USD | [35900041274](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900041274), 8.51 USD | [35900056944](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900056944), 10.09 USD |
+| `calib2/304ed34/8067d67` | `docs/writing-into-user-owned-files.md` | [35900030794](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900030794), 11.26 USD | [35900046018](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900046018), 8.44 USD | [35900062403](https://github.com/Osasuwu/jarvis-oss/actions/runs/35900062403), 10.18 USD |
 
 **Runs.**
 
@@ -159,6 +181,53 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 | Key | Model | Inputs on `main` at | Since | Until |
 |---|---|---|---|---|
 | `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | — |
+
+## Snapshot branches (#138)
+
+Written on 2026-09-23. It replaces the calibration-1 build, which the post-hoc audit above found
+was `main` with the doc set swapped in. Every calibration run from here on, calibration 2's dev and
+test runs included, is dispatched on a branch built this way, and never on a `calib/<sha>` branch.
+The `calib/<sha>` branches stay as they are, as the record of the calibration-1 runs.
+
+**Rule.** A snapshot of corpus commit `<sha>` is a commit whose only parent is `<sha>`. Its
+history ends at `<sha>`, and every file in its tree is the file at `<sha>`, byte for byte, or
+absent if it did not exist there. There are three exceptions:
+
+- **Overlay.** These five files are copied byte for byte from the overlay ref, which is `main`
+  or a candidate's branch. They are every file a dispatch run of doc-review executes or the
+  review-doc skill loads:
+  - `.github/workflows/doc-review.yml`
+  - `scripts/doc_review.py`
+  - `.agents/skills/review-doc/SKILL.md`
+  - `.agents/skills/review-doc/calibration/RULES.md`
+  - `.agents/skills/review-doc/calibration/draw_click_audit.py`
+- **Stub.** `.agents/skills/review-doc/CALIBRATION.md` is replaced by a stub that holds only the
+  overlay ref's `drift-key:` line, which the verdict step reads. The full file quotes corpus
+  entries, so it is kept out.
+- **Removed.** `.agents/skills/review-doc/calibration/corpus.md` is the answer key. It is absent
+  from every snapshot.
+
+**Build and check.** [`scripts/calib_snapshot.py`](../../../scripts/calib_snapshot.py) holds
+the lists above. The build writes the snapshot commit without touching the working tree, and
+points the local branch `calib2/<overlay sha7>/<sha7>` at it. It never moves an existing branch
+to a different tree. The check exits 1 and names every file that breaks the rule. A branch is
+pushed only after its check passes:
+
+```
+python scripts/calib_snapshot.py build <sha> --overlay-ref <ref>
+python scripts/calib_snapshot.py check calib2/<overlay sha7>/<sha7> <sha> --overlay-ref <ref>
+git push origin calib2/<overlay sha7>/<sha7>
+```
+
+A candidate's snapshots are built with its branch as the overlay ref, so they carry its skill,
+its workflow and its drift key. The branch name carries the overlay commit, so no rebuild moves
+a branch that earlier runs were dispatched on.
+
+**Residual channel.** The workflow checks out with full history and allows `git show` and
+`git log`, so a run can still read `main`, `corpus.md` included. Closing that channel changes
+the workflow and with it the drift key, so it is left open until a PR that changes the key
+anyway closes it (#150). Until then, every scoring of a snapshot run checks each catch for a
+citation of a file, line or commit that is not in the snapshot.
 
 ## Calibration 2 — plan (#143)
 
