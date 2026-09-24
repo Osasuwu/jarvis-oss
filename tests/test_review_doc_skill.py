@@ -4,7 +4,9 @@ The skill is only worth trusting if its reviewers are independent and its verdic
 fetched evidence. These are the lines that make it so; an edit that drops one fails the build.
 """
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).parent.parent / ".agents" / "skills" / "review-doc"
@@ -153,3 +155,77 @@ def test_fix_commits_get_a_delta_pass():
     assert "not the session that made the fix" in delta
     assert "`git diff <reviewed commit>..<fix commit>`" in delta
     assert "search the whole repo for its old wording" in delta
+
+
+# --- #146: per-claim verdicts, chunks and manifests --------------------------------------------
+
+
+def _doc_review():
+    # The same module object tests/test_doc_review.py loads, if it already has.
+    if "doc_review" not in sys.modules:
+        path = SKILL_DIR.parent.parent.parent / "scripts" / "doc_review.py"
+        spec = importlib.util.spec_from_file_location("doc_review", path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["doc_review"] = module
+        spec.loader.exec_module(module)
+    return sys.modules["doc_review"]
+
+
+def _enum_line(text: str, lead: str) -> tuple[str, ...]:
+    # The line that starts with `lead` names the closed list, each item in backticks.
+    line = next(line for line in text.splitlines() if line.lstrip("- ").startswith(lead))
+    return tuple(re.findall(r"`([^`]+)`", line.split(lead, 1)[1]))
+
+
+def test_pass_1_records_each_claim_in_order_reasoning_before_verdict():
+    # #146: a restatement exposes a misreading; reasoning written after a verdict argues for it.
+    pass1 = " ".join(_pass(_skill_text(), "## Pass 1").split())
+    steps = ["**Restatement.**", "**Excerpt.**", "**Evidence.**", "**Reasoning.**", "**Verdict.**"]
+    positions = [pass1.index(step) for step in steps]
+    assert positions == sorted(positions)
+    assert "verbatim" in pass1.split("**Excerpt.**", 1)[1].split("**Evidence.**", 1)[0]
+
+
+def test_claim_verdicts_and_out_of_scope_reasons_mirror_doc_review():
+    # #146: validate_findings enforces the tuples; the skill must name exactly the same lists.
+    text = _skill_text()
+    dr = _doc_review()
+    assert _enum_line(text, "**Claim verdicts:**") == dr.CLAIM_VERDICTS
+    assert _enum_line(text, "**Out-of-scope reasons:**") == dr.OUT_OF_SCOPE_REASONS
+
+
+def test_no_free_text_dismissal():
+    # #146: "harmless" and "copy-edit" let a reviewer look at a defect and wave it through.
+    text = " ".join(_skill_text().split())
+    dr = _doc_review()
+    for word in ("harmless", "copy-edit", "other"):
+        assert word not in dr.OUT_OF_SCOPE_REASONS
+    assert "A free-text reason is not a verdict" in text
+    assert "such as \"harmless\" or \"copy-edit\"" in text
+
+
+def test_premises_get_verdicts():
+    pass1 = " ".join(_pass(_skill_text(), "## Pass 1").split())
+    assert "**Premises are claims.**" in pass1
+
+
+def test_chunks_tile_the_in_scope_files():
+    # #146, #139: a report that never looked at a paired example must not read as a pass.
+    chunks = " ".join(_pass(_skill_text(), "## Chunks and manifests").split())
+    dr = _doc_review()
+    assert f"at most {dr.CHUNK_LINES} countable lines" in chunks
+    assert "`countable_lines`" in chunks and callable(dr.countable_lines)
+    assert "a fresh subagent, in the foreground, with the whole doc as context" in chunks
+    assert "belongs to the chunk that holds its first line" in chunks
+    assert "lists the in-scope files first" in chunks
+    for part in ("The doc itself", "`pairs_with`", "repo-internal link"):
+        assert part in chunks, part
+    assert "no overlap and no gap" in chunks
+    assert "the run is `unreviewable`" in chunks
+    assert "tile the new side of every hunk" in chunks
+
+
+def test_manifests_stay_out_of_pass_2():
+    # Pass 2 is blind; a manifest lists the doc's claims, options included.
+    chunks = " ".join(_pass(_skill_text(), "## Chunks and manifests").split())
+    assert "never in the directory pass 2 reads" in chunks

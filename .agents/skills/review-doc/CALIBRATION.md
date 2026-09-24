@@ -168,10 +168,11 @@ reading was missed when the 5-hour window reset at 19:00Z. Median run: 11.07 USD
 **What these figures are.** A floor on same-model agreement, as the Method says: not a recall
 figure. They carry no threshold and no pass mark.
 
-**Drift key**, of the workflow, the action pin, the model and `SKILL.md` on `main` at `67caf77`;
-the key every one of the 27 runs computed:
+**Drift key**, of the workflow, the action pin, the model and `SKILL.md` of candidate 1 (#146);
+the key every calibration-2 dev and test run of candidate 1 computes. The calibration-1 key, the
+one every one of the 27 runs above computed, is the second row of the table under it:
 
-drift-key: ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2 (model: claude-opus-5)
+drift-key: 85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923 (model: claude-opus-5)
 
 **Drift keys.** Every key the line above has held, newest first. The line above is the only one
 `scripts/doc_review.py` reads; this table is the history the plan below promises: a calibration-2
@@ -180,7 +181,8 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 
 | Key | Model | Inputs on `main` at | Since | Until |
 |---|---|---|---|---|
-| `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | — |
+| `85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923` | `claude-opus-5` | candidate 1's merge | 2026-09-24, #146 | — |
+| `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | 2026-09-24, #146 |
 
 ## Snapshot branches (#138)
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -52,6 +53,29 @@ def _block_comment(commit: str, docs: dict, findings: list, report: str = "") ->
 
 def _f(fid="M1", file="docs/a.md", line=3, cls="quote", label="blocking") -> dict:
     return {"id": fid, "file": file, "line": line, "class": cls, "label": label}
+
+
+def _claim(line=3, verdict="confirmed", **extra) -> dict:
+    claim = {"line": line, "restatement": "r", "excerpt": "e", "evidence": "ev",
+             "reasoning": "the same", "verdict": verdict}
+    claim.update(extra)
+    return claim
+
+
+def _manifest(file="docs/a.md", start=1, end=10, claims=()) -> dict:
+    return {"file": file, "start": start, "end": end, "claims": list(claims)}
+
+
+def _rep(findings=(), doc="docs/a.md", kind="full", **extra) -> dict:
+    """One findings.json report whose manifest tiles SCOPE."""
+    rep = {"doc": doc, "kind": kind, "scope": [doc], "manifests": [_manifest()],
+           "findings": list(findings)}
+    rep.update(extra)
+    return rep
+
+
+PLAN = {"docs/a.md": "full"}
+SCOPE = {"docs/a.md": {"docs/a.md": [[1, 10]]}}
 
 
 # --- classify -------------------------------------------------------------
@@ -310,12 +334,12 @@ def test_session_notes_name_denied_tools_and_final_text():
 
 
 def test_findings_validate_and_every_mismatch_is_blocking():
-    data = {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [
+    data = {"reports": [_rep([
         _f("M1", label="follow-up"),
         _f("O1", line=None, cls="missing-option", label="follow-up"),
         _f("U1", cls="unverifiable", label="blocking"),
-    ]}]}
-    out = dr.validate_findings(data, {"docs/a.md": "full"})
+    ])]}
+    out = dr.validate_findings(data, PLAN, SCOPE)
     labels = {f.id: f.label for f in out["docs/a.md"]}
     assert labels == {"M1": "blocking", "O1": "follow-up", "U1": "blocking"}
 
@@ -324,21 +348,195 @@ def test_findings_validate_and_every_mismatch_is_blocking():
     "data",
     [
         [],
-        {"reports": [{"doc": "docs/other.md", "kind": "full", "findings": []}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "delta", "findings": []}]},
+        {"reports": [_rep(doc="docs/other.md")]},
+        {"reports": [_rep(kind="delta")]},
         {"reports": []},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(fid="X1")]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(cls="typo")]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(label="minor")]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(line=0)]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(line="3")]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(file="../x.md")]}]},
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f(), _f()]}]},
+        {"reports": [_rep([_f(fid="X1")])]},
+        {"reports": [_rep([_f(cls="typo")])]},
+        {"reports": [_rep([_f(label="minor")])]},
+        {"reports": [_rep([_f(line=0)])]},
+        {"reports": [_rep([_f(line="3")])]},
+        {"reports": [_rep([_f(file="../x.md")])]},
+        {"reports": [_rep([_f(), _f()])]},
     ],
 )
 def test_bad_findings_are_unreviewable(data):
     with pytest.raises(dr.Unreviewable):
-        dr.validate_findings(data, {"docs/a.md": "full"})
+        dr.validate_findings(data, PLAN, SCOPE)
+
+
+# --- manifests (#146, #139) -------------------------------------------------
+
+
+def _tile(file: str, ranges: list[list[int]]) -> list[dict]:
+    """Manifests that tile `ranges` of `file` in chunks of at most CHUNK_LINES."""
+    out = []
+    for start, end in ranges:
+        for s in range(start, end + 1, dr.CHUNK_LINES):
+            out.append(_manifest(file, s, min(s + dr.CHUNK_LINES - 1, end)))
+    return out
+
+
+def test_manifests_that_tile_every_in_scope_file_validate():
+    scope = {"docs/a.md": {"docs/a.md": [[1, 200]], "examples/e.md": [[1, 40]], "docs/b.md": []}}
+    rep = _rep([_f("M1", line=160), _f("U1", line=5, cls="unverifiable")],
+               scope=["docs/a.md", "examples/e.md", "docs/b.md"],
+               manifests=[
+                   _manifest("docs/a.md", 1, 150, [
+                       _claim(5, "unverifiable", finding="U1"),
+                       _claim(7, "out-of-scope", reason="placeholder"),
+                   ]),
+                   _manifest("docs/a.md", 151, 200, [_claim(160, "mismatch", finding="M1")]),
+                   _manifest("examples/e.md", 1, 40, [_claim(2)]),
+               ])
+    out = dr.validate_findings({"reports": [rep]}, PLAN, scope)
+    assert {f.id for f in out["docs/a.md"]} == {"M1", "U1"}
+
+
+def _one(**manifest_or_claim) -> dict:
+    return {"reports": [_rep(**manifest_or_claim)]}
+
+
+@pytest.mark.parametrize(
+    ("data", "match"),
+    [
+        # the closed verdict enum and the closed out-of-scope reasons
+        (_one(manifests=[_manifest(claims=[_claim(verdict="harmless")])]), "verdict 'harmless'"),
+        (_one(manifests=[_manifest(claims=[_claim(verdict="copy-edit")])]), "verdict 'copy-edit'"),
+        (_one(manifests=[_manifest(claims=[_claim(verdict="out-of-scope")])]), "reason None"),
+        (_one(manifests=[_manifest(claims=[_claim(verdict="out-of-scope", reason="harmless")])]),
+         "reason 'harmless'"),
+        (_one(manifests=[_manifest(claims=[_claim(reason="call")])]), "reason 'call'"),
+        # reasoning is written before the verdict
+        (_one(manifests=[_manifest(claims=[{"line": 3, "restatement": "r", "excerpt": "e",
+                                            "evidence": "", "verdict": "confirmed",
+                                            "reasoning": "after"}])]), "reasoning after"),
+        (_one(manifests=[_manifest(claims=[_claim(excerpt="")])]), "excerpt"),
+        (_one(manifests=[_manifest(claims=[_claim(line=11)])]), "outside 1-10"),
+        # a mismatch or unverifiable claim names its finding
+        (_one(manifests=[_manifest(claims=[_claim(verdict="mismatch")])]), "names no finding"),
+        (_one(manifests=[_manifest(claims=[_claim(verdict="mismatch", finding="M9")])]),
+         "names no finding"),
+        (_one(manifests=[_manifest(claims=[_claim(verdict="unverifiable")])]), "names no finding"),
+        # tiling
+        (_one(manifests=[_manifest(end=6), _manifest(start=6)]), "overlap"),
+        (_one(manifests=[_manifest(end=4), _manifest(start=6)]), "not tiled: lines 5"),
+        (_one(manifests=[_manifest(end=11)]), "outside the lines to review: lines 11"),
+        (_one(manifests=[_manifest(start=0)]), "bad range"),
+        (_one(manifests=[_manifest(start=5, end=4)]), "bad range"),
+        (_one(manifests=[_manifest("docs/z.md")]), "not in scope"),
+        (_one(manifests=[]), "no manifest for docs/a.md"),
+        (_one(scope=[]), "scope lists"),
+        (_one(scope=["docs/a.md", "docs/z.md"]), "scope lists"),
+        (_one(manifests="all"), "manifests"),
+    ],
+)
+def test_bad_manifests_are_unreviewable(data, match):
+    with pytest.raises(dr.Unreviewable, match=re.escape(match)):
+        dr.validate_findings(data, PLAN, SCOPE)
+
+
+def test_a_chunk_is_at_most_chunk_lines():
+    scope = {"docs/a.md": {"docs/a.md": [[1, dr.CHUNK_LINES + 1]]}}
+    whole = _one(manifests=[_manifest(end=dr.CHUNK_LINES + 1)])
+    with pytest.raises(dr.Unreviewable, match=f"more than {dr.CHUNK_LINES} lines"):
+        dr.validate_findings(whole, PLAN, scope)
+    split = _one(manifests=_tile("docs/a.md", [[1, dr.CHUNK_LINES + 1]]))
+    dr.validate_findings(split, PLAN, scope)
+
+
+def test_a_delta_tiles_the_hunks_and_nothing_else():
+    plan = {"docs/a.md": "delta"}
+    scope = {"docs/a.md": {"docs/a.md": [[3, 6], [12, 12]]}}
+    hunks = _one(kind="delta", manifests=[_manifest(start=3, end=6), _manifest(start=12, end=12)])
+    dr.validate_findings(hunks, plan, scope)
+    spanning = _one(kind="delta", manifests=[_manifest(start=3, end=12)])
+    with pytest.raises(dr.Unreviewable, match="outside the lines to review: lines 7-11"):
+        dr.validate_findings(spanning, plan, scope)
+
+
+def test_new_side_hunks_skip_deletions():
+    diff = ("diff --git a/docs/a.md b/docs/a.md\n--- a/docs/a.md\n+++ b/docs/a.md\n"
+            "@@ -3,2 +3,4 @@ heading\n-x\n+y\n+z\n"
+            "@@ -10 +12 @@\n-old\n+new\n"
+            "@@ -20,3 +23,0 @@\n-gone\n")
+    assert dr.new_side_hunks(diff) == [[3, 6], [12, 12]]
+    assert dr.new_side_hunks("") == []
+
+
+def test_full_ranges_cover_every_countable_line():
+    assert dr.full_ranges("a\n\nb") == [[1, 3]]
+    assert dr.full_ranges("") == []
+
+
+def test_in_scope_files_are_the_doc_its_pairs_and_their_links_one_hop_out():
+    blobs = {
+        "docs/a.md": "[b](b.md) [ext](https://x.org/y.md) [s](../scripts/x.py) [gone](gone.md)"
+                     " [self](#part) [c](c.md#part)",
+        "docs/b.md": "[deep](deep.md)",
+        "docs/c.md": "",
+        "docs/deep.md": "",
+        "examples/e.md": "---\nfit: x\npairs_with: docs/z.md, docs/a.md\n---\n[r](../docs/r.md)",
+        "examples/other.md": "---\npairs_with: docs/z.md\n---\n",
+        "resources/notes.md": "no frontmatter\npairs_with: docs/a.md\n",
+        "docs/r.md": "",
+    }
+    listing = ["examples/e.md", "examples/other.md", "resources/notes.md"]
+    files = dr.in_scope_files("docs/a.md", HEAD, lambda rev, path: blobs.get(path), listing)
+    assert files == ["docs/a.md", "docs/b.md", "docs/c.md", "docs/r.md", "examples/e.md"]
+
+
+def test_plan_scope_is_full_ranges_for_a_full_review_and_hunks_for_a_delta():
+    blobs = {"docs/a.md": "l1\nl2\nl3\n[b](b.md)\n", "docs/b.md": "one\n"}
+    read = lambda rev, path: blobs.get(path)  # noqa: E731
+    diffs = {"docs/a.md": "@@ -2 +2,2 @@\n-x\n+y\n+z\n", "docs/b.md": ""}
+    diff = lambda old, new, path: diffs[path]  # noqa: E731
+    full = dr.DocPlan("docs/a.md", "full", None, None)
+    assert dr.plan_scope(full, HEAD, read, [], diff) == {
+        "docs/a.md": [[1, 4]], "docs/b.md": [[1, 1]]}
+    delta = dr.DocPlan("docs/a.md", "delta", PREV, PREV)
+    assert dr.plan_scope(delta, HEAD, read, [], diff) == {"docs/a.md": [[2, 3]], "docs/b.md": []}
+
+
+def test_the_task_lists_each_in_scope_file_with_its_lines_and_the_manifest_schema(tmp_path):
+    plans = [dr.DocPlan("docs/a.md", "delta", PREV, PREV)]
+    scope = {"docs/a.md": {"docs/a.md": [[3, 6], [12, 12]], "examples/e.md": []}}
+    task = dr._task_text(plans, HEAD, tmp_path, "pull_request", scope)
+    assert "`docs/a.md`: 3-6, 12-12" in task
+    assert "`examples/e.md`: none (no manifest)" in task
+    for key in ('"scope"', '"manifests"', '"restatement"', '"excerpt"', '"reasoning"'):
+        assert key in task
+    assert task.index('"reasoning"') < task.index('"verdict"')
+
+
+AF950EA = "af950ea377866fd98c59de6a54a082554248e826"
+PAIRED = "examples/heredoc-stripping-boundary-bug.md"
+
+
+def _repo_blob(rev: str, path: str) -> str | None:
+    result = subprocess.run(["git", "-C", str(ROOT), "show", f"{rev}:{path}"],
+                            capture_output=True, text=True, encoding="utf-8")
+    return result.stdout if result.returncode == 0 else None
+
+
+def test_omitted_paired_example_is_unreviewable_and_named():
+    """#139: the af950ea review of docs/agent-safety-hooks.md never looked at its paired example
+    and still read as a pass. A report whose manifests leave that file out is unreviewable, and
+    the message names the file."""
+    doc = "docs/agent-safety-hooks.md"
+    listing = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", AF950EA, "--", "examples",
+         "resources"], capture_output=True, text=True, check=True).stdout.split()
+    files = dr.in_scope_files(doc, AF950EA, _repo_blob, listing)
+    assert files[0] == doc and PAIRED in files
+    scope = {doc: {f: dr.full_ranges(_repo_blob(AF950EA, f)) for f in files}}
+    tiles = [m for f in files for m in _tile(f, scope[doc][f])]
+    complete = {"reports": [_rep(doc=doc, scope=files, manifests=tiles)]}
+    dr.validate_findings(complete, {doc: "full"}, scope)
+    omitted = {"reports": [_rep(doc=doc, scope=files,
+                                manifests=[m for m in tiles if m["file"] != PAIRED])]}
+    with pytest.raises(dr.Unreviewable, match=f"no manifest for {re.escape(PAIRED)}"):
+        dr.validate_findings(omitted, {doc: "full"}, scope)
 
 
 REPORT = f"""## review-doc: docs/a.md @ {HEAD}
@@ -366,16 +564,14 @@ def test_report_ids_are_line_starting_ids_outside_details():
 
 def test_report_and_findings_agree():
     findings = dr.validate_findings(
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [
-            _f("M1"), _f("O1", line=None, cls="missing-option", label="follow-up")]}]},
-        {"docs/a.md": "full"})
+        {"reports": [_rep([_f("M1"), _f("O1", line=None, cls="missing-option",
+                                        label="follow-up")])]},
+        PLAN, SCOPE)
     dr.check_report_matches(REPORT, findings)
 
 
 def test_report_and_findings_disagree_is_unreviewable():
-    findings = dr.validate_findings(
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [_f("M1")]}]},
-        {"docs/a.md": "full"})
+    findings = dr.validate_findings({"reports": [_rep([_f("M1")])]}, PLAN, SCOPE)
     with pytest.raises(dr.Unreviewable, match="report and findings disagree"):
         dr.check_report_matches(REPORT, findings)
     with pytest.raises(dr.Unreviewable, match="report and findings disagree"):
@@ -470,13 +666,13 @@ def _state(tmp_path: Path, calibration: str, *, findings: list, report: str,
     state.mkdir()
     (state / "plan.json").write_text(json.dumps({
         "event": "pull_request", "commit": HEAD, "status": "review", "message": "",
-        "docs": {"docs/a.md": "full"}}))
+        "docs": PLAN, "scope": SCOPE}))
     (state / "workflow.yml").write_bytes(WORKFLOW.encode())
     (state / "SKILL.md").write_bytes((ROOT / dr.SKILL_PATH).read_bytes())
     (state / "CALIBRATION.md").write_text(calibration, encoding="utf-8")
     (work / "out" / "report.md").write_text(report, encoding="utf-8")
     (work / "out" / "findings.json").write_text(json.dumps(
-        {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": findings}]}))
+        {"reports": [_rep(findings)]}))
     execution = tmp_path / "execution.json"
     execution.write_text(json.dumps([_result(usage or {MODEL: {}}, **result_extra)]))
     return state, work, execution
@@ -724,6 +920,40 @@ def test_concurrency_is_per_pr_and_cancels_in_progress():
 
 def test_rounds_is_a_job_output():
     assert "rounds: ${{ steps.verdict.outputs.rounds }}" in WORKFLOW
+
+
+def test_verdict_and_upload_run_even_when_the_job_is_cancelled():
+    """#146: a run cut off by the job timeout or by cancellation still gets its verdict, with the
+    cost it ran up, and still uploads what it wrote. `!cancelled()` skipped both."""
+    for name in ("Verdict", "Upload the report"):
+        step = _step(name)
+        assert "if: ${{ always() && steps.classify.outputs.status == 'review' }}" in step, name
+        assert "cancelled()" not in step, name
+
+
+def test_the_review_times_out_before_the_job():
+    # The step fails on its own timeout, before the job's, and leaves the verdict time to run.
+    job = int(re.search(r"^    timeout-minutes: (\d+)", WORKFLOW, re.M).group(1))
+    step = int(re.search(r"^        timeout-minutes: (\d+)", _step("Review"), re.M).group(1))
+    assert step + 5 <= job
+
+
+def test_manifests_land_in_the_artifact_not_the_comment(monkeypatch, tmp_path):
+    """#146: the manifests are the audit trail of what the run read. They stay in findings.json,
+    which the artifact uploads, and never reach the PR comment or its hidden block."""
+    assert "path: ${{ runner.temp }}/doc-review/out" in _step("Upload the report")
+    state, work, execution = _state(tmp_path, "# no key\n", findings=[], report=CLEAN_REPORT)
+    findings = work / "out" / "findings.json"
+    data = json.loads(findings.read_text())
+    data["reports"][0]["manifests"][0]["claims"] = [_claim(restatement="SENTINEL-RESTATEMENT")]
+    findings.write_text(json.dumps(data))
+    _run_cli(monkeypatch, tmp_path, state, work, execution)
+    assert "SENTINEL-RESTATEMENT" in findings.read_text()
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    assert "unreviewable" not in comment
+    assert "SENTINEL-RESTATEMENT" not in comment and "manifests" not in comment
+    [block] = dr.parse_blocks([_bot(comment)])
+    assert "manifests" not in block and "scope" not in block
 
 
 def test_workflow_file_is_the_one_the_drift_key_hashes():

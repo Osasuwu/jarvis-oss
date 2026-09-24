@@ -6,9 +6,10 @@ to the fields that `RULES.md` requires, so a count cannot drift away from the en
 
 from __future__ import annotations
 
-import posixpath
+import importlib.util
 import re
 import subprocess
+import sys
 from collections import Counter
 from pathlib import Path
 
@@ -18,6 +19,11 @@ ROOT = Path(__file__).resolve().parent.parent
 SKILL_DIR = ROOT / ".agents" / "skills" / "review-doc"
 CALIBRATION_DIR = SKILL_DIR / "calibration"
 CORPUS = CALIBRATION_DIR / "corpus.md"
+
+_spec = importlib.util.spec_from_file_location("doc_review", ROOT / "scripts" / "doc_review.py")
+dr = importlib.util.module_from_spec(_spec)
+sys.modules["doc_review"] = dr
+_spec.loader.exec_module(dr)
 
 CLASSES = ("status", "quote", "plan", "fact", "dead-end", "missing-option", "how-to-choose", "other")
 ALWAYS_BLOCKING = {"status", "quote", "fact", "plan", "dead-end"}
@@ -55,7 +61,6 @@ SPLIT = re.compile(r"^(dev|test|held-out|excluded\(.+\))$")
 SPLIT_COUNTS = {"dev": 15, "test": 16, "held-out": 1, "excluded": 3}
 TEST_BLOCKING = 10
 SPLIT_PRS = {"dev": {"62"}, "test": {"75", "81"}}
-LINK = re.compile(r"\]\(([^)\s]+)\)")
 
 
 def _text() -> str:
@@ -274,36 +279,11 @@ def _show(commit: str, path: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def _pairs_with(text: str) -> set[str]:
-    head = text.split("---", 2)
-    if len(head) < 3 or head[0].strip():
-        return set()
-    m = re.search(r"^pairs_with:\s*(.+)$", head[1], re.M)
-    return {p.strip() for p in m.group(1).split(",")} if m else set()
-
-
-def _internal_links(path: str, text: str) -> set[str]:
-    out = set()
-    for target in LINK.findall(text):
-        target = target.partition("#")[0]
-        if not target or "://" in target or target.startswith("mailto:"):
-            continue
-        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
-        if resolved.endswith(".md") and not resolved.startswith(".."):
-            out.add(resolved)
-    return out
-
-
 def _dev_scope(commit: str, docs: set[str]) -> set[str]:
-    scope = set(docs)
+    """What a dev run sees: the scope `scripts/doc_review.py` gives a review of each dev doc."""
     listing = _git("ls-tree", "-r", "--name-only", commit, "--", "examples", "resources")
-    for path in listing.stdout.split():
-        if path.endswith(".md") and _pairs_with(_show(commit, path) or "") & docs:
-            scope.add(path)
-    for path in sorted(scope):
-        links = _internal_links(path, _show(commit, path) or "")
-        scope |= {p for p in links if _show(commit, p) is not None}  # a dangling link is no file
-    return scope
+    return set().union(*(dr.in_scope_files(doc, commit, _show, listing.stdout.split())
+                         for doc in docs))
 
 
 def _dev_commits() -> list[str]:
