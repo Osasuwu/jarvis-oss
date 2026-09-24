@@ -66,6 +66,31 @@ decision clusters, all accepted with the recommendations recorded in the plan se
 - The drift key changes with each candidate; the single `drift-key:` line in `CALIBRATION.md` is
   replaced in the same PR, and the old key is kept as history.
 
+## Amendment — 2026-09-24 (#152)
+
+Made before any calibration-2 run, after a second grill session on reporting over k runs, the
+split and a one-off cloud credit. The critic's 7 items became 3 decisions and 1 fact correction.
+
+1. **catch^3 and the hit count.** catch^3 (caught in all 3 runs) is reported beside the median and
+   the union, and every entry carries its hit count, 0–3. The README floor carries its n and its
+   Wilson 95 % lower bound: 5 / 10 is a threshold, not a precise recall.
+2. **Merge-k is a gated candidate.** A pass merging k run reports goes through the dev gain rule
+   and the cost caps like any candidate. Deciding to ship it after reading a test result was
+   rejected: it tunes the procedure on the entries it is scored on, the failure the split exists to
+   prevent. Its merge loss can be measured first by merging existing dev reports with a prompt
+   fixed beforehand, with no new runs.
+3. **The split is frozen.** New escapes go to a calibration-3 pool; a new test split is cut from
+   it at 10 or more `blocking` entries. Sending them to dev instead was rejected to keep the pool
+   filling. No past PR is mined for entries: each is accounted for in `corpus.md` or had no review
+   round.
+4. **The credit is spent on dev exploration.** Interactive cloud sessions shape candidate 1 on the
+   dev snapshots. Their harness differs from the workflow, so they are not scored.
+
+**Known risk, accepted.** All 6 dev snapshots review one doc,
+`docs/writing-into-user-owned-files.md`. A candidate tuned on dev is tuned on one document, and
+the dev gain rule can pass on something that does not carry to other docs; only the test split
+measures that. The calibration-3 cut is where a multi-doc dev split becomes possible.
+
 ## References
 
 - `.agents/skills/review-doc/CALIBRATION.md`, section "Calibration 2 — plan (#143)".

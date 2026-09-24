@@ -234,6 +234,8 @@ citation of a file, line or commit that is not in the snapshot.
 Committed on 2026-09-23, before any candidate run is dispatched. Everything below is fixed now;
 after the runs, this section is edited only to append results, as `### Records` says. The decision
 is recorded in [`docs/adr/0001-review-doc-calibration-2.md`](../../../docs/adr/0001-review-doc-calibration-2.md).
+Amended on 2026-09-24, still before any run, by #152: catch^3 and the hit count, the frozen split
+and the calibration-3 pool, merge-k as a gated candidate, and the exploration sessions.
 
 **Why.** Calibration 1 measured 1 / 31, 1 / 31, 3 / 31 per run on the strict set. A reviewer at
 that level does not protect the reader from the writer's mistakes, and the human reads the
@@ -257,13 +259,18 @@ test doc never share a file, a `pairs_with` target or a link, and
 The dev runs tune the procedure and may be read as often as needed. The test runs are scored at
 most twice for procedure candidates and once more only for a model change; after that the test
 split is spent and a new one is cut before any further scoring. An entry that #138's
-re-measurement shows contaminated moves to `excluded`; nothing else moves between splits. New
-escapes go to dev and test alternately, in filing order, unless lineage forces the side.
+re-measurement shows contaminated moves to `excluded`; nothing else moves between splits.
+
+The split is frozen at these entries. New escapes go to a calibration-3 pool, not to dev or test.
+A new test split is cut from the pool once it holds at least 10 `blocking` entries; 60 is the
+aim, not the gate. No past PR is mined for more entries: every past doc PR is either accounted for
+under "Other PRs" in `corpus.md` or had no recorded review round.
 
 ### Target and gain rule
 
 - **Target.** The median over 3 test runs of per-run catch on `blocking` test entries is at least
-  50 %: 5 / 10. The union over the 3 runs is reported alongside, never in place of the median.
+  50 %: 5 / 10. The union (caught in any of the 3 runs) and catch^3 (caught in all 3) are
+  reported alongside, never in place of the median.
 - **Dev gain rule.** A candidate goes to the test split only if its mean per-run catch on the dev
   split is at least the calibration-1 mean on the same 15 entries plus 3: 1.0 + 3 = 4.0 / 15.
   Below that, the candidate is not scored on test, and the A–E diagnostic below decides the next
@@ -282,6 +289,12 @@ escapes go to dev and test alternately, in filing order, unless lineage forces t
    `if: always()`.
 2. **Candidate 2 (#147).** An adversarial per-row pass, opened only if candidate 1 misses the dev
    gain rule and the diagnostic points at judgement, not coverage.
+
+**Merge-k, not ordered.** A pass that merges k run reports into one is a candidate like any
+other: it goes through the dev gain rule and the **Cost** caps, and whether it ships is never
+decided from a test result. The union is one sample, not its ceiling: a merge can drop a finding
+or its `blocking` label. Its merge loss can be measured before any new run: merge the 3 reports
+of each dev snapshot with a merge prompt fixed before the first merge, and compare with the union.
 
 **A–E miss diagnostic.** Every dev miss is put in one cell: A, the claim's lines were never
 examined (no manifest covers them); B, examined and judged correct; C, examined and marked
@@ -307,6 +320,9 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   and this file are outside the key, so a change to either alone keeps it: #145 changed only
   those and the key stayed `ffc5263…`. If the family alias resolves to a new model ID, the key
   changes with it; the campaign restarts from the dry run and the old runs are kept as history.
+- **Exploration.** Candidate 1 is shaped before the dev campaign in interactive cloud sessions on
+  the dev snapshots, paid from a one-off cloud credit, not the subscription. Their harness differs
+  from the workflow, so they are not scored, not recorded as runs, and never open a test snapshot.
 
 ### Scoring
 
@@ -354,9 +370,10 @@ The caps are checked by hand on the runs table under **Records**, not in the wor
 ### Records
 
 After the runs, appended here and nowhere else in this section: the rows of the runs table below,
-the per-class table for dev and test, the A–E diagnostic for every dev miss, the held-out result,
-and the date and `main` commit. The README floor is updated to the test median with its n and
-date, or left at the calibration-1 floor if the target is not met, and says which.
+the per-class table for dev and test with each entry's hit count (0–3 runs), the A–E diagnostic
+for every dev miss, the held-out result, and the date and `main` commit. The README floor is
+updated to the test median with its n, its Wilson 95 % lower bound (5 / 10 is 24 %) and date, or
+left at the calibration-1 floor if the target is not met, and says which.
 
 **Runs.** One row per dispatch, the dry run and every unreviewable run included, copied from the
 run's verdict comment; the share follows the **Cost** procedure above.
