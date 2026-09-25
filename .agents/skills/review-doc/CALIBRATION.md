@@ -325,15 +325,15 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   cost. The dry run carries the candidate's placeholder limits and their key. Writing the measured
   limits changes the workflow, so the key is replaced as **Re-dispatch, drift** says, and the dev
   snapshots are built from that commit, under a new overlay sha.
-  **Measured** on 2026-09-25 by
-  [run 36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) on
-  `calib2/9fb0bd1/af950ea`: 28 turns, 44m 46s of the review step (45m 16s of the job) and 23.51 USD. So `--max-turns` is 42 and the
-  review step's timeout is 68 minutes. The job's timeout is 73, the 5 minutes on top keep the
-  verdict and the upload running after a review that timed out. The ×1.5 is applied to the review
-  step, not the job, because the step is what the limit cuts. The per-model reading was not
-  possible on this run: the action's log prints `modelUsage` without cost or tokens, and the
-  execution file is not in the artifact. The verdict step now appends a `## Usage` section to
-  `report.md`: cost and tokens per model beside `total_cost_usd`, the subagents launched and the
+  **Measured** on 2026-09-25 by [run
+  36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) on
+  `calib2/9fb0bd1/af950ea`: 28 turns, 44m 46s of the review step (45m 16s of the job) and 23.51 USD.
+  So `--max-turns` is 42 and the review step's timeout is 68 minutes. The job's timeout is 73, the 5
+  minutes on top keep the verdict and the upload running after a review that timed out. The ×1.5 is
+  applied to the review step, not the job, because the step is what the limit cuts. The per-model
+  reading was not possible on this run: the action's log prints `modelUsage` without cost or tokens,
+  and the execution file is not in the artifact. The verdict step now appends a `## Usage` section
+  to `report.md`: cost and tokens per model beside `total_cost_usd`, the subagents launched and the
   tool calls made inside them. The reading is taken from the first dev run's report instead.
   Uploading the execution file itself was rejected: it is the full session, which the action keeps
   out of the public log.
