@@ -12,7 +12,9 @@ name: Doc review
 # - verdict: resolves the model ID from the run's result message, computes the drift key,
 #   validates the findings against the report, unions blocking findings over every run on the
 #   head commit, counts rounds, and posts a new PR comment. It runs the copy of the script that
-#   classify saved before the model ran.
+#   classify saved before the model ran. It and the upload run even on a timeout or a
+#   cancellation, so a cut-off run still records its cost. The chunk manifests go into the
+#   artifact, never the comment.
 #
 # workflow_dispatch reviews the given files in full, for calibration, and posts no comment.
 
@@ -42,7 +44,7 @@ env:
 jobs:
   doc-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 91
     outputs:
       rounds: ${{ steps.verdict.outputs.rounds }}
     steps:
@@ -72,16 +74,20 @@ jobs:
         run: |
           mkdir -p "$HOME/.claude/skills"
           ln -s "$GITHUB_WORKSPACE/.agents/skills/review-doc" "$HOME/.claude/skills/review-doc"
-      - name: Install bubblewrap
+      - name: Install bubblewrap and socat
         if: steps.classify.outputs.status == 'review'
-        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs it; without it Claude Code
-        # refuses to start.
+        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs bubblewrap; without it Claude
+        # Code refuses to start. The Bash sandbox also needs socat: without it the sandbox fails to
+        # initialize and every git call the review makes fails (#146, dev batch 1).
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends bubblewrap
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
       - name: Review
         id: review
         if: steps.classify.outputs.status == 'review'
+        # Times out before the job, so the step fails and the verdict still runs and records
+        # what the run cost (#146).
+        timeout-minutes: 86
         uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -91,7 +97,7 @@ jobs:
           classify_inline_comments: "false"
           claude_args: >-
             --model ${{ env.MODEL_ALIAS }}
-            --max-turns 200
+            --max-turns 86
             --add-dir ${{ runner.temp }}/doc-review
             --allowedTools "Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,Agent,Skill,TodoWrite,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(ls:*)"
           prompt: |
@@ -110,7 +116,7 @@ jobs:
             written.
       - name: Verdict
         id: verdict
-        if: ${{ !cancelled() && steps.classify.outputs.status == 'review' }}
+        if: ${{ always() && steps.classify.outputs.status == 'review' }}
         env:
           EVENT_NAME: ${{ github.event_name }}
           REPO: ${{ github.repository }}
@@ -121,7 +127,7 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python "$RUNNER_TEMP/doc-review-state/doc_review.py" verdict
       - name: Upload the report
-        if: ${{ !cancelled() && steps.classify.outputs.status == 'review' }}
+        if: ${{ always() && steps.classify.outputs.status == 'review' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: doc-review-report
