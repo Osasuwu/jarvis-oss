@@ -388,6 +388,70 @@ def render_stats_section(stats: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Per-model split of a run's cost and what its subagents did, for the calibration record (#146):
+# the action's log shows `modelUsage` without tokens or cost, so the verdict step reads them here.
+USAGE_FIELDS = ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+SUBAGENT_TOOLS = ("Agent", "Task")
+
+
+def _number(value) -> float | int | None:
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) \
+        and value >= 0 else None
+
+
+def _counted(counts: dict[str, int]) -> str:
+    total = sum(counts.values())
+    if not total:
+        return "0"
+    return f"{total} (" + ", ".join(f"{name} {n}" for name, n in sorted(counts.items())) + ")"
+
+
+def render_usage_section(messages: list) -> str:
+    """The usage section appended to report.md: cost and tokens per model from the last result
+    message, the subagents the main session launched, and the tool calls made inside them."""
+    results = [m for m in messages if isinstance(m, dict) and m.get("type") == "result"]
+    if not results:
+        return "## Usage\n\nNo result message in the execution file.\n"
+    usage = results[-1].get("modelUsage")
+    usage = usage if isinstance(usage, dict) else {}
+    lines = ["## Usage", "", "| Model | Cost (USD) | Input | Output | Cache read | Cache write |",
+             "|---|---|---|---|---|---|"]
+    costs = []
+    for model, fields in sorted(usage.items()):
+        fields = fields if isinstance(fields, dict) else {}
+        cost = _number(fields.get("costUSD"))
+        costs.append(cost)
+        tokens = [_number(fields.get(k)) for k in USAGE_FIELDS]
+        if cost is None and all(t is None for t in tokens):
+            cells = ["unknown"] * 5
+        else:
+            cells = ["unknown" if cost is None else f"{cost:.4f}"] + \
+                [str(int(t or 0)) for t in tokens]
+        lines.append(f"| `{model}` | " + " | ".join(cells) + " |")
+    total = _number(results[-1].get("total_cost_usd"))
+    summed = "unknown" if not costs or None in costs else f"{sum(costs):.4f} USD"
+    lines += ["", f"Sum of model costs: {summed}; `total_cost_usd`: "
+              + ("unknown" if total is None else f"{total:.4f} USD") + "."]
+    launched: dict[str, int] = {}
+    inside: dict[str, int] = {}
+    for m in messages:
+        if not isinstance(m, dict) or m.get("type") != "assistant":
+            continue
+        message = m.get("message") if isinstance(m.get("message"), dict) else {}
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            name = str(block.get("name"))
+            if m.get("parent_tool_use_id"):
+                inside[name] = inside.get(name, 0) + 1
+            elif name in SUBAGENT_TOOLS:
+                launched[name] = launched.get(name, 0) + 1
+    lines += ["", f"Subagents launched: {_counted(launched)}.",
+              f"Subagent tool calls: {_counted(inside)}."]
+    return "\n".join(lines) + "\n"
+
+
 def session_notes(messages: list, *, text_limit: int = 2000) -> list[str]:
     """What the log needs when a review produced nothing usable.
 
@@ -1127,6 +1191,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         comments = []
     else:
         comments = _fetch_comments(env["REPO"], env["PR_NUMBER"])
+    messages = load_messages(env.get("EXECUTION_FILE"))
     verdict, _block, body, rounds, stats = run_verdict(
         state=state,
         work=work,
@@ -1139,14 +1204,14 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "comment.md").write_text(body, encoding="utf-8")
     with open(out / "report.md", "a", encoding="utf-8") as fh:  # the artifact is the raw record
-        fh.write("\n" + render_stats_section(stats))
+        fh.write("\n" + render_stats_section(stats) + "\n" + render_usage_section(messages))
     if not dispatch and not args.no_post:
         _api("POST", f"/repos/{env['REPO']}/issues/{env['PR_NUMBER']}/comments", {"body": body})
     _summary(body)
     _set_output("rounds", str(rounds))
     print(f"doc-review: {verdict.message} (rounds: {rounds})")
     if verdict.status == "unreviewable":
-        for note in session_notes(load_messages(env.get("EXECUTION_FILE"))):
+        for note in session_notes(messages):
             print(f"doc-review session: {note}")
     return 0 if verdict.passed else 1
 

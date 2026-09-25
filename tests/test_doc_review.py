@@ -808,7 +808,8 @@ def test_cli_report_and_comment_carry_cost_duration_and_turns(monkeypatch, tmp_p
     for line in STAT_LINES:
         assert line in comment and line in report, line
     assert report.startswith(CLEAN_REPORT) and "\n## Run\n" in report
-    assert "unknown" not in comment and "unknown" not in report
+    run_section = report.split("\n## Run\n", 1)[1].split("\n## Usage\n", 1)[0]
+    assert "unknown" not in comment and "unknown" not in run_section
     # The stats sit in the header, before the report and the state block.
     assert comment.index("**Turns:** 87") < comment.index("---") < comment.index("<!-- doc-review:")
 
@@ -828,6 +829,55 @@ def test_cli_missing_cost_fields_read_unknown_and_the_run_still_gets_a_verdict(m
         in report
     [block] = dr.parse_blocks([_bot(comment)])
     assert block["status"] == "pass"
+
+
+# --- usage by model and subagent tool use (#146, the dry run's reading) ---------------------
+
+def _assistant(tools: list[str], parent: str | None = None) -> dict:
+    return {"type": "assistant", "parent_tool_use_id": parent,
+            "message": {"content": [{"type": "text", "text": "x"}]
+                        + [{"type": "tool_use", "id": f"t{i}", "name": n, "input": {}}
+                           for i, n in enumerate(tools)]}}
+
+
+USAGE = {
+    MODEL: {"inputTokens": 1200, "outputTokens": 3400, "cacheReadInputTokens": 560_000,
+            "cacheCreationInputTokens": 78_000, "costUSD": 1.2, "contextWindow": 1_000_000},
+    "claude-haiku-4-5-20251001": {"inputTokens": 900, "outputTokens": 100, "costUSD": 0.03456},
+}
+
+
+def test_usage_section_splits_cost_by_model_and_counts_subagent_tool_use():
+    msgs = [_assistant(["Task", "Read"]),
+            _assistant(["Grep", "Read", "Read"], parent="t0"),
+            _assistant(["WebFetch"], parent="t0"),
+            _assistant(["Agent"]),
+            _result(USAGE, total_cost_usd=1.23456)]
+    section = dr.render_usage_section(msgs)
+    assert section.startswith("## Usage\n\n")
+    assert f"| `{MODEL}` | 1.2000 | 1200 | 3400 | 560000 | 78000 |" in section
+    assert "| `claude-haiku-4-5-20251001` | 0.0346 | 900 | 100 | 0 | 0 |" in section
+    assert "Sum of model costs: 1.2346 USD; `total_cost_usd`: 1.2346 USD." in section
+    assert "Subagents launched: 2 (Agent 1, Task 1)." in section
+    assert "Subagent tool calls: 4 (Grep 1, Read 2, WebFetch 1)." in section
+
+
+def test_usage_section_says_what_the_execution_file_lacks():
+    section = dr.render_usage_section([_result({MODEL: {}})])
+    assert f"| `{MODEL}` | unknown | unknown | unknown | unknown | unknown |" in section
+    assert "Sum of model costs: unknown; `total_cost_usd`: unknown." in section
+    assert "Subagents launched: 0." in section and "Subagent tool calls: 0." in section
+    assert dr.render_usage_section([]) == "## Usage\n\nNo result message in the execution file.\n"
+
+
+def test_cli_usage_goes_to_the_report_not_the_comment(monkeypatch, tmp_path):
+    state, work, execution = _state(tmp_path, _matching_key_line(), findings=[],
+                                    report=CLEAN_REPORT, **RUN_STATS)
+    assert _run_cli(monkeypatch, tmp_path, state, work, execution) == 0
+    comment = (work / "out" / "comment.md").read_text(encoding="utf-8")
+    report = (work / "out" / "report.md").read_text(encoding="utf-8")
+    assert report.index("\n## Run\n") < report.index("\n## Usage\n")
+    assert "## Usage" not in comment
 
 
 def test_cli_stats_are_recorded_even_when_the_review_step_failed(monkeypatch, tmp_path):

@@ -44,7 +44,7 @@ env:
 jobs:
   doc-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 73
     outputs:
       rounds: ${{ steps.verdict.outputs.rounds }}
     steps:
@@ -86,7 +86,7 @@ jobs:
         if: steps.classify.outputs.status == 'review'
         # Times out before the job, so the step fails and the verdict still runs and records
         # what the run cost (#146).
-        timeout-minutes: 80
+        timeout-minutes: 68
         uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -96,7 +96,7 @@ jobs:
           classify_inline_comments: "false"
           claude_args: >-
             --model ${{ env.MODEL_ALIAS }}
-            --max-turns 200
+            --max-turns 42
             --add-dir ${{ runner.temp }}/doc-review
             --allowedTools "Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,Agent,Skill,TodoWrite,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(ls:*)"
           prompt: |

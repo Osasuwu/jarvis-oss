@@ -168,11 +168,12 @@ reading was missed when the 5-hour window reset at 19:00Z. Median run: 11.07 USD
 **What these figures are.** A floor on same-model agreement, as the Method says: not a recall
 figure. They carry no threshold and no pass mark.
 
-**Drift key**, of the workflow, the action pin, the model and `SKILL.md` of candidate 1 (#146);
-the key every calibration-2 dev and test run of candidate 1 computes. The calibration-1 key, the
-one every one of the 27 runs above computed, is the second row of the table under it:
+**Drift key**, of the workflow, the action pin, the model and `SKILL.md` of candidate 1 (#146)
+with the limits its dry run measured; the key every calibration-2 dev and test run of candidate 1
+computes. The calibration-1 key, the one every one of the 27 runs above computed, is the `ffc5263`
+row of the table under it:
 
-drift-key: 85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923 (model: claude-opus-5)
+drift-key: 4fa6cbe41379010816070bc3a96c2294250b9c00392e5f3c69085e6dac8fc253 (model: claude-opus-5)
 
 **Drift keys.** Every key the line above has held, newest first. The line above is the only one
 `scripts/doc_review.py` reads; this table is the history the plan below promises: a calibration-2
@@ -181,7 +182,8 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 
 | Key | Model | Inputs on `main` at | Since | Until |
 |---|---|---|---|---|
-| `85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923` | `claude-opus-5` | candidate 1's merge | 2026-09-24, #146 | — |
+| `4fa6cbe41379010816070bc3a96c2294250b9c00392e5f3c69085e6dac8fc253` | `claude-opus-5` | candidate 1's merge | 2026-09-25, #146 | — |
+| `85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923` | `claude-opus-5` | `9fb0bd1`, the dry run's overlay | 2026-09-24, #146 | 2026-09-25, #146 |
 | `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | 2026-09-24, #146 |
 
 ## Snapshot branches (#138)
@@ -323,6 +325,18 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   cost. The dry run carries the candidate's placeholder limits and their key. Writing the measured
   limits changes the workflow, so the key is replaced as **Re-dispatch, drift** says, and the dev
   snapshots are built from that commit, under a new overlay sha.
+  **Measured** on 2026-09-25 by
+  [run 36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) on
+  `calib2/9fb0bd1/af950ea`: 28 turns, 44m 46s of the review step (45m 16s of the job) and 23.51 USD. So `--max-turns` is 42 and the
+  review step's timeout is 68 minutes. The job's timeout is 73, the 5 minutes on top keep the
+  verdict and the upload running after a review that timed out. The ×1.5 is applied to the review
+  step, not the job, because the step is what the limit cuts. The per-model reading was not
+  possible on this run: the action's log prints `modelUsage` without cost or tokens, and the
+  execution file is not in the artifact. The verdict step now appends a `## Usage` section to
+  `report.md`: cost and tokens per model beside `total_cost_usd`, the subagents launched and the
+  tool calls made inside them. The reading is taken from the first dev run's report instead.
+  Uploading the execution file itself was rejected: it is the full session, which the action keeps
+  out of the public log.
 - **Re-dispatch, drift.** The candidate's `SKILL.md` and workflow edits produce a new drift key.
   The single `drift-key:` line above is replaced in the same PR, the new key is the first row of
   the **Drift keys** table under it, and the old key's row gets its `Until`. `scripts/doc_review.py`
@@ -373,8 +387,12 @@ The caps are checked by hand on the runs table under **Records**, not in the wor
 - One dev iteration (18 runs plus the dry run) may not exceed one 5-hour limit.
 - A cheaper model is not tried until a candidate has a result on this model.
 
-**Denominator readings.** None yet. Format: `<campaign>: <before %> at <date time> → <after %> at
-<date time>; denominator <USD> per 100 %` or `void: <reason>`.
+**Denominator readings.** Format: `<campaign>: <before %> at <date time> → <after %> at
+<date time>; denominator <USD> per 100 %` or `void: <reason>`. Readings are whole percents, so a
+one-run pair bounds the denominator only loosely: the dry run's 5 % is 4.5–5.5 %, 427–522 USD.
+
+- dry run: 0 % at 2026-09-25 ≈09:46 UTC → 5 % at ≈10:31 UTC, the run's start and verdict, since
+  the readings carry no clock of their own; denominator 470 USD per 100 %.
 
 ### Records
 
@@ -389,6 +407,7 @@ run's verdict comment; the share follows the **Cost** procedure above.
 
 | Campaign | Split | Snapshot | Run | Result | Cost (USD) | Duration | Turns | cost (share of limit, est.) |
 |---|---|---|---|---|---|---|---|---|
+| dry run | — | `calib2/9fb0bd1/af950ea` | [36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) | fail: 8 blocking open | 23.5127 | 44m 46s | 28 | 5.0 % |
 
 **Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
 target is unmet, and after it, until a later calibration says otherwise. It is the draw
