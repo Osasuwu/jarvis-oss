@@ -169,11 +169,11 @@ reading was missed when the 5-hour window reset at 19:00Z. Median run: 11.07 USD
 figure. They carry no threshold and no pass mark.
 
 **Drift key**, of the workflow, the action pin, the model and `SKILL.md` of candidate 1 (#146)
-with the limits its dry run measured; the key every calibration-2 dev and test run of candidate 1
+with the limits dev batch 1 measured; the key every calibration-2 dev and test run of candidate 1
 computes. The calibration-1 key, the one every one of the 27 runs above computed, is the `ffc5263`
 row of the table under it:
 
-drift-key: 4fa6cbe41379010816070bc3a96c2294250b9c00392e5f3c69085e6dac8fc253 (model: claude-opus-5)
+drift-key: 59900b0461032e0adaf564380946c98e61b2c129edeb963d4a1b039ab7522a46 (model: claude-opus-5)
 
 **Drift keys.** Every key the line above has held, newest first. The line above is the only one
 `scripts/doc_review.py` reads; this table is the history the plan below promises: a calibration-2
@@ -182,7 +182,8 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 
 | Key | Model | Inputs on `main` at | Since | Until |
 |---|---|---|---|---|
-| `4fa6cbe41379010816070bc3a96c2294250b9c00392e5f3c69085e6dac8fc253` | `claude-opus-5` | candidate 1's merge | 2026-09-25, #146 | — |
+| `59900b0461032e0adaf564380946c98e61b2c129edeb963d4a1b039ab7522a46` | `claude-opus-5` | candidate 1's merge | 2026-09-25, #146 | — |
+| `4fa6cbe41379010816070bc3a96c2294250b9c00392e5f3c69085e6dac8fc253` | `claude-opus-5` | `1b928d0`, dev batch 1's overlay | 2026-09-25, #146 | 2026-09-25, #146 |
 | `85bb8b2ead32d081c0c6856dd9a685e03000af8ccedf595699a18741906c0923` | `claude-opus-5` | `9fb0bd1`, the dry run's overlay | 2026-09-24, #146 | 2026-09-25, #146 |
 | `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | 2026-09-24, #146 |
 
@@ -337,6 +338,17 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   tool calls made inside them. The reading is taken from the first dev run's report instead.
   Uploading the execution file itself was rejected: it is the full session, which the action keeps
   out of the public log.
+  **Re-measured** on 2026-09-25 by dev batch 1, six runs on `calib2/1b928d0/*` under key
+  `4fa6cbe…`: the dry run's limits were too tight for the dev docs. Two runs were reviewable and
+  four hit the turn cap. f677a54 stopped at 43 turns with `error_max_turns`; 8067d67, a6d0c01 and
+  9dbed9e ended their session as `success` after 45, 57 and 44 turns, and the action then failed
+  the step because the count exceeded `--max-turns`. The review step took 40 to 57 minutes. The
+  limits are now batch 1's maxima × 1.5, rounded up: 57 turns give `--max-turns` 86, and 57m 11s
+  of the review step give a step timeout of 86 minutes and 91 for the job. f677a54 was cut off,
+  so its real need is unknown. One run of the batch also reported the Bash sandbox failing to
+  start for want of `socat`, which fails every git call of the review; the workflow now installs
+  it beside `bubblewrap`. Both changes replace the key, so batch 1's runs are recorded below and
+  do not count toward the 18, and the dev snapshots are rebuilt from the new commit.
 - **Re-dispatch, drift.** The candidate's `SKILL.md` and workflow edits produce a new drift key.
   The single `drift-key:` line above is replaced in the same PR, the new key is the first row of
   the **Drift keys** table under it, and the old key's row gets its `Until`. `scripts/doc_review.py`
@@ -362,37 +374,38 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
 
 ### Cost
 
-Cost is recorded per run as an estimated share of the 5-hour usage limit of the subscription the
-runs bill to: Claude Max ×20 as of 2026-09-23. The numerator is the cost in USD the verdict step
-reads from the action's execution file and writes into the report and the PR comment, beside the
-wall-clock duration and the turn count (#145); a run whose execution file lacks a value carries
-`unknown` there and is still a run. The share is estimated because the limit is not published in
-USD; its denominator is measured per campaign:
-
-- **Readings.** Before the first dispatch and after the last verdict of a campaign, read the
-  5-hour usage percentage from the usage UI of the account the runs bill to, and record both
-  readings under **Denominator readings** below, each with date and time. The pair is valid only
-  if nothing else billed to the subscription between the readings and the 5-hour window did not
-  reset between them; otherwise the pair is recorded as void, the campaign's shares stay
-  `pending`, and the next campaign reads again.
-- **Denominator** = the sum of the campaign's run costs in USD ÷ (after − before), in USD per
-  100 % of the limit. Each run's share = its cost ÷ the denominator of its campaign, rounded to
-  0.1 %. A run whose cost is `unknown` has share `unknown`; a run of a campaign without a valid
-  pair has share `pending`, and its USD column stays the record.
+Cost is recorded per run in USD: the `total_cost_usd` the verdict step reads from the action's
+execution file and writes into the report and the PR comment, beside the wall-clock duration and
+the turn count (#145). The runs bill a subscription (Claude Max ×20 as of 2026-09-23), not an API
+account, so the figure is API-equivalent, not money spent. A run whose execution file lacks a
+value carries `unknown` there and is still a run.
 
 The caps are checked by hand on the runs table under **Records**, not in the workflow:
 
-- A doc review whose median run is over 10 % of the limit is rejected as a candidate, whatever
-  its catch.
-- One dev iteration (18 runs plus the dry run) may not exceed one 5-hour limit.
+- A doc review whose median run is over 47 USD is rejected as a candidate, whatever its catch.
+- One dev iteration (18 runs plus the dry run) may not exceed 700 USD.
 - A cheaper model is not tried until a candidate has a result on this model.
 
-**Denominator readings.** Format: `<campaign>: <before %> at <date time> → <after %> at
-<date time>; denominator <USD> per 100 %` or `void: <reason>`. Readings are whole percents, so a
-one-run pair bounds the denominator only loosely: the dry run's 5 % is 4.5–5.5 %, 427–522 USD.
+**Share of the limit, dropped on 2026-09-25.** The plan first recorded each run as an estimated
+share of the 5-hour usage limit, its denominator measured per campaign from two readings of the
+usage UI. The readings proved unworkable: they are whole percents, taken by hand, and the window
+resets under a campaign; dev batch 1's after-reading was lost that way. The caps were written in
+that unit, 10 % of the limit per doc and one limit per iteration, and are converted with the only
+valid denominator, the dry run's 470 USD per 100 %, measured before any dev run: 10 % is 47 USD.
+The iteration cap was raised to 700 USD at the same time, because batch 1's mean run of 29.4 USD
+puts 18 runs plus the dry run at about 555 USD, over the 470 a literal conversion gives. By the
+one weekly reading, batch 1's 176 USD moved the weekly limit about 7 %, so 700 USD is about 28 %
+of a week.
+
+**Denominator readings**, kept as history. Format: `<campaign>: <before %> at <date time> →
+<after %> at <date time>; denominator <USD> per 100 %` or `void: <reason>`. Readings are whole
+percents, so a one-run pair bounds the denominator only loosely: the dry run's 5 % is 4.5–5.5 %,
+427–522 USD.
 
 - dry run: 0 % at 2026-09-25 ≈09:46 UTC → 5 % at ≈10:31 UTC, the run's start and verdict, since
   the readings carry no clock of their own; denominator 470 USD per 100 %.
+- dev batch 1: void: 6 % at 2026-09-25 12:10 UTC; the after-reading was missed, the window had
+  reset to 0 % by the time it was taken.
 
 ### Records
 
@@ -403,11 +416,18 @@ updated to the test median with its n, its Wilson 95 % lower bound (5 / 10 is 24
 left at the calibration-1 floor if the target is not met, and says which.
 
 **Runs.** One row per dispatch, the dry run and every unreviewable run included, copied from the
-run's verdict comment; the share follows the **Cost** procedure above.
+run's verdict comment. Dev batch 1 ran under the replaced key `4fa6cbe…` and does not count toward
+the 18.
 
-| Campaign | Split | Snapshot | Run | Result | Cost (USD) | Duration | Turns | cost (share of limit, est.) |
-|---|---|---|---|---|---|---|---|---|
-| dry run | — | `calib2/9fb0bd1/af950ea` | [36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) | fail: 8 blocking open | 23.5127 | 44m 46s | 28 | 5.0 % |
+| Campaign | Split | Snapshot | Run | Result | Cost (USD) | Duration | Turns |
+|---|---|---|---|---|---|---|---|
+| dry run | — | `calib2/9fb0bd1/af950ea` | [36120270366](https://github.com/Osasuwu/jarvis-oss/actions/runs/36120270366) | fail: 8 blocking open | 23.5127 | 44m 46s | 28 |
+| dev batch 1 | dev | `calib2/1b928d0/8067d67` | [36133386001](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133386001) | unreviewable: review step failure (rounds: 0) | 24.6583 | 43m 39s | 45 |
+| dev batch 1 | dev | `calib2/1b928d0/59a27d9` | [36133389975](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133389975) | fail: 26 blocking open | 26.2466 | 40m 08s | 41 |
+| dev batch 1 | dev | `calib2/1b928d0/4074b0b` | [36133394115](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133394115) | fail: 33 blocking open | 35.7734 | 56m 58s | 42 |
+| dev batch 1 | dev | `calib2/1b928d0/f677a54` | [36133398053](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133398053) | unreviewable: review step failure (rounds: 0) | 33.9214 | 51m 32s | 43 |
+| dev batch 1 | dev | `calib2/1b928d0/a6d0c01` | [36133402310](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133402310) | unreviewable: review step failure (rounds: 0) | 26.9878 | 51m 27s | 57 |
+| dev batch 1 | dev | `calib2/1b928d0/9dbed9e` | [36133406193](https://github.com/Osasuwu/jarvis-oss/actions/runs/36133406193) | unreviewable: review step failure (rounds: 0) | 28.6834 | 46m 10s | 44 |
 
 **Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
 target is unmet, and after it, until a later calibration says otherwise. It is the draw

@@ -44,7 +44,7 @@ env:
 jobs:
   doc-review:
     runs-on: ubuntu-latest
-    timeout-minutes: 73
+    timeout-minutes: 91
     outputs:
       rounds: ${{ steps.verdict.outputs.rounds }}
     steps:
@@ -74,19 +74,20 @@ jobs:
         run: |
           mkdir -p "$HOME/.claude/skills"
           ln -s "$GITHUB_WORKSPACE/.agents/skills/review-doc" "$HOME/.claude/skills/review-doc"
-      - name: Install bubblewrap
+      - name: Install bubblewrap and socat
         if: steps.classify.outputs.status == 'review'
-        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs it; without it Claude Code
-        # refuses to start.
+        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs bubblewrap; without it Claude
+        # Code refuses to start. The Bash sandbox also needs socat: without it the sandbox fails to
+        # initialize and every git call the review makes fails (#146, dev batch 1).
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends bubblewrap
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
       - name: Review
         id: review
         if: steps.classify.outputs.status == 'review'
         # Times out before the job, so the step fails and the verdict still runs and records
         # what the run cost (#146).
-        timeout-minutes: 68
+        timeout-minutes: 86
         uses: anthropics/claude-code-action@cfc3eb22bfed5c26ef66e3223c982af27e4524de # v1.0.231
         env:
           CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
@@ -96,7 +97,7 @@ jobs:
           classify_inline_comments: "false"
           claude_args: >-
             --model ${{ env.MODEL_ALIAS }}
-            --max-turns 42
+            --max-turns 86
             --add-dir ${{ runner.temp }}/doc-review
             --allowedTools "Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,Agent,Skill,TodoWrite,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(ls:*)"
           prompt: |
