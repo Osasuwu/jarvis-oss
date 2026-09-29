@@ -41,9 +41,10 @@ WORKFLOW_PATH = ".github/workflows/doc-review.yml"
 SKILL_PATH = ".agents/skills/review-doc/SKILL.md"
 CALIBRATION_PATH = ".agents/skills/review-doc/CALIBRATION.md"
 SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"  # same exclusion as tests/structure_gate.py
-# Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
+# Directories under docs/ that hold records, not reader-facing docs: decision records (#144) and
+# research artifacts, the input /grill's research-pass gate reads.
 # Mirrored byte for byte in tests/structure_gate.py; tests/test_doc_review.py pins the two equal.
-EXCLUDED_DOC_DIRS = ("docs/adr/",)
+EXCLUDED_DOC_DIRS = ("docs/adr/", "docs/research/")
 ACTION_REPO = "anthropics/claude-code-action"
 BOT_LOGIN = "github-actions[bot]"
 # PR replies the reviewer reads for a delta pass. Anyone can comment on a public repo; only

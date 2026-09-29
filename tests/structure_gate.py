@@ -16,9 +16,10 @@ from pathlib import Path
 STALE_AFTER_DAYS = 180
 
 SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"
-# Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
+# Directories under docs/ that hold records, not reader-facing docs: decision records (#144) and
+# research artifacts, the input /grill's research-pass gate reads.
 # Mirrored byte for byte in scripts/doc_review.py; tests/test_doc_review.py pins the two equal.
-EXCLUDED_DOC_DIRS = ("docs/adr/",)
+EXCLUDED_DOC_DIRS = ("docs/adr/", "docs/research/")
 
 
 def is_excluded_doc(path: str) -> bool:
