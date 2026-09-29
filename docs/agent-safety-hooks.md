@@ -139,7 +139,10 @@ body) at the moment of the call, including calls to remote APIs that never touch
   ([Copilot hooks](https://docs.github.com/en/copilot/reference/hooks-reference)). A script that
   exits 0 on input it cannot parse lets the call through. A command that fails to launch —
   its interpreter is missing — exits non-zero but not 2, so it fails open where such exits do;
-  chaining `|| exit 2` onto the command makes it deny there too.
+  chaining `|| exit 2` onto the command makes it deny there too. The cost is an interpreter
+  that is on PATH but does not run: on Windows, `python3` can be the Microsoft Store stub, which
+  exits 9009, so a command naming `python3` denies every call its matcher covers. Our commands
+  try `python3`, fall back to `python`, and deny only when neither starts.
 - The agent can edit the hook or its settings unless something else stops it, and a hook in
   project settings can be turned off locally with `disableAllHooks`; only managed settings cannot.
 - Codex: "Treat tool hooks as a useful guardrail, not a complete

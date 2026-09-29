@@ -41,10 +41,11 @@ is not something a normal session will ever surface on its own. Two ways to chec
    scratch file, or attempt to edit a path listed in `protected-files.py`'s `PROTECTED_CANONICAL`.
    A wired-up hook returns a `permissionDecision: deny` with a `BLOCKED:` reason and the tool call
    is refused; the agent sees this in its own transcript, not a separate log. A hook that fails to
-   *launch* — `python3` missing, or too old to run the script — also blocks the call, but with
-   the shell's error text and no `BLOCKED:` reason: each command in `settings.snippet.json` is
-   `python3 "…" || exit 2`, so a launch failure exits 2 too, instead of the non-blocking non-zero
-   exit the harness would otherwise see.
+   *launch* — no working `python3` or `python`, or one too old to run the script — also blocks
+   the call, but with the shell's error text and no `BLOCKED:` reason. Each command in
+   `settings.snippet.json` tries `python3`, falls back to `python` when `python3` does not run
+   (on Windows it can be the Microsoft Store stub), and ends in `|| exit 2`. So a launch failure
+   exits 2 too, instead of the non-blocking non-zero exit the harness would otherwise see.
 2. **`claude --debug`** (or the equivalent flag for your harness) writes each hook invocation
    and its exit code to a debug log (Claude Code: `~/.claude/debug/<session-id>.txt`, not the
    terminal), including the ones that exit 0 and produce no other output — this is the only place

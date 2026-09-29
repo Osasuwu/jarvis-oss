@@ -3,22 +3,22 @@
     "PreToolUse": [
         {
         "matcher": "Bash|PowerShell",
-        "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2" }]
+        "hooks": [{ "type": "command", "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2" }]
       },
       {
         "matcher": "^mcp__.*github",
-        "hooks": [{ "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2" }]
+        "hooks": [{ "type": "command", "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/literal-gate.py\" || exit 2" }]
       },
       {
         "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
           },
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/protected-files.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/protected-files.py\" || exit 2"
           }
         ]
       },
@@ -27,7 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
           }
         ]
       },
@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/secret-scanner.py\" || exit 2"
           }
         ]
       },
@@ -45,7 +45,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
           }
         ]
       },
@@ -54,7 +54,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
+            "command": "py=python3; \"$py\" -c '' </dev/null 2>/dev/null || py=python; \"$py\" \"$CLAUDE_PROJECT_DIR/.agents/hooks/github-authority-guard.py\" || exit 2"
           }
         ]
       }
