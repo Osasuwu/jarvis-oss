@@ -59,7 +59,9 @@ Do it once on each device that pushes to, or writes pull requests on, a public r
    agent-safety hooks. Merge its entries into `.claude/settings.local.json`, next to anything
    already under `hooks.PreToolUse`. If `python3` does not start on the device,
    change it to `python` in every command. Each command ends in `|| exit 2`, so a missing
-   interpreter blocks every Bash call rather than letting it through.
+   interpreter blocks every Bash call rather than letting it through. Claude Code copies that
+   file into each worktree it creates, through `.worktreeinclude`; see the worktree note in
+   [`agent-safety-hooks.md`](agent-safety-hooks.md) for the cases it misses.
 
 ## How to tell they ran
 

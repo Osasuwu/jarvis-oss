@@ -210,3 +210,13 @@ def test_protected_files_allows_unprotected_sibling_path():
     target = str(ROOT / ".agents" / "hooks" / "not-a-protected-file.py")
     result = _run_protected_files("Edit", {"file_path": target})
     assert result.returncode == 0
+
+
+def test_worktrees_get_the_local_hook_install():
+    # A worktree is a fresh checkout: without these two lines a session there runs with no
+    # hooks from .claude/settings.local.json, and nothing reports it. Claude Code copies a
+    # .worktreeinclude match into each worktree it creates, but only if the file is gitignored.
+    include = (ROOT / ".worktreeinclude").read_text(encoding="utf-8").splitlines()
+    ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert ".claude/settings.local.json" in include
+    assert ".claude/settings.local.json" in ignore

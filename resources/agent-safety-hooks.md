@@ -20,6 +20,15 @@ Three files, ported from the source project this practice is drawn from:
   block that wires the hooks in this directory into `.claude/settings.json`, using the built-in
   `$CLAUDE_PROJECT_DIR` env var so the paths resolve regardless of where the repo is checked out.
 
+**Worktrees.** A committed `.claude/settings.json` is in every checkout, worktrees included. An
+install into the untracked `.claude/settings.local.json` is not: a worktree is a fresh checkout,
+and a session there runs without the hooks, silently. This repo lists that file in
+[`.worktreeinclude`](../.worktreeinclude) and gitignores it, so Claude Code copies it into every
+worktree it creates (`--worktree`, subagent worktrees, desktop-app sessions). The copy is taken
+at creation: a worktree made with `git worktree add`, or before the install, needs the file
+copied by hand, and a worktree on a branch older than a hook's script is blocked by that hook's
+`|| exit 2` until it is rebased.
+
 ## How you know it ran
 
 Both hooks are silent by design when they don't fire — a clean tool call produces no output, no
