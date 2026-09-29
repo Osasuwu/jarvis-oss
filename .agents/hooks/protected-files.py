@@ -45,6 +45,7 @@ PROTECTED_CANONICAL = {
     ".agents/hooks/settings.snippet.json",
     ".gitleaks.toml",
     ".agents/hooks/literal-gate.py",
+    ".worktreeinclude",
 }
 
 # Mirror copies of the same protected content living at a second path (e.g. a
