@@ -1,7 +1,7 @@
 """Tests for the literal-gate PreToolUse hook (#100 AC3).
 
 Mechanism under test: `.agents/hooks/literal-gate.py`, wired by the matchers in
-`.agents/hooks/literal-gate.snippet.json` on `Bash|PowerShell` and on the whole GitHub MCP
+`.agents/hooks/settings.snippet.json` on `Bash|PowerShell` and on the whole GitHub MCP
 server under any prefix (`^mcp__.*github`), the same matchers as the authority guard (#99). It reads the tool call as JSON on stdin and exits 2 to block when the text
 about to be sent to GitHub (a PR or issue title/body, a comment, a review, a release note, a
 `gh api` write) holds any variant of a personal literal. The hook never prints the literal.
@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 HOOK = ROOT / ".agents" / "hooks" / "literal-gate.py"
-SNIPPET = ROOT / ".agents" / "hooks" / "literal-gate.snippet.json"
+SNIPPET = ROOT / ".agents" / "hooks" / "settings.snippet.json"
 
 FAKE_LITERAL = "Zorblax Quint"
 FAKE_PATH_LITERAL = r"C:\Users\zqfake"
@@ -311,10 +311,22 @@ def test_unparseable_input_is_blocked():
 def test_snippet_wires_both_shells_and_the_whole_github_server_fail_closed():
     """Same matchers as the authority guard in settings.snippet.json (#99)."""
     snippet = json.loads(SNIPPET.read_text(encoding="utf-8"))
-    entries = snippet["hooks"]["PreToolUse"]
-    matchers = {e["matcher"]: e["hooks"] for e in entries}
-    assert set(matchers) == {"Bash|PowerShell", "^mcp__.*github"}
-    for hooks in matchers.values():
-        (hook,) = hooks
-        assert ".agents/hooks/literal-gate.py" in hook["command"]
-        assert hook["command"].rstrip().endswith("|| exit 2")
+    wired = [
+        (entry["matcher"], hook["command"])
+        for entry in snippet["hooks"]["PreToolUse"]
+        for hook in entry["hooks"]
+        if ".agents/hooks/literal-gate.py" in hook["command"]
+    ]
+    assert sorted(m for m, _ in wired) == sorted(["Bash|PowerShell", "^mcp__.*github"])
+    for _, command in wired:
+        assert command.rstrip().endswith("|| exit 2")
+
+
+def test_no_separate_literal_gate_snippet():
+    """The canonical snippet is the one place the gate is wired (#122)."""
+    assert not (ROOT / ".agents" / "hooks" / "literal-gate.snippet.json").exists()
+
+
+def test_hook_script_is_protected_from_agent_edits():
+    text = (ROOT / ".agents" / "hooks" / "protected-files.py").read_text(encoding="utf-8")
+    assert '".agents/hooks/literal-gate.py"' in text

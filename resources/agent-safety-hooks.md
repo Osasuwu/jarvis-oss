@@ -17,7 +17,7 @@ Three files, ported from the source project this practice is drawn from:
   live-operator bypass, by design — see [`docs/agent-safety-hooks.md`](../docs/agent-safety-hooks.md)
   for why.
 - [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) — the `PreToolUse` matcher
-  block that wires both hooks into `.claude/settings.json`, using the built-in
+  block that wires the hooks in this directory into `.claude/settings.json`, using the built-in
   `$CLAUDE_PROJECT_DIR` env var so the paths resolve regardless of where the repo is checked out.
 
 ## How you know it ran

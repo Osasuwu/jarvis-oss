@@ -19,7 +19,7 @@ where the hit is, never the value. With no usable list, a call that would send t
 blocked and the message says nothing was checked; other calls pass. Input that is not valid
 JSON blocks.
 
-Wire it up with `literal-gate.snippet.json` (same directory). Each command is chained with
+It is wired by `settings.snippet.json` (same directory), next to the other agent-safety hooks. Each command is chained with
 `|| exit 2`, so an interpreter that fails to launch blocks instead of passing.
 """
 
