@@ -56,8 +56,8 @@ Do it once on each device that pushes to, or writes pull requests on, a public r
    All worktrees of a clone share the hooks directory, so one install covers them all.
 3. **The harness hook.** It ships in
    [`settings.snippet.json`](../.agents/hooks/settings.snippet.json), next to the other
-   agent-safety hooks: refresh `.claude/settings.json` from that snippet (see
-   [agent-safety-hooks.md](agent-safety-hooks.md)). If `python3` does not start on the device,
+   agent-safety hooks. Merge its entries into `.claude/settings.local.json`, next to anything
+   already under `hooks.PreToolUse`. If `python3` does not start on the device,
    change it to `python` in every command. Each command ends in `|| exit 2`, so a missing
    interpreter blocks every Bash call rather than letting it through.
 
