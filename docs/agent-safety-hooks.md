@@ -206,11 +206,12 @@ no secrets in the agent's environment. A gateway between agent and MCP servers c
 Docker's MCP Gateway has a `block-secrets` switch
 ([run reference](https://github.com/docker/mcp-gateway/blob/main/docs/generator/reference/docker_mcp_gateway_run.yaml)),
 which reads content. A credential broker such as Infisical's
-[Agent Vault](https://github.com/Infisical/agent-vault) ("Agents should not possess credentials")
+[Agent Vault](https://github.com/Infisical/agent-vault)
 gives the agent a dummy value and swaps in the real one on the way out. On GitHub, a classic
 token needs the `workflow` scope to change files under `.github/workflows`, a fine-grained one
-the Workflows permission ([contents API](https://docs.github.com/en/rest/repos/contents)); the
-scope is waived for a file another branch already holds
+the Workflows permission ([contents API](https://docs.github.com/en/rest/repos/contents),
+[permissions](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens));
+the scope is waived for a file another branch already holds
 ([scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps)).
 
 **Fits only if** you choose the credentials and tools the agent runs with, and it can do its job
@@ -242,7 +243,6 @@ included, can skip it — `--no-verify` will "Bypass the pre-commit and commit-m
 can refuse the flag, but it "does not protect against the agent calling git through a path that
 bypasses your PATH"
 ([pydevtools](https://pydevtools.com/handbook/how-to/how-to-stop-ai-agents-from-bypassing-pre-commit-hooks/)).
-Each clone must install it.
 
 **Lifecycle.** Config file in the repo, install per clone. Status: sourced.
 
@@ -336,10 +336,10 @@ These are layers, not rivals: most setups want one before the write and one on t
 
 First, in order:
 
-1. **Does a person approve each call in every session?** Claude Code from v2.1.283 starts in auto
-   mode, on any plan, unless you set another (option 2). Yes → 2 can carry part of the load.
-   No (unattended, or a mode that does not ask) → 2 is out: build on the options that block
-   with nobody present (3 to 9), with 10 as a weaker stand-in for 2.
+1. **Does a person approve each call in every session?** Claude Code's interactive terminal and
+   VS Code sessions from v2.1.283 default to auto mode on any plan (option 2). Yes → 2 can carry
+   part of the load. No (unattended, or a mode that does not ask) → 2 is out: build on the
+   options that block with nobody present (3 to 9), with 10 as a weaker stand-in for 2.
 2. **Does every part of option 1's line hold?** Yes → **option 1**, with 8's required review
    behind it. If one fails — a public repo, a private repo on GitHub Free, an agent pushing from a
    repo admin's account — read on.
@@ -413,9 +413,8 @@ to a GitHub MCP server named `github`; a protected-file block on the hook script
 snippet, `.gitleaks.toml` and `.worktreeinclude`; a literal gate on text bound for GitHub,
 against the device's personal-literals list; and an authority guard on merging, on removing
 `waiting-human-review` and on branch-protection writes.
-They are tested here but not wired into this repo's
-settings; a clone gets them by copying the snippet. Under 8, push protection and secret scanning
-are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
+None is wired into this repo's settings; a clone copies the snippet. Under 8, push protection
+and secret scanning are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
 `machinery-guard` and `waiting-human-review` — admins included (`gh api repos/Osasuwu/jarvis-oss`
 and its `/branches/main/protection`, read on 2026-09-30). The review check
 does not bind a local session without that guard: its token is the maintainer's admin token, which can remove the
@@ -425,12 +424,12 @@ The protected-file hook blocks our own edits too, with no bypass for a person at
 hook's stdin is always piped, so a presence check would see every session as unattended; see
 [`protected-files-fail-closed.md`](../examples/protected-files-fail-closed.md).
 Known gaps: the protected set lists no workflow file; the repo has no code owners file;
-the protected-file hook does not see shell writes — option 3's `Edit` deny rules, which reach
-shell redirections and `sed`/`tee`, would close most of that and are our next step; the first two
+the protected-file hook does not see shell writes — option 3's `Edit` deny rules would close
+most of that and are our next step; the first two
 exit 0 on input they cannot parse; the scanner's shell matcher is `Bash` alone, so commands run
 through Claude Code's PowerShell tool are not scanned; it strips heredoc bodies before its
-dangerous-command check, so a heredoc fed to an interpreter (`bash <<'EOF'`) is executed without
+dangerous-command check, so a heredoc fed to an interpreter (`bash <<'EOF'`) runs without
 that check — see
 [`heredoc-stripping-boundary-bug.md`](../examples/heredoc-stripping-boundary-bug.md); and
 device-identity leakage — a home-directory path, hostname or username — is caught only for
-strings on that list, in `gh` commands and GitHub MCP calls.
+strings on that list, in `gh` commands that send text and GitHub MCP calls.

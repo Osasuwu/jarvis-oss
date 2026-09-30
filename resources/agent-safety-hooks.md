@@ -81,8 +81,8 @@ field name the scanner's source has never named, not a fixed field list to re-ch
 
 `PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS` in
 `secret-scanner.py` are marked `CUSTOMIZE` at their definition, and `SECRET_PATTERNS` in that
-file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files and a
-`.gitleaks.toml`, `PROTECTED_MIRROR` is empty, and the other two list common provider key
-formats and env-var names — placeholders, not a claim that they are right for every reader's
-repo. Point them at whatever your own project's review-gate files and credential-shaped env
-vars actually are.
+file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files, a
+`.gitleaks.toml` and `.worktreeinclude`, `PROTECTED_MIRROR` is empty, and the other two list
+common provider key formats and env-var names — placeholders, not a claim that they are right
+for every reader's repo. Point them at whatever your own project's review-gate files and
+credential-shaped env vars actually are.
