@@ -125,9 +125,11 @@ harness's permission rules are another, where the harness has them: in Claude Co
 rule blocks the call, but a rule matches the form of a call, not what a program
 does. A Bash rule matches the command text the agent writes, so it covers the usual form of a
 command and not every way to run it. A Read or Edit rule covers the file tools and the file
-commands Claude Code recognises when they name the path, not a command that reads files without
-naming them, such as `grep -r`, and not a script that opens the file itself. For enforcement that
-does not depend on the command text, the page names sandboxing; see
+commands Claude Code recognises when they name the path, and the targets of shell redirections
+such as `> file`, not a command that reads files without naming them, such as `grep -r`, and not a
+script that opens the file itself. For filesystem and network enforcement that does not depend on
+the command text, the page names sandboxing, and for inspecting the full command text with your
+own logic, a PreToolUse hook; see
 [Configure permissions](https://code.claude.com/docs/en/permissions) (checked 2026-09-30).
 If you have none of those, a git hook needs no account or paid plan. It
 stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
