@@ -53,6 +53,40 @@ _HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _BULLET_LINK_RE = re.compile(r"^[-*+][ \t]+\[[^\]]*\]\(([^)\s]+)\)")
 
+# #162 D10: the fixed option-heading prefix, which the gate keys on. A heading that starts with the
+# word "Option" but misses the form is a malformed option, not a free-form heading, so an option
+# cannot drop out of the checks by a typo.
+OPTIONS_H2 = (2, "The options")
+_OPTION_HEADING_RE = re.compile(r"^Option [0-9]+\. \S")
+_OPTION_LIKE_RE = re.compile(r"^option\b", re.IGNORECASE)
+CHECK_HEADING = (4, "Check")
+_RELATIONS_PREFIX = "Relations:"
+_RELATION_CLAUSE_RE = re.compile(r"^(needs|excludes|trade-off):(.*)$")
+_ISO_DATE = "[0-9]{4}-[0-9]{2}-[0-9]{2}"
+_CHECKED_NOTE_RE = re.compile(r"^\s*\(checked ([^)]*)\)")
+_CHECKED_DATE_RE = re.compile(f"({_ISO_DATE})(?:, volatile)?")
+_CHECKED_ANNOTATION_RE = re.compile(rf"\(checked {_ISO_DATE}(, volatile)?\)")
+_CHECK_NONE_RE = re.compile(r"^None\b")
+_CHECK_NONE_FORM_RE = re.compile(r"^None — \S")
+
+# #162: plan names go stale as vendors rename tiers, so `applies_when` / `applies_when_not` state
+# the condition (a capability, a setting) instead; `docs/harnesses.md` is the one doc that
+# catalogues plans and is exempt.
+PLAN_NAMES = (
+    "Claude Free", "Claude Pro", "Claude Max", "Claude Team", "Claude Enterprise",
+    "ChatGPT Free", "ChatGPT Plus", "ChatGPT Pro", "ChatGPT Team", "ChatGPT Enterprise",
+    "GitHub Free", "GitHub Pro", "GitHub Team", "GitHub Enterprise",
+    "Copilot Free", "Copilot Pro", "Copilot Pro+", "Copilot Business", "Copilot Enterprise",
+    "GitLab Free", "GitLab Premium", "GitLab Ultimate",
+)  # fmt: skip
+PLAN_NAME_EXEMPT_DOC = "docs/harnesses.md"
+_PLAN_NAME_RE = re.compile(
+    r"(?<!\w)(?:"
+    + "|".join(r"\s+".join(re.escape(word) for word in name.split()) for name in PLAN_NAMES)
+    + r")(?!\w)",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -86,9 +120,12 @@ def _body_after_frontmatter(text: str) -> str:
     return text if end == -1 else text[end + 4 :]
 
 
-def _scan_lines(text: str) -> list[tuple[str, tuple[int, str] | None]]:
+def _scan_lines(
+    text: str, blank_fenced: bool = False
+) -> list[tuple[str, tuple[int, str] | None]]:
     """Each body line with its (level, heading text) when it is an ATX heading; lines in
-    fenced code, and the fences themselves, are never headings."""
+    fenced code, and the fences themselves, are never headings. With `blank_fenced` they are
+    also emptied, so a caller matching prose lines never sees code."""
     scanned: list[tuple[str, tuple[int, str] | None]] = []
     fence: str | None = None
     for line in _body_after_frontmatter(text).splitlines():
@@ -99,13 +136,13 @@ def _scan_lines(text: str) -> list[tuple[str, tuple[int, str] | None]]:
                 fence = marker
             elif marker[0] == fence[0] and len(marker) >= len(fence):
                 fence = None
-            scanned.append((line, None))
+            scanned.append(("" if blank_fenced else line, None))
             continue
         heading_match = _HEADING_RE.match(line) if fence is None else None
         if heading_match and heading_match.group(2):
             scanned.append((line, (len(heading_match.group(1)), heading_match.group(2))))
         else:
-            scanned.append((line, None))
+            scanned.append(("" if blank_fenced and fence is not None else line, None))
     return scanned
 
 
@@ -339,6 +376,177 @@ def _check_hub_children(
     return violations
 
 
+_ScannedLine = tuple[str, tuple[int, str] | None]
+
+
+def _option_sections(text: str) -> list[tuple[str, list[_ScannedLine]]] | None:
+    """(heading text, scanned body lines) of each H3 under `## The options`, or None when the
+    doc has no such H2. A section runs to the next heading of level 3 or above."""
+    sections: list[tuple[str, list[_ScannedLine]]] = []
+    in_options = found = False
+    for line, heading in _scan_lines(text, blank_fenced=True):
+        if heading is not None and heading[0] <= 2:
+            if in_options:
+                break
+            in_options = found = heading == OPTIONS_H2
+            continue
+        if not in_options:
+            continue
+        if heading is not None and heading[0] == 3:
+            sections.append((heading[1], []))
+        elif sections:
+            sections[-1][1].append((line, heading))
+    return sections if found else None
+
+
+def _check_option_check(rel: str, title: str, lines: list[_ScannedLine]) -> list[Violation]:
+    """AC2: the option has a `#### Check` whose body is steps or one `None — <reason>` line."""
+    body: list[str] = []
+    found = in_check = False
+    for line, heading in lines:
+        if heading is not None:
+            if in_check:
+                break
+            in_check = found = heading == CHECK_HEADING
+        elif in_check and line.strip() and not line.startswith(_RELATIONS_PREFIX):
+            body.append(line.strip())
+    if not found:
+        code, what = "option_check_missing", "has no '#### Check' subsection"
+    elif not body:
+        code, what = "option_check_empty", "has an empty '#### Check' subsection"
+    elif _CHECK_NONE_RE.match(body[0]) and not (
+        len(body) == 1 and _CHECK_NONE_FORM_RE.match(body[0])
+    ):
+        code = "option_check_none_form"
+        what = "'#### Check' says None; the form is one line 'None — <reason>'"
+    else:
+        return []
+    return [Violation(path=rel, code=code, message=f"{rel} option '{title}' {what}")]
+
+
+def _relations_clause_ok(clause: str) -> bool:
+    match = _RELATION_CLAUSE_RE.match(clause.strip())
+    if not match or not _MARKDOWN_LINK_RE.search(match.group(2)):
+        return False
+    rest = _CHECKED_ANNOTATION_RE.sub("", _MARKDOWN_LINK_RE.sub("", match.group(2)))
+    return not rest.replace(",", "").strip()
+
+
+def _check_option_relations(rel: str, title: str, lines: list[_ScannedLine]) -> list[Violation]:
+    """AC3: one `Relations:` line, `none` or `needs:`/`excludes:`/`trade-off:` clauses of links."""
+    found = [line for line, _ in lines if line.startswith(_RELATIONS_PREFIX)]
+    if not found:
+        code, what = "option_relations_missing", "has no 'Relations:' line"
+    elif len(found) > 1:
+        code, what = "option_relations_duplicate", "has more than one 'Relations:' line"
+    else:
+        value = found[0][len(_RELATIONS_PREFIX) :].strip()
+        if value == "none" or all(_relations_clause_ok(c) for c in value.split(";")):
+            return []
+        code = "option_relations_malformed"
+        what = (
+            f"has the malformed line '{found[0].strip()}'; the form is 'Relations: none' or "
+            "'needs:' / 'excludes:' / 'trade-off:' clauses of links, joined by ';'"
+        )
+    return [Violation(path=rel, code=code, message=f"{rel} option '{title}' {what}")]
+
+
+def _check_options(rel: str, text: str) -> list[Violation]:
+    sections = _option_sections(text)
+    if sections is None:
+        return [
+            Violation(
+                path=rel,
+                code="options_section_missing",
+                message=f"{rel} is kind: practice and has no '## The options' section",
+            )
+        ]
+    violations: list[Violation] = []
+    options = 0
+    for title, lines in sections:
+        if _OPTION_HEADING_RE.match(title):
+            options += 1
+            violations.extend(_check_option_relations(rel, title, lines))
+            violations.extend(_check_option_check(rel, title, lines))
+        elif _OPTION_LIKE_RE.match(title):
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="option_heading_malformed",
+                    message=(
+                        f"{rel} has the heading '### {title}'; an option heading is "
+                        "'### Option <N>. <title>'"
+                    ),
+                )
+            )
+    if not options:
+        violations.append(
+            Violation(
+                path=rel,
+                code="options_none",
+                message=f"{rel} '## The options' holds no '### Option <N>. <title>' section",
+            )
+        )
+    return violations
+
+
+def _parse_link_date(value: str) -> date | None:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _check_link_dates(rel: str, text: str) -> list[Violation]:
+    """AC5: each external inline link is followed by `(checked YYYY-MM-DD[, volatile])`."""
+    violations: list[Violation] = []
+    for line, _ in _scan_lines(text, blank_fenced=True):
+        for match in _MARKDOWN_LINK_RE.finditer(line):
+            if "://" not in match.group(1):
+                continue
+            note = _CHECKED_NOTE_RE.match(line[match.end() :])
+            if note is None:
+                code, what = "external_link_date_missing", "has no '(checked YYYY-MM-DD)' after it"
+            else:
+                form = _CHECKED_DATE_RE.fullmatch(note.group(1))
+                checked = _parse_link_date(form.group(1)) if form else None
+                if checked is None:
+                    code = "external_link_date_malformed"
+                    what = f"has the note '(checked {note.group(1)})'; the form is 'YYYY-MM-DD'"
+                elif checked > date.today():
+                    code, what = "external_link_date_future", f"has the future check date {checked}"
+                else:
+                    continue
+            violations.append(
+                Violation(
+                    path=rel,
+                    code=code,
+                    message=f"{rel} external link '{match.group(1)}' {what}",
+                )
+            )
+    return violations
+
+
+def _check_plan_names(rel: str, fields: dict[str, str]) -> list[Violation]:
+    if rel == PLAN_NAME_EXEMPT_DOC:
+        return []
+    violations: list[Violation] = []
+    for key in ("applies_when", "applies_when_not"):
+        match = _PLAN_NAME_RE.search(fields.get(key, ""))
+        if match:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="plan_name_in_frontmatter",
+                    message=(
+                        f"{rel} '{key}' names the plan '{match.group(0)}'; state the condition "
+                        "(a capability or setting), not a plan name"
+                    ),
+                )
+            )
+    return violations
+
+
 def _check_kind_docs(root: Path) -> list[Violation]:
     docs_dir = root / "docs"
     if not docs_dir.is_dir():
@@ -369,6 +577,10 @@ def _check_kind_docs(root: Path) -> list[Violation]:
             )
         violations.extend(_check_requires(root, rel, fields.get("requires", ""), cache))
         violations.extend(_check_anchor_links(doc_path, rel, text, cache))
+        violations.extend(_check_plan_names(rel, fields))
+        violations.extend(_check_link_dates(rel, text))
+        if fields["kind"] == "practice":
+            violations.extend(_check_options(rel, text))
         if "hub" in fields:
             hub_rel = f"docs/{fields['hub']}.md"
             violations.extend(_check_hub_target(hub_rel, rel, kinds))

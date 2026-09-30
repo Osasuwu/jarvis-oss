@@ -276,7 +276,7 @@ def test_example_pairs_with_must_resolve(tmp_path):
 # --- #160: kind / requires / hub. The rules below apply only to docs that declare `kind:`. ---
 
 
-def _kind_doc(kind: str | None = "practice", extra: str = "", body: str = "# Doc\n") -> str:
+def _kind_doc(kind: str | None = "basics", extra: str = "", body: str = "# Doc\n") -> str:
     kind_line = "" if kind is None else f"kind: {kind}\n"
     return (
         "---\napplies_when: fixture\napplies_when_not: fixture\nsigned_off:\n"
@@ -288,6 +288,33 @@ def _codes(root: Path) -> set[tuple[str, str]]:
     return {(v.path, v.code) for v in check_tree(root)}
 
 
+# --- #162: option sections of a `kind: practice` doc. ---
+
+
+def _option(
+    n: int = 1,
+    title: str = "Do the thing",
+    check: str | None = "1. Run it.",
+    relations: str | None = "Relations: none",
+    heading: str | None = None,
+) -> str:
+    """One option section; `None` for check / relations leaves that part out."""
+    parts = [heading if heading is not None else f"### Option {n}. {title}", "", "Prose.", ""]
+    if relations is not None:
+        parts += [relations, ""]
+    if check is not None:
+        parts += ["#### Check", "", check, ""]
+    return "\n".join(parts)
+
+
+def _practice_body(*sections: str) -> str:
+    return "# Doc\n\n## The options\n\n" + "\n".join(sections)
+
+
+def _practice(*sections: str, extra: str = "") -> str:
+    return _kind_doc("practice", extra=extra, body=_practice_body(*sections))
+
+
 def test_kind_outside_practice_hub_basics_fails(tmp_path):
     _write(tmp_path / "docs" / "a.md", _kind_doc("guide"))
     violations = check_tree(tmp_path)
@@ -296,7 +323,7 @@ def test_kind_outside_practice_hub_basics_fails(tmp_path):
 
 
 def test_kind_practice_hub_basics_pass(tmp_path):
-    _write(tmp_path / "docs" / "a.md", _kind_doc("practice"))
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body=_practice_body(_option())))
     _write(tmp_path / "docs" / "b.md", _kind_doc("basics"))
     _write(tmp_path / "docs" / "c.md", _kind_doc("hub", body="# Hub\n\n## Children\n"))
     assert check_tree(tmp_path) == []
@@ -415,7 +442,7 @@ def test_relative_link_to_missing_file_is_reported_once(tmp_path):
 
 
 def test_external_and_mailto_links_are_not_anchor_checked(tmp_path):
-    body = "# A\n\n[x](https://example.com/p#frag) [m](mailto:a@b.c)\n"
+    body = "# A\n\n[x](https://example.com/p#frag) (checked 2026-09-01) [m](mailto:a@b.c)\n"
     _write(tmp_path / "docs" / "a.md", _kind_doc(body=body))
     assert check_tree(tmp_path) == []
 
@@ -445,7 +472,7 @@ def _hub(children: list[str], extra_section: str = "") -> str:
     return _kind_doc("hub", body=f"# Hub\n\n## Children\n\n{bullets}{extra_section}")
 
 
-def _child(hub: str = "h", kind: str | None = "practice") -> str:
+def _child(hub: str = "h", kind: str | None = "basics") -> str:
     return _kind_doc(kind, extra=f"hub: {hub}\n")
 
 
@@ -462,13 +489,13 @@ def test_hub_children_may_be_listed_in_any_order_with_anchors(tmp_path):
     _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body=body))
     _write(tmp_path / "docs" / "a.md", _child())
     _write(
-        tmp_path / "docs" / "b.md", _kind_doc("practice", extra="hub: h\n", body="# B\n\n## X\n")
+        tmp_path / "docs" / "b.md", _kind_doc("basics", extra="hub: h\n", body="# B\n\n## X\n")
     )
     assert check_tree(tmp_path) == []
 
 
 def test_hub_target_must_have_kind_hub(tmp_path):
-    _write(tmp_path / "docs" / "h.md", _kind_doc("practice"))
+    _write(tmp_path / "docs" / "h.md", _kind_doc("basics"))
     _write(tmp_path / "docs" / "a.md", _child())
     violations = check_tree(tmp_path)
     assert [(v.path, v.code) for v in violations] == [("docs/a.md", "hub_target_not_hub")]
@@ -542,3 +569,358 @@ def test_hub_child_bullet_may_continue_on_an_indented_line(tmp_path):
     _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body=body))
     _write(tmp_path / "docs" / "a.md", _child())
     assert check_tree(tmp_path) == []
+
+
+def test_practice_doc_with_well_formed_options_passes(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _practice(_option(1), _option(2, "Other way")))
+    assert check_tree(tmp_path) == []
+
+
+def test_practice_doc_without_the_options_section_fails(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body="# Doc\n\n## Notes\n"))
+    assert _codes(tmp_path) == {("docs/a.md", "options_section_missing")}
+
+
+def test_the_options_heading_inside_a_code_fence_is_not_the_section(tmp_path):
+    body = "# Doc\n\n```\n## The options\n\n### Option 1. x\n```\n"
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body=body))
+    assert _codes(tmp_path) == {("docs/a.md", "options_section_missing")}
+
+
+def test_the_options_section_needs_at_least_one_option(tmp_path):
+    body = "# Doc\n\n## The options\n\n### Across all of them\n\nShared advice.\n"
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body=body))
+    assert _codes(tmp_path) == {("docs/a.md", "options_none")}
+
+
+def test_other_h3_headings_under_the_options_are_not_options(tmp_path):
+    # No `#### Check` and no `Relations:` on the shared section: it is not an option.
+    body = _practice_body(_option(1), "### Across all of them\n\nShared advice.\n")
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body=body))
+    assert check_tree(tmp_path) == []
+
+
+def test_option_heading_that_misses_the_fixed_prefix_fails(tmp_path):
+    for bad in (
+        "### Option 2 — Title",
+        "### Option 2: Title",
+        "### Option two. Title",
+        "### Option 2.Title",
+        "### Option 3.",
+        "### option 1. Title",
+    ):
+        _write(tmp_path / "docs" / "a.md", _practice(_option(1), _option(heading=bad)))
+        violations = check_tree(tmp_path)
+        assert [(v.path, v.code) for v in violations] == [("docs/a.md", "option_heading_malformed")], bad
+        assert bad.removeprefix("### ") in violations[0].message
+
+
+def test_h3_outside_the_options_section_is_not_an_option(tmp_path):
+    body = _practice_body(_option(1)) + "\n## Later\n\n### Option 9. Not an option here\n"
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice", body=body))
+    assert check_tree(tmp_path) == []
+
+
+def test_option_rules_do_not_apply_to_other_kinds_or_no_kind(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc("basics", body="# A\n\n## The options\n"))
+    _write(tmp_path / "docs" / "b.md", _kind_doc(None, body="# B\n\n## The options\n"))
+    assert check_tree(tmp_path) == []
+
+
+# --- #162: the `#### Check` subsection of each option. ---
+
+
+def _practice_codes(tmp_path: Path, *sections: str) -> set[str]:
+    _write(tmp_path / "docs" / "a.md", _practice(*sections))
+    return {code for path, code in _codes(tmp_path) if path == "docs/a.md"}
+
+
+def test_option_check_with_steps_passes(tmp_path):
+    assert _practice_codes(tmp_path, _option(check="1. Run it.\n2. Read the output.")) == set()
+
+
+def test_option_check_missing_fails(tmp_path):
+    assert _practice_codes(tmp_path, _option(check=None)) == {"option_check_missing"}
+
+
+def test_option_check_empty_fails(tmp_path):
+    assert _practice_codes(tmp_path, _option(check="")) == {"option_check_empty"}
+
+
+def test_option_check_none_with_reason_passes(tmp_path):
+    assert _practice_codes(tmp_path, _option(check="None — nothing to verify here.")) == set()
+
+
+def test_option_check_none_needs_the_em_dash_and_a_reason(tmp_path):
+    for body in ("None", "None - hyphen instead", "None —", "None —  "):
+        assert _practice_codes(tmp_path, _option(check=body)) == {"option_check_none_form"}, body
+
+
+def test_option_check_none_must_be_a_single_line(tmp_path):
+    body = "None — because.\n\n1. And also a step."
+    assert _practice_codes(tmp_path, _option(check=body)) == {"option_check_none_form"}
+
+
+def test_option_check_heading_inside_a_code_fence_is_not_the_subsection(tmp_path):
+    fenced = "### Option 1. Do the thing\n\nRelations: none\n\n```\n#### Check\n\n1. Run it.\n```\n"
+    assert _practice_codes(tmp_path, fenced) == {"option_check_missing"}
+
+
+def test_option_check_belongs_to_its_own_option(tmp_path):
+    codes = _practice_codes(tmp_path, _option(1, check=None), _option(2))
+    assert codes == {"option_check_missing"}
+
+
+def test_option_check_is_not_required_of_non_option_h3(tmp_path):
+    other = "### Background\n\nJust prose.\n"
+    assert _practice_codes(tmp_path, _option(), other) == set()
+
+
+def test_option_check_body_stops_at_the_next_heading(tmp_path):
+    body = "1. Run it.\n\n#### Notes\n\nMore."
+    assert _practice_codes(tmp_path, _option(check=body)) == set()
+    empty_then_heading = "\n#### Notes\n\nMore."
+    assert _practice_codes(tmp_path, _option(check=empty_then_heading)) == {"option_check_empty"}
+
+
+def test_option_check_rules_do_not_apply_without_practice_kind(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc("basics", body="### Option 1. X\n\nno check\n"))
+    assert _codes(tmp_path) == set()
+
+
+def test_option_with_another_h4_but_no_check_fails(tmp_path):
+    other = "### Option 1. Do the thing\n\nRelations: none\n\n#### Notes\n\n1. A step-like line.\n"
+    assert _practice_codes(tmp_path, other) == {"option_check_missing"}
+
+
+# --- #162: the `Relations:` line of each option. ---
+
+_TWO_OPTIONS_SLUGS = ("#option-1-do-the-thing", "#option-2-do-the-thing")
+
+
+def _related(relations: str, n: int = 1) -> str:
+    return _option(n, relations=relations)
+
+
+def test_option_relations_none_passes(tmp_path):
+    assert _practice_codes(tmp_path, _option(relations="Relations: none")) == set()
+
+
+def test_option_relations_with_all_three_kinds_and_anchors_pass(tmp_path):
+    one, two = _TWO_OPTIONS_SLUGS
+    line = f"Relations: needs: [one]({one}); excludes: [two]({two}), [one]({one}); trade-off: [two]({two})"
+    assert _practice_codes(tmp_path, _related(line), _option(2)) == set()
+
+
+def test_option_relations_external_link_is_plain(tmp_path):
+    line = "Relations: needs: [The service](https://example.com/svc) (checked 2026-09-01)"
+    assert _practice_codes(tmp_path, _related(line)) == set()
+
+
+def test_option_relations_missing_fails(tmp_path):
+    assert _practice_codes(tmp_path, _option(relations=None)) == {"option_relations_missing"}
+
+
+def test_option_relations_twice_fails(tmp_path):
+    two_lines = "Relations: none\n\nRelations: none"
+    assert _practice_codes(tmp_path, _related(two_lines)) == {"option_relations_duplicate"}
+
+
+def test_option_relations_malformed_fails(tmp_path):
+    ok = "[a](#option-1-do-the-thing)"
+    for line in (
+        "Relations:",
+        "Relations: maybe",
+        "Relations: none, actually",
+        "Relations: needs:",
+        "Relations: needs: plain words",
+        f"Relations: requires: {ok}",
+        f"Relations: needs: {ok} and some prose",
+        f"Relations: needs: {ok};",
+        f"Relations: {ok}",
+    ):
+        assert _practice_codes(tmp_path, _related(line)) == {"option_relations_malformed"}, line
+
+
+def test_option_relations_anchor_is_checked_by_the_resolver(tmp_path):
+    line = "Relations: needs: [nope](#no-such-option)"
+    assert _practice_codes(tmp_path, _related(line)) == {"anchor_unresolvable"}
+
+
+def test_option_relations_line_inside_a_code_fence_does_not_count(tmp_path):
+    fenced = "### Option 1. Do the thing\n\n```\nRelations: none\n```\n\n#### Check\n\n1. Run it.\n"
+    assert _practice_codes(tmp_path, fenced) == {"option_relations_missing"}
+
+
+def test_option_relations_belongs_to_its_own_option(tmp_path):
+    codes = _practice_codes(tmp_path, _option(1, relations=None), _option(2))
+    assert codes == {"option_relations_missing"}
+
+
+def test_option_relations_after_check_is_not_check_body(tmp_path):
+    body = "Relations: none"
+    assert _practice_codes(tmp_path, _option(relations=None, check=body)) == {"option_check_empty"}
+
+
+def test_option_relations_is_not_required_of_non_option_h3(tmp_path):
+    other = "### Background\n\nJust prose.\n"
+    assert _practice_codes(tmp_path, _option(), other) == set()
+
+
+# --- #162: plan names are banned from applies_when / applies_when_not. ---
+
+
+def _plan_doc(applies_when: str = "fixture", applies_when_not: str = "fixture") -> str:
+    return (
+        f"---\napplies_when: {applies_when}\napplies_when_not: {applies_when_not}\n"
+        "signed_off:\nkind: basics\n---\n\n# Doc\n"
+    )
+
+
+def _plan_codes(tmp_path: Path, text: str, name: str = "a.md") -> set[str]:
+    _write(tmp_path / "docs" / name, text)
+    return {code for path, code in _codes(tmp_path) if path == f"docs/{name}"}
+
+
+def test_plan_names_lists_every_plan_of_the_five_vendors():
+    from structure_gate import PLAN_NAMES
+
+    assert {
+        "Claude Free", "Claude Pro", "Claude Max", "Claude Team", "Claude Enterprise",
+        "ChatGPT Free", "ChatGPT Plus", "ChatGPT Pro", "ChatGPT Team", "ChatGPT Enterprise",
+        "GitHub Free", "GitHub Pro", "GitHub Team", "GitHub Enterprise",
+        "Copilot Free", "Copilot Pro", "Copilot Pro+", "Copilot Business", "Copilot Enterprise",
+        "GitLab Free", "GitLab Premium", "GitLab Ultimate",
+    } <= set(PLAN_NAMES)  # fmt: skip
+
+
+def test_plan_name_in_applies_when_fails(tmp_path):
+    codes = _plan_codes(tmp_path, _plan_doc(applies_when="you are on Claude Max"))
+    assert codes == {"plan_name_in_frontmatter"}
+
+
+def test_plan_name_in_applies_when_not_fails(tmp_path):
+    codes = _plan_codes(tmp_path, _plan_doc(applies_when_not="you run GitLab Ultimate"))
+    assert codes == {"plan_name_in_frontmatter"}
+
+
+def test_plan_name_match_is_case_insensitive_and_whitespace_tolerant(tmp_path):
+    assert _plan_codes(tmp_path, _plan_doc(applies_when="on chatgpt   PLUS")) == {
+        "plan_name_in_frontmatter"
+    }
+
+
+def test_plan_name_with_a_plus_sign_matches(tmp_path):
+    assert _plan_codes(tmp_path, _plan_doc(applies_when="Copilot Pro+ seat")) == {
+        "plan_name_in_frontmatter"
+    }
+
+
+def test_plan_name_matches_whole_phrases_only(tmp_path):
+    for text in ("Claude Professional", "the GitHub Freedom act", "MyClaude Pro", "Claude Maxim"):
+        assert _plan_codes(tmp_path, _plan_doc(applies_when=text)) == set(), text
+
+
+def test_plan_name_is_allowed_in_the_harnesses_doc(tmp_path):
+    text = _plan_doc(applies_when="you are on Claude Max")
+    assert _plan_codes(tmp_path, text, name="harnesses.md") == set()
+
+
+def test_plan_name_is_allowed_outside_the_two_frontmatter_fields(tmp_path):
+    text = _plan_doc().replace("# Doc", "# Doc\n\nClaude Max is a plan.")
+    assert _plan_codes(tmp_path, text) == set()
+
+
+def test_plan_name_ban_needs_a_kind(tmp_path):
+    text = _plan_doc(applies_when="you are on Claude Max").replace("kind: basics\n", "")
+    assert _plan_codes(tmp_path, text) == set()
+
+
+# --- #162: every external link of a kind doc carries a check date. ---
+
+
+def _linked(body: str, kind: str | None = "basics") -> str:
+    return _kind_doc(kind, body=f"# Doc\n\n{body}\n")
+
+
+def _link_codes(tmp_path: Path, body: str, kind: str | None = "basics") -> set[str]:
+    _write(tmp_path / "docs" / "a.md", _linked(body, kind))
+    return {code for path, code in _codes(tmp_path) if path == "docs/a.md"}
+
+
+def test_external_link_with_a_check_date_passes(tmp_path):
+    assert _link_codes(tmp_path, "See [x](https://example.com/x) (checked 2026-09-01).") == set()
+
+
+def test_external_link_with_a_volatile_check_date_passes(tmp_path):
+    body = "See [x](https://example.com/x) (checked 2026-09-01, volatile)."
+    assert _link_codes(tmp_path, body) == set()
+
+
+def test_external_link_check_date_of_today_passes(tmp_path):
+    from datetime import date
+
+    body = f"[x](https://example.com/x) (checked {date.today().isoformat()})"
+    assert _link_codes(tmp_path, body) == set()
+
+
+def test_external_link_without_a_check_date_fails(tmp_path):
+    codes = _link_codes(tmp_path, "See [x](https://example.com/x) for more.")
+    assert codes == {"external_link_date_missing"}
+
+
+def test_external_link_at_the_end_of_the_line_without_a_date_fails(tmp_path):
+    assert _link_codes(tmp_path, "[x](http://example.com/x)") == {"external_link_date_missing"}
+
+
+def test_external_link_with_a_malformed_check_date_fails(tmp_path):
+    for note in (
+        "(checked 2026-9-1)",
+        "(checked 2026-09-01, stale)",
+        "(checked 2026-09-01,volatile)",
+        "(checked yesterday)",
+        "(checked 2026-13-45)",
+        "(checked )",
+        "(checked 2026-09-01 volatile)",
+    ):
+        codes = _link_codes(tmp_path, f"[x](https://example.com/x) {note}")
+        assert codes == {"external_link_date_malformed"}, note
+
+
+def test_external_link_with_a_future_check_date_fails(tmp_path):
+    from datetime import date, timedelta
+
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    codes = _link_codes(tmp_path, f"[x](https://example.com/x) (checked {tomorrow})")
+    assert codes == {"external_link_date_future"}
+
+
+def test_each_external_link_on_a_line_needs_its_own_date(tmp_path):
+    body = "[a](https://a.example/) (checked 2026-09-01) and [b](https://b.example/)"
+    assert _link_codes(tmp_path, body) == {"external_link_date_missing"}
+
+
+def test_external_link_date_must_follow_the_link(tmp_path):
+    body = "(checked 2026-09-01) [a](https://a.example/)"
+    assert _link_codes(tmp_path, body) == {"external_link_date_missing"}
+
+
+def test_external_link_in_a_code_fence_needs_no_date(tmp_path):
+    body = "```\n[x](https://example.com/x)\n```"
+    assert _link_codes(tmp_path, body) == set()
+
+
+def test_internal_and_mailto_links_need_no_date(tmp_path):
+    body = "# Top\n\n[a](#top) [b](mailto:me@example.com)"
+    assert _link_codes(tmp_path, body) == set()
+
+
+def test_check_dates_are_not_required_without_a_kind(tmp_path):
+    assert _link_codes(tmp_path, "[x](https://example.com/x)", kind=None) == set()
+
+
+def test_external_link_in_a_relation_needs_a_date_too(tmp_path):
+    line = "Relations: needs: [Svc](https://example.com/svc)"
+    _write(tmp_path / "docs" / "a.md", _practice(_option(relations=line)))
+    codes = {c for p, c in _codes(tmp_path) if p == "docs/a.md"}
+    assert codes == {"external_link_date_missing"}
