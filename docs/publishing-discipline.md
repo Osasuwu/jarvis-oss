@@ -65,8 +65,8 @@ GitLab "Prevent approvals by users who add commits"
 ([approval settings](https://docs.gitlab.com/user/project/merge_requests/approvals/settings/),
 Premium); Azure DevOps "Prohibit the most recent pusher from approving their own changes"
 ([branch policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies)).
-Kubernetes' Prow bars the author from `/lgtm`, but approvers in `OWNERS` can approve their own
-pull request ([owners](https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md)).
+Kubernetes' Prow bars the author from `/lgtm`; its `implicit_self_approve` setting, off by
+default, lets an approver in `OWNERS` approve their own pull request ([owners](https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md)).
 
 **Best pick when** there are two people, or the agent pushes as its own identity (option 3).
 
@@ -171,7 +171,10 @@ which gates a job, not the merge — for one developer it leaves nobody to appro
 your own token approves over the API. Keyless signing with
 [gitsign](https://github.com/sigstore/gitsign) ties a signature to an OIDC login instead of a key,
 but its cache means "you only need to auth once every 10 minutes" — inside that window an agent
-can sign.
+can sign. For a package, npm's `npm stage publish` can run from CI with OIDC, while approving the
+staged version needs "proof of presence", at the CLI or npmjs.com
+([trusted publishers](https://docs.npmjs.com/trusted-publishers/)); that step is free and the
+agent cannot perform it.
 
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
@@ -310,8 +313,10 @@ First, in order:
    credentials away), or 5 (require something the agent lacks) if that same token cannot administer
    the repo and switch the check off. No → the merge click is the
    person's, and 4 and 6 record who it was. If nobody is present when it merges (a scheduled
-   job), the answer is Yes and no hold gets cleared in that run: stop the job merging (3, or a
-   draft from 4), leave the change for a person, and cap the damage with 8.
+   job), the answer is Yes, and a draft (4) does not hold, since the job's own token clears it.
+   Stop the job merging: 3 where a hosted agent or a branch rule can bar the account; otherwise
+   take the merge step out of the job, which then opens the change and leaves it for a person
+   (intent, not proof). Cap the damage with 8.
 3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
    rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
    required pipelines and can restrict merging to Maintainers, but no approval rules.
@@ -322,7 +327,7 @@ First, in order:
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
 | 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
-| 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
+| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs none of that |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
 | 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
@@ -330,9 +335,9 @@ First, in order:
 Among what is left: for two people where required approvals are available (a public repo or a
 paid plan), 2 is the proof; on a private GitHub Free repo it is out, and the team has 4, 7 and 8,
 or goes public or pays. For one developer, 3 with a hosted agent that
-cannot merge makes the merge click yours, and costs an identity and, on a private repo, a paid Copilot plan; 5 needs a
+cannot merge makes the merge click yours, and costs an identity and a paid Copilot plan; 5 needs a
 hardware key and a check you maintain, and required checks, so on a private GitHub Free repo it is
-not buildable. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
+not buildable, except an npm package's staged publish. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
 not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
 On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated and
 8 to cap what merges unread, unless you make the repo public or pay, for a plan or for a hosted

@@ -281,9 +281,11 @@ neither, so every option there reports and nothing blocks — and the review hol
 is advisory: a draft holds only while whoever merges respects it, and a label hold needs a
 required check, which this plan lacks
 ([`publishing-discipline.md`](publishing-discipline.md)). Option 10 is the one that still blocks,
-at the agent's own write. Two cheap exits: GitHub Pro lists
-"Protected branches" among its tools for private repositories, and a public repository gets both
-protected branches and rulesets on Free. And if the pull request under check can also edit the
+the agent's own edit to the check, though not a doc that breaks the shape. Two exits: a paid
+plan, where GitHub Pro (personal account) lists
+"Protected branches" among its tools for private repositories, and Team is the organization plan
+with them in private repositories; or a public repository, which gets both protected branches
+and rulesets on Free. And if the pull request under check can also edit the
 check, only review stops it — see "At more than one developer".
 
 ## How to choose
@@ -309,7 +311,7 @@ First, in order:
 1. **Can a check be required on your repo?** No (a private repo on GitHub Free) → any option still
    reports, but nothing below blocks a merge. A review hold is a fallback only while a person does
    the merging and respects it; if an agent or a scheduled job merges, nothing holds, and a
-   pre-commit hook on each clone is a stand-in anyone can skip. Paying for Pro, or making the repo
+   pre-commit hook on each clone is a stand-in anyone can skip. Paying (Pro for a personal account, Team for an organization), or making the repo
    public, turns this to yes; 10 blocks the agent's own edit to the check files without either.
 2. **Do you need a rule across files?** "Every doc has an example" → 8 (a script, or conftest on
    extracted frontmatter). "This field names an entry" → also 5's `reference()`, if you build with
@@ -318,8 +320,9 @@ First, in order:
    (4) also covers keys, word count and links; the Structured MADR action covers keys and
    sections only.
 4. **Does a build already validate content?** Astro, Velite, Markdoc → 5. Hugo → 5 too, if you
-   will write the rule into a layout with `errorf`; otherwise its link checking, and MkDocs' and
-   Docusaurus', counts as 7 and the keys come from 2 or 3.
+   will write the rule into a layout with `errorf`; otherwise the keys come from 2 or 3. MkDocs'
+   and Docusaurus' link checking counts as 7; Hugo's fails the build only for `ref` and `relref`
+   links.
 
 | Option | Fits only if |
 |---|---|
@@ -360,7 +363,9 @@ Enterprise Cloud and Enterprise Server
 Code owners work on a public repository on Free, but an author cannot approve their own pull
 request, so with one account a required code-owner review is never given and you merge around it.
 GitLab's code owners are "Premium, Ultimate". So for one developer on a personal account, code
-owners and those two rulesets are all out: `pull_request_target` and review are what is left. On
+owners and those two rulesets are all out: `pull_request_target` and review are what is left. A
+team on a private repository under a Free organization is in the same place, with code owners out
+for plan rather than self-approval. On
 GitLab Free, the CI config can live in another project
 ([custom CI/CD configuration file](https://docs.gitlab.com/ci/pipelines/settings/#specify-a-custom-cicd-configuration-file)),
 out of the merge request's reach; without that, review alone stands between a pull request and

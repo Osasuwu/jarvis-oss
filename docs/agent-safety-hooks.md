@@ -98,7 +98,7 @@ is covered only partly: Claude Code's rules reach shell redirections and recogni
 such as `sed` and `tee`, but not commands that read files without naming them (`grep -r pattern .`) or scripts that open
 files themselves.
 
-**Lifecycle.** Edit settings; nothing to install. Status: sourced.
+**Lifecycle.** Edit settings; nothing to install. Status: tried in CI (`agent-dispatch.yml`).
 
 ### 4. A program that inspects each call before it runs
 
@@ -419,7 +419,7 @@ requests under the maintainer's own admin account (1 is out on both counts). We 
 scripts, each under option 4's Install: a secret scanner, a protected-file block, a literal gate
 and an authority guard.
 They run from the untracked `.claude/settings.local.json`; a clone copies the snippet. The CI job
-is bounded by option 3: deny rules and an allowlist (`agent-dispatch.yml`, lines 129-130). Under 8, push protection
+is bounded by option 3 (`agent-dispatch.yml`, lines 129-130). Under 8, push protection
 and secret scanning are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
 `machinery-guard` and `waiting-human-review` — admins included (`gh api repos/Osasuwu/jarvis-oss`
 and its `/branches/main/protection`, read on 2026-09-30). The review check

@@ -281,8 +281,9 @@ the run has nobody to look: CI, a devcontainer build, a scheduled run.
 
 **Cost.** A probe line sits in the person's rules and must be removed on uninstall. A token echo
 starts the reader, which can need a credential and cost money. The hook logs a load, not that the
-reader followed what it said. Hooks exist only on harnesses that have them: [`harnesses.md`](harnesses.md)
-says which, and on the others only the echo is left.
+reader followed what it said. The shipped `jarvis-setup` skill
+([SKILL.md](../.agents/skills/jarvis-setup/SKILL.md)) found an equivalent hook mechanism on
+Claude Code only, so elsewhere only the echo is left.
 
 Status: sourced (the hook); the probe is the example's own advice, untried here.
 
@@ -315,16 +316,17 @@ has to read, or paste.
 elsewhere, or the person opted out? Yes → **print, do not write**. Nobody there to have opted out
 or to approve a write (CI, a devcontainer build, a scheduled run)? Then print to the log, unless
 the person authorised writing in advance in the tool's own config; even then write only through
-3 or 4, in a region or file the tool owns. If the format has neither comments nor an include
-(bare JSON such as `.mcp.json`), nothing is left to write through: end the run with the content
-printed and a non-zero exit, so a person sees that it is undone, rather than a log line nobody
-reads. Seed-once (1) still applies where the file is absent.
+3 or 4, or 5 for a key that is absent, in a region, file or key the tool owns. A format with
+neither comments nor an include, such as `.mcp.json`, takes 5 (`npm pkg set` does it for
+`package.json`). Where no parser exists either, end the run with the content printed and a
+non-zero exit, so a person sees that it is undone, rather than a log line nobody reads. Seed-once
+(1) still applies where the file is absent.
 
 **What to write.** Prose the person may already state their own way → **option 7** picks what's
 missing, when a model or a person is there to judge (see 7); it has no place of its own, so the
 option that carries it decides update and uninstall. With neither, skip 7: write the whole block
 with 3 or 4 and accept that it may repeat something the person already said. Where the format
-has neither, the paragraph above applies: print and fail the run.
+has neither, use 5 or print and fail the run, as under **First**.
 
 **Where.** No option fits every setup; choose by the trade-off in its own *best pick when* and
 *cost*. The table rules out by checkable fact.
