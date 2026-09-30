@@ -142,9 +142,8 @@ Extras exist on top of that core path:
     resolve — say so, don't report success on the strength of the line alone. This skill has no
     load check for other harnesses; elsewhere, trust the write.
 - **Hooks** — Claude Code can enforce the two invariants mechanically via hook scripts (e.g.
-  blocking a tool call that would persist a secret). Offer this only on Claude Code; this
-  skill has a hook recipe for Claude Code only, so on every other harness the invariants stay
-  prose-only, enforced by the agent reading them.
+  blocking a tool call that would persist a secret). Offer this only on Claude Code; on
+  every other harness the invariants stay prose-only, enforced by the agent reading them.
 
 Skipping both extras must still leave a fully working rules file — they are conveniences, not
 requirements of this skill's core path.

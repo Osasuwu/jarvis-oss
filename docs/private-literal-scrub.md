@@ -92,8 +92,8 @@ up with the hook and the list.
 **Install (ours).** Two local hooks read the same list as the CI scrub, match the same variants
 and never print a value. Once per device that pushes to, or writes pull requests on, a public
 repository. With the list unset, empty or without a letter or digit, the git hook blocks and says nothing
-was checked; `literal-gate` does the same for a call that would send text, and lets other calls
-pass. Cost per device: two hand installs, the variable, and a Python start per push and
+was checked; `literal-gate` blocks every GitHub MCP call and each `gh` command that sends text, and lets
+other shell calls pass. Cost per device: two hand installs, the variable, and a Python start per push and
 per Bash or GitHub MCP call. Harness: the git hook works under any harness; literal-gate is a
 Claude Code PreToolUse hook whose matchers name Claude Code tools (`.agents/hooks/settings.snippet.json`).
 
