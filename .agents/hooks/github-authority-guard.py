@@ -1,3 +1,4 @@
+# Install and check: docs/agent-safety-hooks.md#4-a-program-that-inspects-each-call-before-it-runs
 """PreToolUse hook: keep the agent off the human's three GitHub authorities.
 
 The agent works under the human's account and token, so GitHub itself cannot

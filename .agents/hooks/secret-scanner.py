@@ -1,3 +1,4 @@
+# Install and check: docs/agent-safety-hooks.md#4-a-program-that-inspects-each-call-before-it-runs
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
 Handles three tool types:

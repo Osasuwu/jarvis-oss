@@ -1,6 +1,8 @@
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from structure_gate import _SIGNOFF_ENTRY_RE, check_tree
 
 FIXTURES = Path(__file__).parent / "fixtures" / "structure_gate"
@@ -60,18 +62,17 @@ def test_example_missing_fit_or_provenance_fails():
     assert ("examples/orphan.md", "example_missing_provenance") in codes
 
 
-def test_resource_missing_required_keys_fails():
-    violations = check_tree(FIXTURES / "resource_missing_keys")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("resources/bare.md", "resource_missing_key:pairs_with") in codes
-    assert ("resources/bare.md", "resource_missing_key:cost") in codes
-    assert ("resources/bare.md", "resource_missing_key:harnesses") not in codes
+def test_resources_directory_is_not_checked(tmp_path):
+    """A `resources` directory is not a doc kind (#167): a file there, keyless or dangling, is not the
+    gate's business, so the removed rules cannot come back through it."""
+    _write(tmp_path / "resources" / "bare.md", "---\npairs_with: docs/gone.md\n---\n\n# Bare\n")
+    assert check_tree(tmp_path) == []
 
 
 def test_pairs_with_unresolvable_fails():
     violations = check_tree(FIXTURES / "pairs_with_unresolvable")
     codes = {(v.path, v.code) for v in violations}
-    assert ("resources/dangling.md", "pairs_with_unresolvable") in codes
+    assert ("examples/dangling.md", "pairs_with_unresolvable") in codes
 
 
 def test_example_stale_last_seen_fails():
@@ -226,29 +227,74 @@ signed_off:
 """
 
 
-def test_resource_pairs_with_accepts_several_comma_separated_docs(tmp_path):
-    """One resource can serve more than one doc (#41): every listed target must resolve."""
+def _example_paired(pairs_with_lines: str) -> str:
+    return f"---\nfit: fixture\nlast_seen: 2026-09-16\n{pairs_with_lines}---\n\n# Paired\n"
+
+
+def test_example_pairs_with_accepts_several_comma_separated_docs(tmp_path):
+    """One example can evidence more than one doc (#41): every listed target must resolve."""
     _write(tmp_path / "docs" / "a.md", _MIN_DOC)
     _write(tmp_path / "docs" / "b.md", _MIN_DOC)
     _write(
-        tmp_path / "resources" / "shared.md",
-        "---\npairs_with: docs/a.md, docs/b.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
+        tmp_path / "examples" / "shared.md",
+        _example_paired("pairs_with: docs/a.md, docs/b.md\n"),
     )
     assert check_tree(tmp_path) == []
 
 
-def test_resource_pairs_with_fails_when_any_one_of_several_targets_is_missing(tmp_path):
+@pytest.mark.parametrize(
+    "value",
+    [
+        "docs/gone.md, docs/a.md, docs/b.md",
+        "docs/a.md, docs/gone.md, docs/b.md",
+        "docs/a.md, docs/b.md, docs/gone.md",
+    ],
+    ids=["first", "middle", "last"],
+)
+def test_example_pairs_with_fails_when_any_one_of_several_targets_is_missing(tmp_path, value):
+    """Each entry is resolved: a check that skips the first, a middle or the last one passes
+    the case where the bad entry sits elsewhere, so all three positions are pinned (#84)."""
     _write(tmp_path / "docs" / "a.md", _MIN_DOC)
-    _write(
-        tmp_path / "resources" / "shared.md",
-        "---\npairs_with: docs/a.md, docs/gone.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
-    )
+    _write(tmp_path / "docs" / "b.md", _MIN_DOC)
+    _write(tmp_path / "examples" / "shared.md", _example_paired(f"pairs_with: {value}\n"))
     violations = check_tree(tmp_path)
     assert [(v.path, v.code) for v in violations] == [
-        ("resources/shared.md", "pairs_with_unresolvable")
+        ("examples/shared.md", "pairs_with_unresolvable")
     ]
     assert "docs/gone.md" in violations[0].message
     assert "docs/a.md" not in violations[0].message
+    assert "docs/b.md" not in violations[0].message
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        "pairs_with:\n",
+        "pairs_with:   \n",
+        "pairs_with: ,\n",
+        "pairs_with:\n  - docs/a.md\n",
+    ],
+    ids=["empty", "blank", "commas-only", "yaml-block-list"],
+)
+def test_example_empty_or_list_form_pairs_with_fails(tmp_path, lines):
+    """The frontmatter parser reads flat `key: value` lines, so a block list comes out as the
+    key with an empty value. Present-but-empty must not pass as a pairing (#84)."""
+    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
+    _write(tmp_path / "examples" / "loose.md", _example_paired(lines))
+    assert ("examples/loose.md", "pairs_with_empty") in _codes(tmp_path)
+
+
+def test_real_examples_pair_with_docs_only():
+    """F3 (#167): every example in this repo evidences a doc under docs/, nothing else."""
+    from structure_gate import _parse_frontmatter
+
+    examples = sorted((REPO_ROOT / "examples").glob("*.md"))
+    assert examples
+    for example in examples:
+        fields = _parse_frontmatter(example.read_text(encoding="utf-8"))
+        targets = [t.strip() for t in fields["pairs_with"].split(",") if t.strip()]
+        assert targets, example.name
+        assert all(t.startswith("docs/") for t in targets), example.name
 
 
 def test_example_missing_pairs_with_fails(tmp_path):

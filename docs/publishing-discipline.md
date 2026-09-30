@@ -141,6 +141,21 @@ included — and the event log shows the account, not the person. It records int
 [`review-hold-cleared-by-same-account.md`](../examples/review-hold-cleared-by-same-account.md).
 Drafts as the hold: sourced.
 
+**Install (ours).** [`waiting-human-review.yml`](../.github/workflows/waiting-human-review.yml):
+on a freshly opened or ready-for-review pull request with no reviewer requested, it adds a
+`waiting-human-review` label and fails; on every later event it fails while the label is on or a
+review request is pending. Nothing removes the label automatically. Cost: one Actions job per
+pull request event, one label clear per pull request. To adopt: copy the workflow, create the
+label, and add `waiting-human-review` to the default branch's required checks — unrequired, a red
+run blocks nothing.
+
+#### Check
+
+A new pull request gets the label within a minute and the `waiting-human-review` check is red
+with "Human review is owed". Clear the label and the check re-runs green on `unlabeled`. No label:
+the workflow is not installed or lacks `issues: write`. Red check but the merge button works: the
+check is not required, or you are an administrator and protection does not apply to you.
+
 ### 5. An approval step the agent cannot perform
 
 **How it works.** Approval needs something only the person has at that moment. A signature from a
@@ -189,6 +204,23 @@ barrier. A rule like "separate commit" is met by splitting commits, not by readi
 [`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md). Trailers,
 freshness metadata and notes: sourced.
 
+**Install (ours).** [`SIGNOFF.md`](SIGNOFF.md) entries
+`` - `docs/<doc>.md`: <date>; facts: <human | report URL> ``, plus the doc's own `signed_off:`
+field, empty on the drafting pull request. [`tests/structure_gate.py`](../tests/structure_gate.py)
+checks them: `signoff_missing_entry` (date set, no ledger line), `signoff_missing_facts` (a line
+with the matching date and no `facts:`), `signoff_same_commit` (line added in the commit that
+last changed the doc body), run by
+[`structure-gate.yml`](../.github/workflows/structure-gate.yml) with `fetch-depth: 0`, because the
+checks read the doc's git history. Cost: one structure-gate run per pull request event and one
+follow-up sign-off pull request per doc. It does not prove that a person, rather than an agent
+holding the same token, wrote the line; see [What every option depends on](#what-every-option-depends-on).
+
+#### Check
+
+Fill in `signed_off:` on a doc without adding a ledger line; `structure-gate` goes red naming
+`signoff_missing_entry` and the doc path. A green run prints the pytest summary for
+`tests/test_structure_gate.py`.
+
 ### 7. Make the reading checkable
 
 **How it works.** Instead of asking the person to read everything, a context that did not write
@@ -211,6 +243,16 @@ code and "only 48%" always check it
 ([Sonar](https://www.sonarsource.com/company/press-releases/sonar-data-reveals-critical-verification-gap-in-ai-coding/)).
 
 **Lifecycle.** A skill or CI job. Status: tried in this repo.
+
+**Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
+did not write the doc; its report URL goes in the ledger entry's `facts:`. Cost: a model run per
+review-doc pass. Harness: a skill file any harness that loads skills can run
+([`harnesses.md`](harnesses.md)).
+
+#### Check
+
+The report is a comment on the pull request, and the ledger entry's `facts:` URL opens it.
+`facts: human` means no report was used.
 
 ## What every option depends on
 
@@ -284,8 +326,7 @@ separate-commit rule
 ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
 and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
 hardware-signed tag), either of which closes the first gap below. Open gaps: the same account
-can clear the label, as #70's was, with no way to tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
-The hold, the ledger and its checks:
-[`review-hold-and-signoff-ledger.md`](../resources/review-hold-and-signoff-ledger.md). The history
+can clear the label, as #70's was, with no way to tell person from agent; an administrator can switch protection off on this repo; 3 and 5 are not in place.
+The hold, the ledger and its checks: Install and Check in options 4, 6 and 7. The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure
 around it is [#44](https://github.com/Osasuwu/jarvis-oss/issues/44).

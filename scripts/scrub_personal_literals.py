@@ -1,3 +1,4 @@
+# Install and check: docs/private-literal-scrub.md#5-a-ci-scan-with-the-list-held-as-a-secret
 """Personal-literal scrub — CI step for #23.
 
 Reads a newline-separated list of private literals from the ``PERSONAL_LITERALS``

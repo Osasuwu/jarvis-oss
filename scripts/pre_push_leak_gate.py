@@ -1,3 +1,4 @@
+# Install and check: docs/private-literal-scrub.md#3-a-local-check-before-the-commit-or-the-write
 """Pre-push leak gate (#100): block a push that carries a personal literal.
 
 Installed as git's ``pre-push`` hook. It reads the literal list from ``PERSONAL_LITERALS``,

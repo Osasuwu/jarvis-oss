@@ -1,3 +1,4 @@
+# Install and check: docs/private-literal-scrub.md#3-a-local-check-before-the-commit-or-the-write
 """PreToolUse hook: block text bound for GitHub that holds a personal literal (#100).
 
 Covers the text the pre-push gate cannot see, because it never passes through git:

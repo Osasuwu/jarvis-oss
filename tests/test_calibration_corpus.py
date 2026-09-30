@@ -279,7 +279,7 @@ def test_corpus_states_the_split_counts():
 # --- the split cannot leak ----------------------------------------------------------------------
 #
 # A dev run at a dev commit reviews the docs that hold dev entries there, plus every file under
-# examples/ or resources/ that names such a doc in `pairs_with`, plus the repo-internal `.md`
+# examples/ that names such a doc in `pairs_with`, plus the repo-internal `.md`
 # links of all of those, one hop out (the review scope SKILL.md gives a doc, as CALIBRATION.md's
 # Method states it). None of that may be a test or held-out entry's file. Files are read at the
 # commit with `git show`, so the check is on the tree a snapshot is cut from, not on `main`.

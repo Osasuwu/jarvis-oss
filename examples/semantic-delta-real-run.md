@@ -6,7 +6,7 @@ pairs_with: docs/writing-into-user-owned-files.md
 
 # A semantic delta, run against a real rules file
 
-**Setup.** `jarvis-setup` ([resource](../resources/jarvis-setup-skill.md)) was run by an agent
+**Setup.** `jarvis-setup` was run by an agent
 session following `SKILL.md` step by step. It ran on a copy of the `CLAUDE.md` from
 [music-intel-mcp](https://github.com/Osasuwu/music-intel-mcp) at commit `db32f4a`. That is a small
 public project of ours, and its 59-line rules file was first written four months before this skill

@@ -45,18 +45,14 @@ it treats such files "as context, not enforced configuration"
 ([memory](https://code.claude.com/docs/en/memory)).
 
 **Fits only if** the repo is private, the agent's credentials reach nothing outside it, its
-default branch requires an approved pull request (on GitHub: Pro, Team or Enterprise), and the
+default branch requires an approved pull request (on GitHub: Pro, Team or Enterprise, which add
+required reviewers and protected branches for private repositories,
+[plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)), and the
 account the agent pushes from is not a repo admin.
 
-GitHub's words: "Protected branches are available in public repositories with GitHub Free and
-GitHub Free for organizations", and in private ones on the paid plans
-([protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches));
-"Pull request authors cannot approve their own pull requests"
-([required reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews)).
-
 **Best pick when** no file the agent can change on a branch weakens that review. A workflow
-edited on a branch changes the check run on that pull request; close that with code owners
-(option 8) or a token that cannot write workflow files (option 6).
+edited on a branch changes the check run on it; close that with code owners (option 8) or a token
+that cannot write workflow files (option 6).
 
 **Cost.** Every failure mode above; nothing fires if the agent forgets or is steered off course.
 
@@ -99,9 +95,8 @@ has a known path, not a secret that can appear in any file.
 
 **Cost.** Path rules see paths, not content, so they cannot find a secret in a file. The shell
 is covered only partly: Claude Code's rules reach shell redirections and recognized file commands
-such as `sed` and `tee`, but not "a command
-that reads files without naming them, such as `grep -r pattern .`", nor "a Python or Node script
-that opens files itself".
+such as `sed` and `tee`, but not commands that read files without naming them (`grep -r pattern .`) or scripts that open
+files themselves.
 
 **Lifecycle.** Edit settings; nothing to install. Status: sourced.
 
@@ -122,7 +117,7 @@ OpenCode plugins throw from `tool.execute.before` ([plugins](https://opencode.ai
 Vendors also ship ready-made scanners for these hooks, such as GitGuardian's
 [ggshield](https://github.com/GitGuardian/ggshield).
 
-**Fits only if** your harness has a blocking pre-call hook (the list under option 4), and the
+**Fits only if** your harness has a blocking pre-call hook (the list above), and the
 matchers and fields name the tools your version has.
 
 **Best pick when** you need to read *content* (a secret-shaped string in a file, command or issue
@@ -141,22 +136,51 @@ body) at the moment of the call, including calls to remote APIs that never touch
   exits 0 on input it cannot parse lets the call through. A command that fails to launch —
   its interpreter is missing — exits non-zero but not 2, so it fails open where such exits do;
   chaining `|| exit 2` onto the command makes it deny there too. The cost is an interpreter
-  that is on PATH but does not run: on Windows, `python3` can be the Microsoft Store stub, which
-  exited 9009 for us ([#181](https://github.com/Osasuwu/jarvis-oss/issues/181)), so a command
-  naming `python3` denies every call its matcher covers. Our commands
-  try `python3`, fall back to `python`, and deny only when neither starts.
+  that is on PATH but does not run: on Windows `python3` can be the Microsoft Store stub, which
+  exited 9009 for us ([#181](https://github.com/Osasuwu/jarvis-oss/issues/181)), denying every
+  call the matcher covers. Ours try `python3`, fall back to `python`, and deny only when neither starts.
 - The agent can edit the hook or its settings unless something else stops it, and a hook in
   project settings can be turned off locally with `disableAllHooks`; only managed settings cannot.
 - Codex: "Treat tool hooks as a useful guardrail, not a complete
   enforcement boundary."
 
 **Lifecycle.** Scripts plus a settings entry per harness; updating means re-checking matchers
-and input fields against the current tools. Status: tried — the scripts are ours
-([resource](../resources/agent-safety-hooks.md)), and
+and input fields against the current tools. Status: tried — the scripts are ours, and
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) runs two of them on constructed tool
-calls. This repo ships them unwired: none of its settings loads them. To see whether a hook is
-wired, Claude Code's `/hooks` menu "shows every hook event with a count of configured hooks"
-([hooks](https://code.claude.com/docs/en/hooks)); the resource says how to trip one on purpose.
+calls.
+
+**Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing. A local Python process per matched call: no network, no tokens.
+
+- [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) denies `Bash` commands, GitHub MCP
+  inputs (reads included) and `Edit`/`Write`/`NotebookEdit` inputs holding secret-shaped strings
+  or `.env`-exfiltration commands. [`protected-files.py`](../.agents/hooks/protected-files.py)
+  denies file-edit calls on `PROTECTED_CANONICAL` paths, with no bypass for a person at the
+  keyboard. Both have `CUSTOMIZE` constants. Replace `PROTECTED_CANONICAL` (this repo's gate files) and
+  `PROTECTED_MIRROR` (ships empty) with yours; edit the working `SECRET_PATTERNS` and
+  `_SECRET_VARS`.
+- [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) wires them through
+  `$CLAUDE_PROJECT_DIR`, plus `literal-gate.py` (option 3 of
+  [`private-literal-scrub.md`](private-literal-scrub.md)) and `github-authority-guard.py`
+  (merging, removing `waiting-human-review`, branch-protection writes); "both hooks" below means
+  the first two. The scanner's shell matcher is `Bash`; the other two use `Bash|PowerShell`. Its
+  GitHub matcher is `^mcp__github__`, the whole server, since a list of write tools fails open
+  on a rename ([`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md));
+  change the prefix if your server has another name.
+- Worktrees: the untracked `.claude/settings.local.json` is not in a fresh checkout. Here it is in
+  [`.worktreeinclude`](../.worktreeinclude), so Claude Code copies it into the worktrees it makes;
+  one made by `git worktree add` needs a hand copy, and one on a branch older than a hook's script
+  is blocked by its `|| exit 2` until rebased.
+
+#### Check
+
+Both hooks are silent when they do not fire, so a session never shows whether they were wired.
+
+1. Trip one on purpose: ask the agent to write a `sk-ant-` string of 20+ characters to a scratch
+   file, or to edit a `PROTECTED_CANONICAL` path. A wired hook denies with a `BLOCKED:` reason in
+   the transcript; one that fails to launch blocks with the shell's error text instead.
+2. `claude --debug` logs every hook invocation and exit code, silent exit-0 runs included, to
+   `~/.claude/debug/<session-id>.txt`. Neither keeps a log of its own. Claude Code's `/hooks`
+   menu lists what is configured.
 
 ### 5. OS sandbox or container
 
@@ -168,14 +192,10 @@ loads configuration and code from", whatever `allowWrite` says (the same page ha
 Of your repo's own gate files, `.claude/hooks` and `.git/hooks` are on it; hook scripts kept
 elsewhere and CI workflows are not, and each needs a `denyWrite` entry.
 Codex's `workspace-write` sandbox has no network by default
-([approvals and security](https://developers.openai.com/codex/agent-approvals-security)); Gemini
-CLI uses Seatbelt or containers
-([sandbox](https://github.com/google-gemini/gemini-cli/blob/main/docs/cli/sandbox.md)).
+([approvals and security](https://developers.openai.com/codex/agent-approvals-security)).
 A dev container isolates the whole session, and Docker's `readonly` bind-mount option will
 "prevent the container from writing to the mount"
-([bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)); on Linux, `chattr +i` makes a single file
-unwritable to anyone without root; plain `chmod` does not, since the agent's own account can
-change it back. Claude Code's sandbox also limits which hosts a command can reach.
+([bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)). Claude Code's sandbox also limits which hosts a command can reach.
 
 **Fits only if** your harness has a sandbox for your OS (Claude Code: macOS, Linux or WSL2) or
 you run the agent in a container; (Claude Code) `allowUnsandboxedCommands` is `false` and
@@ -188,8 +208,7 @@ in a `denyWrite` entry you wrote, or (container) on a read-only mount.
 file or an allowed API call passes. Claude Code's sandbox covers commands, not its own file-edit
 tools, and "Native Windows is not supported". A command it blocks can be retried with
 `dangerouslyDisableSandbox`, which "goes through the regular permission flow" — a prompt, or
-option 10's classifier. With `allowUnsandboxedCommands: false`, "every command Claude runs must
-run sandboxed unless you've listed it in `excludedCommands`". A container keeps what you mount:
+option 10's classifier. A container keeps what you mount:
 with permissions skipped it does "not prevent a malicious project from exfiltrating anything
 accessible inside the container" ([devcontainer](https://code.claude.com/docs/en/devcontainer)).
 
@@ -205,14 +224,10 @@ the GitHub MCP server with `--read-only`, where "write tools are skipped", or on
 no secrets in the agent's environment. A gateway between agent and MCP servers can also filter:
 Docker's MCP Gateway has a `block-secrets` switch
 ([run reference](https://github.com/docker/mcp-gateway/blob/main/docs/generator/reference/docker_mcp_gateway_run.yaml)),
-which reads content. A credential broker such as Infisical's
-[Agent Vault](https://github.com/Infisical/agent-vault)
-gives the agent a dummy value and swaps in the real one on the way out. On GitHub, a classic
+which reads content. On GitHub, a classic
 token needs the `workflow` scope to change files under `.github/workflows`, a fine-grained one
 the Workflows permission ([contents API](https://docs.github.com/en/rest/repos/contents),
-[permissions](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens));
-the scope is waived for a file another branch already holds
-([scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps)).
+[permissions](https://docs.github.com/en/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens)).
 
 **Fits only if** you choose the credentials and tools the agent runs with, and it can do its job
 without the write you withhold.
@@ -239,10 +254,7 @@ covers humans and every agent harness alike.
 
 **Cost.** Commits only: not issue bodies, API calls or files never committed. Anyone, agent
 included, can skip it — `--no-verify` will "Bypass the pre-commit and commit-msg hooks"
-([git-commit](https://git-scm.com/docs/git-commit)). A `git` wrapper placed earlier on `PATH`
-can refuse the flag, but it "does not protect against the agent calling git through a path that
-bypasses your PATH"
-([pydevtools](https://pydevtools.com/handbook/how-to/how-to-stop-ai-agents-from-bypassing-pre-commit-hooks/)).
+([git-commit](https://git-scm.com/docs/git-commit)).
 
 **Lifecycle.** Config file in the repo, install per clone. Status: sourced.
 
@@ -259,16 +271,17 @@ Secret scanning also reads issue and pull request text, as alerts
 CI can run a scanner on each pull request; a required review (linked under option 1) gates who
 may merge, and code owners do it per path
 ([code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)).
-A push ruleset can "Restrict file paths" — "Prevent commits that include changes in specified
-file paths from being pushed" — but "Push rulesets are available for the GitHub Team plan in
-internal and private repositories"
+A push ruleset can restrict file paths, on Team and only in private or internal repositories
 ([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
 
 **Fits only if** your plan has the check you want (GitHub's plans; elsewhere, check your host's):
 
 - a CI scan: any plan; on a private repo it spends Actions minutes;
-- push protection: a public repo, or a private one with Secret Protection, sold only on Team and Enterprise;
-- required review or code owners: a public repo, or a private one on Pro, Team or Enterprise, and the account the agent pushes from is not a repo admin.
+- push protection: a public repo, or a private one with Secret Protection, sold only on Team and Enterprise
+  ([Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security));
+- required review or code owners: a public repo, or a private one on Pro, Team or Enterprise
+  (the availability note on [protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)),
+  and the account the agent pushes from is not a repo admin.
 
 **Best pick when** several people or agents write to one repo and you need one check none of
 them can switch off locally.
@@ -278,11 +291,7 @@ a pushed branch, which is already on the server. "by default, anyone with write 
 repository can bypass push protection by specifying a bypass reason", unless you set up
 [delegated bypass](https://docs.github.com/en/code-security/concepts/secret-security/delegated-bypass);
 push protection for repositories "Requires GitHub Secret Protection to be enabled"
-([push protection](https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection)),
-and "You must be on a GitHub Team or GitHub Enterprise plan in order to purchase GitHub Code
-Security or GitHub Secret Protection"
-([Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security)).
-Actions minutes: [billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+([push protection](https://docs.github.com/en/code-security/secret-scanning/introduction/about-push-protection)).
 A required review that the agent's own account can approve, remove or outrank as admin is a
 request, not a barrier.
 
@@ -317,13 +326,12 @@ as good as its detector; you run the pipeline. It does not cover interactive ses
 **How it works.** A classifier model, not a person, approves or blocks risky calls: Claude Code's
 auto mode ([auto mode](https://claude.com/blog/auto-mode)).
 
-**Fits only if** your harness has a classifier mode (Claude Code's auto mode).
+**Fits only if** your harness has a classifier mode.
 
-**Best pick when** option 2 fits your risk but no person is present, and an occasional miss is
-tolerable.
+**Best pick when** option 2 fits your risk but no person is present and a miss is tolerable.
 
 **Cost.** Probabilistic: it can be wrong both ways. Each check adds "a round-trip before
-execution", though "Reads and working-directory edits outside protected paths skip the classifier"
+execution"; "Reads and working-directory edits outside protected paths skip the classifier"
 ([permission modes](https://code.claude.com/docs/en/permission-modes)). Use it beside a
 deterministic layer, not in place of one.
 
@@ -408,20 +416,17 @@ same condition, and push protection only with Secret Protection bought.
 and as an unattended CI job ([`agent-dispatch.yml`](../.github/workflows/agent-dispatch.yml))
 whose own token writes (9 is out). Local sessions run, by the maintainer's report, often with nobody approving each call (2 is out), and open issues and pull
 requests under the maintainer's own admin account (1 is out on both counts). We ship 4 as four
-scripts: a secret scanner on file edits, `Bash` tool commands and calls
-to a GitHub MCP server named `github`; a protected-file block on the hook scripts, their
-snippet, `.gitleaks.toml` and `.worktreeinclude`; a literal gate on text bound for GitHub,
-against the device's personal-literals list; and an authority guard on merging, on removing
-`waiting-human-review` and on branch-protection writes.
-None is wired into this repo's settings; a clone copies the snippet. Under 8, push protection
+scripts, each under option 4's Install: a secret scanner, a protected-file block, a literal gate
+and an authority guard.
+They run from the untracked `.claude/settings.local.json`; a clone copies the snippet. Under 8, push protection
 and secret scanning are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
 `machinery-guard` and `waiting-human-review` — admins included (`gh api repos/Osasuwu/jarvis-oss`
 and its `/branches/main/protection`, read on 2026-09-30). The review check
 does not bind a local session without that guard: its token is the maintainer's admin token, which can remove the
 `waiting-human-review` label or switch the protection off — see
 [`review-hold-cleared-by-same-account.md`](../examples/review-hold-cleared-by-same-account.md).
-The protected-file hook blocks our own edits too, with no bypass for a person at the keyboard: a
-hook's stdin is always piped, so a presence check would see every session as unattended; see
+The protected-file hook blocks our own edits too, with no bypass for a person at the keyboard;
+see
 [`protected-files-fail-closed.md`](../examples/protected-files-fail-closed.md).
 Known gaps: the protected set lists no workflow file; the repo has no code owners file;
 the protected-file hook does not see shell writes — option 3's `Edit` deny rules would close
