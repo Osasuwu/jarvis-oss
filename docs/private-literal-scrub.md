@@ -39,7 +39,7 @@ pull request that added this doc.
 
 **How it works.** The agent cannot leak what it never read. Deny its file tools the private paths
 and run it in a sandbox that cannot see them. Claude Code's `Read` deny rules block its file tools
-and recognised shell commands, but "They don't apply to a command that reads files without naming
+and the file commands it recognises when they name the path, but "They don't apply to a command that reads files without naming
 them, such as `grep -r pattern .`" — instead, "enable the sandbox"
 ([permissions](https://code.claude.com/docs/en/permissions)). OWASP: "Limit access to
 sensitive data based on the principle of least privilege"
