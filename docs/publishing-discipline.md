@@ -213,7 +213,7 @@ last changed the doc body), run by
 [`structure-gate.yml`](../.github/workflows/structure-gate.yml) with `fetch-depth: 0`, because the
 checks read the doc's git history. Cost: one structure-gate run per pull request event and one
 follow-up sign-off pull request per doc. It does not prove that a person, rather than an agent
-holding the same token, wrote the line; see "What every option depends on".
+holding the same token, wrote the line; see [What every option depends on](#what-every-option-depends-on).
 
 #### Check
 
