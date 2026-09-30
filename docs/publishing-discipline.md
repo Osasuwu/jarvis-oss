@@ -27,8 +27,8 @@ completed it alone". What goes wrong:
 - **Nobody else** — one developer has no second person to approve.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages by the quote-check and
-doc-review runs on the pull requests that added them; the first set on 2026-09-18.
+from the tool's documentation). Quotes were checked against the linked pages by review runs on the pull requests that added
+them, and by the quote-check CI on later changes.
 
 ## The options
 

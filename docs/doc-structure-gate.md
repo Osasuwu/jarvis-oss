@@ -27,8 +27,8 @@ closes that gap, and brings its own ways to go wrong:
 - **The writer edits the check** — the pull request that breaks the shape also loosens the rule.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc; option 8's Install and Check
+from the tool's documentation). Quotes were checked against the linked pages by review runs on the
+pull requests that added them, and by the quote-check CI on later changes; option 8's Install and Check
 were added on 2026-09-30 (#167).
 
 ## The options
