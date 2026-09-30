@@ -122,11 +122,12 @@ This section describes Claude Code hooks. Whether another harness has hooks is i
 own docs; the harness table has no hooks column. Where you have none, the check has to run
 somewhere the agent does not decide. A CI check on a protected branch does (see CI). The
 harness's permission rules are another, where the harness has them: in Claude Code a matching deny
-rule blocks the call. Neither kind of rule covers every way to reach the
-same result. A Bash rule matches the command text the agent writes, so it covers the usual form
-of a command and not every way to run it. A Read or Edit rule matches by path, and covers the
-file tools and the shell commands Claude Code recognises, not a script that opens the file
-itself; the page below names the sandbox as the operating-system layer for that. See
+rule blocks the call, but a rule matches the form of a call, not what a program
+does. A Bash rule matches the command text the agent writes, so it covers the usual form of a
+command and not every way to run it. A Read or Edit rule covers the file tools and the file
+commands Claude Code recognises when they name the path, not a command that reads files without
+naming them, such as `grep -r`, and not a script that opens the file itself. For enforcement that
+does not depend on the command text, the page names sandboxing; see
 [Configure permissions](https://code.claude.com/docs/en/permissions) (checked 2026-09-30).
 If you have none of those, a git hook needs no account or paid plan. It
 stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
