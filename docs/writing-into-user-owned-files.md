@@ -241,8 +241,7 @@ Status: sourced.
 
 **How it works.** Read the file, judge for each required item whether the file already states it
 *in substance* — same commitment, any wording — and write only what is missing. The judge is a
-model or a person, not a string match. This is what `jarvis-setup` does
-([resource](../resources/jarvis-setup-skill.md)).
+model or a person, not a string match. This is what `jarvis-setup` does.
 
 It decides *what* to write, not *where*: the delta still goes in with another option. Plain
 append is option 2 unguarded.

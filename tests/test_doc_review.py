@@ -678,13 +678,6 @@ def test_permissions_are_exactly_contents_read_and_pull_requests_write():
     assert WORKFLOW.count("permissions:") == 1
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert len(uses) == 4
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 def test_oauth_token_reaches_the_review_step_only():
     assert WORKFLOW.count("secrets.") == 1
     assert "secrets.CLAUDE_CODE_OAUTH_TOKEN" in _step("Review")

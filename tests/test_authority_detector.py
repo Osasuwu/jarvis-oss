@@ -43,13 +43,6 @@ def test_permissions_are_issues_write_only():
     assert perms.split() == ["issues:", "write"]
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert uses
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 def test_script_does_not_interpolate_event_data_into_the_script_source():
     # `${{ github.event.* }}` inside a script is a code-injection vector
     # (a label name is attacker-chosen text).

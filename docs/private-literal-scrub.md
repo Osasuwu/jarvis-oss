@@ -87,8 +87,55 @@ up with the hook and the list.
 **Cost.** Free. Every machine and clone needs the setup and the list. Git's hooks are skipped with
 `--no-verify`; gitleaks' pre-commit hook with `SKIP=gitleaks`.
 
-**Lifecycle.** A hook plus a private list per machine. Status: tried — this repo, in two places (see Our own
-choice).
+**Lifecycle.** A hook plus a private list per machine. Status: tried — the scripts are ours.
+
+**Install (ours).** Two local hooks read the same list as the CI scrub, match the same variants
+and never print a value. Once per device that pushes to, or writes pull requests on, a public
+repository. With the list unset, empty or without a letter or digit, both block and say nothing
+was checked. Cost per device: two hand installs, the variable, and a Python start per push and
+per Bash or GitHub MCP call. Harness: the git hook works under any harness; literal-gate is a
+Claude Code PreToolUse hook whose matchers name Claude Code tools ([`harnesses.md`](harnesses.md)).
+
+- **`scripts/pre_push_leak_gate.py`**, a git `pre-push` hook. It scans each commit the remote
+  lacks — message, touched file names, added lines — plus ref names and annotated-tag names and
+  messages. A literal added then removed within one push still blocks. Removed lines and author
+  identity are not scanned. Exit 1 on a hit or any git error.
+- **`.agents/hooks/literal-gate.py`**, a PreToolUse hook. It checks every string in a GitHub MCP
+  tool input (matcher `^mcp__.*github`), and on `Bash` and `PowerShell` only `gh` commands that
+  send text (`pr`/`issue` writes, `release` and `gist` create/edit, `gh api` writes), reading
+  `--body-file`, `-F` and `--input` files. It blocks an unreadable body file, and a piped body
+  unless it is a heredoc or here-string. Exit 2 on a hit.
+
+1. **List:** keep it outside every repository, one literal per line, and export it as
+   `PERSONAL_LITERALS`. PowerShell:
+   `[Environment]::SetEnvironmentVariable("PERSONAL_LITERALS", (Get-Content -Raw "$HOME\.config\personal-literals.txt"), "User")`.
+   Linux/macOS: `export PERSONAL_LITERALS="$(cat "$HOME/.config/personal-literals.txt")"`. It is
+   the same list as the CI secret in 5, so update both.
+2. **Git hook:** `.git/hooks/pre-push` containing
+   `exec python3 "$(git rev-parse --show-toplevel)/scripts/pre_push_leak_gate.py" "$@"`;
+   `chmod +x` on Linux/macOS; `python` where `python3` does not start. Worktrees share it.
+3. **Harness hook:** merge the entries in
+   [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) into
+   `.claude/settings.local.json` under `hooks.PreToolUse`; see the worktree note in
+   [`agent-safety-hooks.md`](agent-safety-hooks.md).
+
+Not covered: `git push --no-verify`; a device without the hooks or the list; text sent by `curl`,
+the browser, another harness or a session with `disableAllHooks`; author names and emails;
+typos, split literals, encoded forms.
+
+#### Check
+
+Run after installing and after any change to the list or hooks; `canary-7f3c9a` is made up, use
+your own.
+
+1. Add `canary-7f3c9a` to the list and export it again. A clean push prints
+   `pre-push leak gate: clean - checked N literal(s) across M commit(s).`; no line at all means
+   the hook is not installed.
+2. On a throwaway branch commit a file containing `CANARY_7F3C9A` and push; it must be blocked
+   with `added content in <file>`.
+3. From the repository root, this must print `2`:
+   `echo '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 --body canary-7f3c9a"}}' | python .agents/hooks/literal-gate.py; echo $?`
+4. Remove the canary from the list and export it again.
 
 ### 4. A server-side push block
 
@@ -171,6 +218,30 @@ And the secret is readable "by any workflow that runs with secrets", as
 
 **Lifecycle.** A workflow, a script and a secret someone must set and keep current. Status:
 tried — this repo; it runs, but no planted hit has shown it catches anything.
+
+**Install (ours).** One step in the gitleaks job (Python 3.12, a walk of the checkout).
+[`scripts/scrub_personal_literals.py`](../scripts/scrub_personal_literals.py) reads
+`PERSONAL_LITERALS` (one literal per line), walks `GITHUB_WORKSPACE` including `.git`, and fails
+on any literal in any variant: any case, words joined by `-`, `_`, `.`, space or nothing,
+camelCase, and path forms (`C:\Users\x`, `C:/Users/x`, `/c/Users/x`). A hit prints the path with
+"values withheld"; an empty list, or one with no letter or digit, fails.
+[`gitleaks.yml`](../.github/workflows/gitleaks.yml) runs it on every pull request after gitleaks,
+passing the secret only to that step. To adopt: copy script and step, run
+`gh secret set PERSONAL_LITERALS < list.txt` from a file outside the repo, make the job required.
+Not covered: packed history, commit messages and PR or issue text (the hooks in 3 cover those
+before they leave), typos and literals split across lines, and fork pull requests. Keep each
+literal specific enough not to occur by chance, or every pull request goes red.
+
+#### Check
+
+- A run that checked something ends `Scrub clean — checked N literal(s); none found in the tree.`
+  (N = non-blank secret lines). The old line without a count proves nothing — it printed with no
+  list at all ([`scrub-without-literals-reported-clean.md`](../examples/scrub-without-literals-reported-clean.md)).
+- With no list the step fails with "No personal literals configured…"; expected on an unedited
+  fork pull request.
+- Never plant a real entry: the branch is public once pushed. Add a random canary
+  (`canary-7f3c9a`) to the secret, put it in a file on a throwaway branch and open a pull
+  request; the step must fail and name the file. If it passes, the secret is not what you think.
 
 ### 6. A hashed list in the repo
 
@@ -343,5 +414,4 @@ over pull request and issue text before it is sent. All three match variants of 
   request text before they leave, but only on machines where they are installed and the list is
   set; `git push --no-verify` skips the git hook. None of them catches a typo of a literal (8).
 
-The scrub and how to tell it ran: [`personal-literal-scrub.md`](../resources/personal-literal-scrub.md).
-The two hooks, their install and a canary check: [`pre-push-leak-gate.md`](../resources/pre-push-leak-gate.md).
+The scrub: option 5's Install and Check. The two hooks and their canary: option 3's.

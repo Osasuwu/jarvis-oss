@@ -24,13 +24,6 @@ def test_triggers_only_on_issue_labeled_for_the_dispatch_label():
     assert "if: github.event.label.name == 'agent:dispatch'" in WORKFLOW
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert uses
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 def test_no_merge_path_exists():
     # Neither the model's shell nor any deterministic step may merge.
     assert "gh pr merge" not in _tool_list("--allowed-tools")

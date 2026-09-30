@@ -1,4 +1,5 @@
-"""Structure gate: validates the docs/examples/resources bucket frontmatter contract.
+# Install and check: docs/doc-structure-gate.md#8-a-custom-script-in-ci
+"""Structure gate: validates the docs/examples bucket frontmatter contract.
 
 Schema source: Osasuwu/jarvis docs/decisions/2026-Q3.md (D18, D21, D24, D26, D32, D34;
 AC — jarvis-oss shape, locked 2026-09-15). D26's "floor and expiry" behavior (a body change
@@ -43,7 +44,6 @@ _SIGNOFF_ENTRY_RE = re.compile(
 DOC_SIZE_CAP_BYTES = 30_000
 
 DOC_REQUIRED_KEYS = ("applies_when", "applies_when_not", "signed_off")
-RESOURCE_REQUIRED_KEYS = ("pairs_with", "harnesses", "cost")
 # #160: a doc that declares `kind:` opts in to the contract checks below; a doc without it keeps
 # exactly the checks above until every doc is migrated (#178).
 DOC_KINDS = ("practice", "hub", "basics")
@@ -752,6 +752,15 @@ def _check_examples(root: Path) -> list[Violation]:
 def _check_pairs_with(root: Path, rel: str, fields: dict[str, str]) -> list[Violation]:
     # pairs_with may name several docs, comma-separated; each one must resolve.
     targets = [t.strip() for t in fields.get("pairs_with", "").split(",") if t.strip()]
+    if "pairs_with" in fields and not targets:
+        # The parser reads flat `key: value` lines, so a YAML block list also lands here (#84).
+        return [
+            Violation(
+                path=rel,
+                code="pairs_with_empty",
+                message=f"{rel} pairs_with names no doc; the form is 'pairs_with: docs/<doc>.md'",
+            )
+        ]
     return [
         Violation(
             path=rel,
@@ -763,27 +772,6 @@ def _check_pairs_with(root: Path, rel: str, fields: dict[str, str]) -> list[Viol
     ]
 
 
-def _check_resources(root: Path) -> list[Violation]:
-    resources_dir = root / "resources"
-    if not resources_dir.is_dir():
-        return []
-    violations: list[Violation] = []
-    for resource_path in sorted(resources_dir.rglob("*.md")):
-        fields = _parse_frontmatter(resource_path.read_text(encoding="utf-8"))
-        rel = _rel(resource_path, root)
-        for key in RESOURCE_REQUIRED_KEYS:
-            if key not in fields:
-                violations.append(
-                    Violation(
-                        path=rel,
-                        code=f"resource_missing_key:{key}",
-                        message=f"{rel} is missing required frontmatter key '{key}'",
-                    )
-                )
-        violations.extend(_check_pairs_with(root, rel, fields))
-    return violations
-
-
 def check_tree(root: Path) -> list[Violation]:
     root = Path(root)
     violations: list[Violation] = []
@@ -791,5 +779,4 @@ def check_tree(root: Path) -> list[Violation]:
     violations.extend(_check_kind_docs(root))
     violations.extend(_check_signoff(root))
     violations.extend(_check_examples(root))
-    violations.extend(_check_resources(root))
     return violations
