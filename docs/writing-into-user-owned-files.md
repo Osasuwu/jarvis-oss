@@ -23,8 +23,8 @@ service's config. The first run is easy. What goes wrong comes later:
   up, and nothing reports it.
 
 Each option is marked **tried** (we ran or maintain it; the example says where) or
-**sourced** (read from the tool's documentation or source). Quotes and behaviour were checked on
-2026-09-17; items marked *code-derived* are a reading of source code, not a documented promise.
+**sourced** (read from the tool's documentation or source). Quotes and behaviour were checked by review runs on the pull requests that added them, and
+quotes by the quote-check CI on later changes; items marked *code-derived* are a reading of source code, not a documented promise.
 
 ## The options
 
