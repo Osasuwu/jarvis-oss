@@ -289,10 +289,15 @@ has to read, or paste.
 ## How to choose
 
 **First.** Already declared in a dotfiles manager or Nix config, the person said they manage it
-elsewhere, or the person opted out? Yes → **print, do not write**.
+elsewhere, or the person opted out? Yes → **print, do not write**. Nobody there to have opted out
+or to approve a write (CI, a devcontainer build, a scheduled run)? Then print to the log, unless
+the person authorised writing in advance in the tool's own config; even then write only through
+3 or 4, in a region or file the tool owns.
 
 **What to write.** Prose the person may already state their own way → **option 7** picks what's
-missing; it has no place of its own, so the option that carries it decides update and uninstall.
+missing, when a model or a person is there to judge (see 7); it has no place of its own, so the
+option that carries it decides update and uninstall. With neither, skip 7: write the whole block
+with 3 or 4 and accept that it may repeat something the person already said.
 
 **Where.** No option fits every setup; choose by the trade-off in its own *best pick when* and
 *cost*. The table rules out by checkable fact.
@@ -319,6 +324,13 @@ A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key i
 passes 5, not 2: a bare line can break JSON.
 
 **Our own choice.** `jarvis-setup` must work on harnesses without includes and must not restate
-rules a person already has, so it takes 7, carried by 4 where the harness has includes and by 3
-elsewhere. It shows first, then writes via 4 on Claude Code or 3 elsewhere; both carry an update
-and an uninstall step, documented in `jarvis-setup`'s own SKILL.md.
+rules a person already has, so it takes 7, carried by 4 on Claude Code and by 3 on every other
+harness, including the five whose row in [`harnesses.md`](harnesses.md) lists include support
+(OpenCode, Gemini CLI, Cursor, GitHub Copilot, Windsurf): its shipped skill writes the include form
+only on Claude Code. It shows first, then writes; both carry an update and an uninstall step,
+documented in `jarvis-setup`'s own SKILL.md.
+
+One gap is open. The skill looks for the harness's rules-file name and, finding none, creates it.
+In a repo that has only an `AGENTS.md`, that creates a `CLAUDE.md` on Claude Code, and
+[which of the two Claude Code loads](https://code.claude.com/docs/en/memory#agents-md) then
+changes, so the team's own rules can stop loading. Check for `AGENTS.md` before creating one.

@@ -58,8 +58,10 @@ doc's frontmatter and validates it.
 [remark-lint-frontmatter-schema](https://github.com/JulianCataldo/remark-lint-frontmatter-schema)
 does it as a remark-lint rule, mapping schemas to files by glob;
 [frontmatter-json-schema-action](https://github.com/mheap/frontmatter-json-schema-action) does it
-as a GitHub Action. MDN runs its own Ajv script against a schema whose `required` list is
-`"title", "slug", "page-type"` ([linter](https://github.com/mdn/content/blob/main/scripts/front-matter_linter.js)).
+as a GitHub Action. MDN runs its own Ajv script
+([linter](https://github.com/mdn/content/blob/main/scripts/front-matter_linter.js)) against a
+schema whose `required` list is `"title", "slug", "page-type"`
+([config](https://github.com/mdn/content/blob/main/front-matter-config.json)).
 
 **Best pick when** frontmatter is the contract and you want one schema file any language can read.
 
@@ -263,13 +265,17 @@ check, only review stops it — see "At more than one developer".
 
 ## How to choose
 
-Most options below read markdown: the tools in 2, 3 and 4, MD043 in 6, and the relative-link
-checks in 7. lychee reads other formats as plain text and extracts URLs on a best-effort basis,
+Options 4, 6's MD043, 7's relative-link checks and 2's remark-lint rule read markdown only. The
+others choose files by glob and read a leading YAML frontmatter block: 2's Action and flint (3)
+take a `paths` glob (flint's own example is `content/**/*.{md,html}`), and a generator (5) reads
+the frontmatter of the formats it builds (Hugo takes AsciiDoc and reStructuredText through
+external helpers, [content formats](https://gohugo.io/content-management/formats/)). So
+reStructuredText or AsciiDoc files that carry YAML frontmatter keep 2's Action, 3 and 5. lychee reads other formats as plain text and extracts URLs on a best-effort basis,
 so it still checks absolute URLs there; relative links need `--preprocess` to convert the file
 plus `--default-extension md` or `html`, since lychee picks the parser from the original file's
 extension. Either way, name those files as paths or pass `--extensions rst` (or `adoc`): a
 directory scan skips files "not matching the specified extensions", and the default list has
-neither. For reStructuredText or AsciiDoc, what is left is Vale (6), a script (8), a model check
+neither. For reStructuredText or AsciiDoc without YAML frontmatter, what is left is Vale (6), a script (8), a model check
 (9), review alone (1), lychee without `--offline` for absolute URLs, and the generator's own warnings-as-errors, as in 7 — for Sphinx that is `-W`, which will "Turn warnings into errors …
 exits with exit status 1 if any warnings are generated"
 ([sphinx-build](https://www.sphinx-doc.org/en/master/man/sphinx-build.html)). Answer steps 3 and 4
@@ -278,9 +284,10 @@ accordingly.
 First, in order:
 
 1. **Can a check be required on your repo?** No (a private repo on GitHub Free) → any option still
-   reports, but nothing below blocks a merge; a review hold is the fallback, and it holds only as
-   far as whoever merges respects it. Paying for Pro, or making the repo public, turns this to
-   yes.
+   reports, but nothing below blocks a merge. A review hold is a fallback only while a person does
+   the merging and respects it; if an agent or a scheduled job merges, nothing holds, and a
+   pre-commit hook on each clone is a stand-in anyone can skip. Paying for Pro, or making the repo
+   public, turns this to yes.
 2. **Do you need a rule across files?** "Every doc has an example" → 8 (a script, or conftest on
    extracted frontmatter). "This field names an entry" → also 5's `reference()`, if you build with
    Astro. "This field names a file" → also flint's Asset Existence (3).

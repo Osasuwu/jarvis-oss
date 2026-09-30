@@ -114,8 +114,6 @@ Equivalents block on exit 2 or a deny decision in
 [Copilot](https://docs.github.com/en/copilot/reference/hooks-reference) (`preToolUse`);
 [Kiro](https://kiro.dev/docs/hooks/types/)'s Pre Tool Use hook "can validate and block tool usage";
 OpenCode plugins throw from `tool.execute.before` ([plugins](https://opencode.ai/docs/plugins/)).
-Vendors also ship ready-made scanners for these hooks, such as GitGuardian's
-[ggshield](https://github.com/GitGuardian/ggshield).
 
 **Fits only if** your harness has a blocking pre-call hook (the list above), and the
 matchers and fields name the tools your version has.
@@ -149,7 +147,7 @@ and input fields against the current tools. Status: tried — the scripts are ou
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) runs two of them on constructed tool
 calls.
 
-**Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing. A local Python process per matched call: no network, no tokens.
+**Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing.
 
 - [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) denies `Bash` commands, GitHub MCP
   inputs (reads included) and `Edit`/`Write`/`NotebookEdit` inputs holding secret-shaped strings
@@ -167,9 +165,8 @@ calls.
   on a rename ([`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md));
   change the prefix if your server has another name.
 - Worktrees: the untracked `.claude/settings.local.json` is not in a fresh checkout. Here it is in
-  [`.worktreeinclude`](../.worktreeinclude), so Claude Code copies it into the worktrees it makes;
-  one made by `git worktree add` needs a hand copy, and one on a branch older than a hook's script
-  is blocked by its `|| exit 2` until rebased.
+  [`.worktreeinclude`](../.worktreeinclude), so Claude Code copies it into the worktrees it makes; one made by
+  `git worktree add` needs a hand copy.
 
 #### Check
 
@@ -179,8 +176,7 @@ Both hooks are silent when they do not fire, so a session never shows whether th
    file, or to edit a `PROTECTED_CANONICAL` path. A wired hook denies with a `BLOCKED:` reason in
    the transcript; one that fails to launch blocks with the shell's error text instead.
 2. `claude --debug` logs every hook invocation and exit code, silent exit-0 runs included, to
-   `~/.claude/debug/<session-id>.txt`. Neither keeps a log of its own. Claude Code's `/hooks`
-   menu lists what is configured.
+   `~/.claude/debug/<session-id>.txt`. Neither keeps a log of its own.
 
 ### 5. OS sandbox or container
 
@@ -195,7 +191,7 @@ Codex's `workspace-write` sandbox has no network by default
 ([approvals and security](https://developers.openai.com/codex/agent-approvals-security)).
 A dev container isolates the whole session, and Docker's `readonly` bind-mount option will
 "prevent the container from writing to the mount"
-([bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)). Claude Code's sandbox also limits which hosts a command can reach.
+([bind mounts](https://docs.docker.com/engine/storage/bind-mounts/)).
 
 **Fits only if** your harness has a sandbox for your OS (Claude Code: macOS, Linux or WSL2) or
 you run the agent in a container; (Claude Code) `allowUnsandboxedCommands` is `false` and
@@ -339,17 +335,21 @@ deterministic layer, not in place of one.
 
 ## How to choose
 
-These are layers, not rivals: most setups want one before the write and one on the server. 7 and
-8's CI scan need no plan or harness feature, so commits keep a layer on any plan.
+These are layers, not rivals: most setups want one before the write and one on the server. 8's CI
+scan needs no plan or harness feature, so commits keep a layer on any plan; 7 adds one only where
+the harness runs git hooks (aider skips them unless started with `--git-commit-verify`,
+[aider](https://aider.chat/docs/git.html)).
 
 First, in order:
 
 1. **Does a person approve each call in every session?** Claude Code's interactive terminal and
-   VS Code sessions from v2.1.283 default to auto mode on any plan (option 2). Yes → 2 can carry
-   part of the load. No (unattended, or a mode that does not ask) → 2 is out: build on the
-   options that block with nobody present (3 to 9), with 10 as a weaker stand-in for 2.
+   VS Code sessions from v2.1.283 start in auto mode, a classifier (option 10), not a person; only a
+   mode you set that asks counts. Yes → 2 can carry part of the load. No (unattended, or a mode
+   that does not ask) → 2 is out: build on the options that block with nobody present (3 to 9),
+   with 10 as a weaker stand-in for 2.
 2. **Does every part of option 1's line hold?** Yes → **option 1**, with 8's required review
-   behind it. If one fails — a public repo, a private repo on GitHub Free, an agent pushing from a
+   behind it; still do 3 and 4, since 1 holds only while no file the agent can change weakens
+   that review (option 1's Best pick). If one fails — a public repo, a private repo on GitHub Free, an agent pushing from a
    repo admin's account — read on.
 3. **Can the agent post text outside git — issues, comments, chat?** 4, 9 and 6's gateway
    read that text before it lands; 6's tokens limit where it can post. Where its row fits, 8's
@@ -393,7 +393,9 @@ reason, and a CI scan fires after the push; 7 covers only the clones where it is
 anyone can skip it with `--no-verify`; 10 is a judgement, not a rule.
 
 **At more than one developer.** Project-settings hooks reach every clone, but each person can
-switch them off locally; only server-side checks apply to every contributor alike. A blocked
+switch them off locally; only server-side checks apply to every contributor alike, and in a free
+organization's private repos GitHub gives only 8's CI scan (make the repo public or move to Team).
+A blocked
 edit should route to a reviewer other than its author — the same shift
 [`publishing-discipline.md`](publishing-discipline.md) makes for its sign-off.
 
@@ -406,9 +408,8 @@ with 8's required review fits, plus 7, 3, and code owners or 6's token as above 
 branch cannot change its own checks. With one shared account, the repo owner's and so an admin, 1 and 8's review are out, and
 the walk is the Free one without 2. *Team of three, free organization, public repos, different
 harnesses:* 1 is out (a pushed branch is public before review); 8 first
-— push protection, a CI scan, and code owners once the agent pushes from a non-admin account —
-since it alone reaches every contributor; 6 for each agent's token; 4 where a harness supports
-it. *Team on a paid plan, private repos, an unattended agent that posts to Slack:* 1 is out (it
+(push protection, a CI scan, and code owners once the agent pushes from a non-admin account);
+6 for each agent's token; 4 where a harness supports it. *Team on a paid plan, private repos, an unattended agent that posts to Slack:* 1 is out (it
 reaches outside the repo); 4, 9 or 6's gateway for the Slack text, 8's required review on the
 same condition, and push protection only with Secret Protection bought.
 

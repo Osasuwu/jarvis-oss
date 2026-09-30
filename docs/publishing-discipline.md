@@ -102,9 +102,11 @@ approving it"
 default the person opens the pull request, making them its author again.
 
 A weaker variant keeps the agent on your machine and takes the merge away from it: a harness deny
-rule or pre-call hook on `gh pr merge` and `gh pr review --approve`
-([`agent-safety-hooks.md`](agent-safety-hooks.md)). The agent still holds a token that merges
-through any command the rule does not name, so this is a hold (4), not proof.
+rule on `gh pr merge` and `gh pr review --approve` (Claude Code's `Bash(...)` rules, such as
+`Bash(git push *)`, [match a command's written form](https://code.claude.com/docs/en/permissions),
+so the same command written another way can pass), or a pre-call hook
+([`agent-safety-hooks.md`](agent-safety-hooks.md), option 4). The agent still holds a token that
+merges through any command the rule does not name, so this is a hold (4), not proof.
 
 **Best pick when** you are one developer who wants the merge click to be yours: a hosted agent
 that cannot merge, with you merging by hand. Add option 2 only if you are allowed to approve
@@ -173,10 +175,12 @@ can sign.
 
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
-**Cost.** A CI check you write ("HEAD carries a tag signed by key X"), which blocks only where
-required checks exist and only while the agent's token cannot administer the repo or merge around
-it; hardware — a software key the agent can reach proves nothing; a touch per sign-off. Below Enterprise, required reviewers are "only available for public
-repositories". Still proves presence, not reading.
+**Cost.** A CI check you write, asserting that HEAD carries a tag signed by key X, which blocks
+only where required checks exist and only while the agent's token cannot administer the repo or
+merge around it; hardware — a software key the agent can reach proves nothing; a touch per
+sign-off. Below Enterprise, required reviewers are "only available for public repositories"
+([deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)).
+Still proves presence, not reading.
 
 **Lifecycle.** Enrol the key, add the check; remove the check to undo. Status: sourced.
 
@@ -288,7 +292,7 @@ First, in order:
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
-| 3 | the agent runs where your token, SSH key and signing key are absent: a hosted agent, an app in CI, or a separate OS user |
+| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
 | 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
@@ -296,8 +300,11 @@ First, in order:
 
 Among what is left: for two people, 2 is the proof. For one developer, 3 with a hosted agent that
 cannot merge makes the merge click yours, and costs an identity and sometimes a plan; 5 needs a
-hardware key and a check you maintain. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
+hardware key and a check you maintain, and required checks, so on a private GitHub Free repo it is
+not buildable. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
 not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
+On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated,
+unless you make the repo public, pay for a plan, or use a hosted agent that cannot merge.
 
 **At more than one developer.** The approval must come from someone other than the author and the
 last pusher (2), and whoever clears a hold (4) or signs a record (6) must not be the one who
@@ -309,8 +316,8 @@ most-recent-push approval, applied to administrators — the app cannot approve 
 and the person's approval is theirs, so a label adds nothing; push to the branch yourself,
 though, nobody may approve. This points away from our choice. A four-person team on a paid
 plan: 2 with code owners on `docs/` and stale approvals dismissed, plus 7 for long docs. One
-developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI — or
-4 with the gap stated. A mailing-list project: 6's trailers, where the mailing-list reply, not the
+developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI, on a
+public repo or a paid plan — or 4 with the gap stated, which is all a private GitHub Free repo offers. A mailing-list project: 6's trailers, where the mailing-list reply, not the
 trailer, is the proof; see
 [`kernel-no-ai-signed-off-by.md`](../examples/kernel-no-ai-signed-off-by.md).
 
