@@ -74,8 +74,8 @@ and [AGENTS.md](https://agents.md) (checked 2026-09-30). The file name for your 
 [the harness table](harnesses.md).
 
 The agent treats a rules file as context, not as enforcement. It can still ignore a line, which
-is why a rule that must hold is enforced by something outside the model: a hook, or the harness's
-permission rules.
+is why a rule that must hold is enforced by something outside the model: a hook or a required CI
+check.
 
 You have it when the harness lists the file as loaded (in Claude Code, `/context` lists it under
 **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
@@ -120,22 +120,12 @@ you have to write and keep working, and one that can block legitimate work.
 
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
-somewhere the agent does not decide. A CI check on a protected branch does (see CI). The
-harness's permission rules are another, where the harness has them: in Claude Code a matching deny
-rule blocks the call, but a rule matches the form of a call, not what a program
-does. A Bash rule matches the command text the agent writes, so it covers the usual form of a
-command and not every way to run it. A Read or Edit rule covers the file tools and the file
-commands Claude Code recognises when they name the path, and the targets of shell redirections
-such as `> file`, not a command that reads files without naming them, such as `grep -r`, and not a
-script that opens the file itself. For filesystem and network enforcement that does not depend on
-the command text, the page names sandboxing, and for inspecting the full command text with your
-own logic, a PreToolUse hook; see
-[Configure permissions](https://code.claude.com/docs/en/permissions) (checked 2026-09-30).
-If you have none of those, a git hook needs no account or paid plan. It
-stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
+somewhere the agent does not decide. A CI check on a protected branch does (see CI). A git hook
+needs no account or paid plan. It stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
 directory, so it holds against slips, not against an agent that decides to skip it; see
-[Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30).
+[Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30). Permission
+rules and sandboxing, where your harness has them, are further options that this doc does not cover.
 
 You have it when a hook blocks or changes an action in a session without the agent being asked.
-Where your harness has no hooks, you have a substitute when a deny rule, a required CI check or a
-git hook stops the same action.
+Where your harness has no hooks, you have a substitute when a required CI check or a git hook stops
+the same action.
