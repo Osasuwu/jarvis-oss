@@ -78,7 +78,8 @@ permission rules.
 You have it when the harness lists the file as loaded (in Claude Code, `/context` lists it under
 **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
 `--bare` is set: that flag skips `CLAUDE.md`, hooks and skills, and the docs recommend it for
-scripted calls. Leave it off, or pass the content in with `--append-system-prompt-file`; see
+scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; to load the
+file as in a session, leave `--bare` off; see
 [Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-09-30).
 Either way that shows the file is loaded, not that the agent follows every line.
 
@@ -93,7 +94,7 @@ between tools; see the
 [Agent Skills specification](https://agentskills.io/specification) (checked 2026-09-30).
 The specification does not say which directory a tool reads skills from; for that, the harness
 table has a skills directory column, and where it says unverified, check your harness's own docs.
-If your harness has no skills, put the procedure in the rules file.
+If your harness has no skills, a short procedure can go in the rules file, at the cost described next.
 
 Use a skill for a procedure and a rules file for a standing fact. A long procedure in the rules
 file is loaded every session whether or not it is needed.
@@ -119,10 +120,11 @@ somewhere the agent does not decide. A CI check on a protected branch does (see 
 harness's permission rules where the harness has them: in Claude Code a matching deny rule blocks
 the call; see
 [Configure permissions](https://code.claude.com/docs/en/permissions) (checked 2026-09-30).
-A git hook only guards against slips: `--no-verify` skips it, and it sits in each clone's own hooks
-directory; see
+If you have none of those, a git hook is the one option that needs no account or paid plan. It
+stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
+directory, so it holds against slips, not against an agent that decides to skip it; see
 [Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30).
 
 You have it when a hook blocks or changes an action in a session without the agent being asked.
-Where your harness has no hooks, you have a substitute when a deny rule or a required CI check
-stops the same action.
+Where your harness has no hooks, you have a substitute when a deny rule, a required CI check or a
+git hook stops the same action.
