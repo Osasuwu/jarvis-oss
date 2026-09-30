@@ -281,9 +281,9 @@ the run has nobody to look: CI, a devcontainer build, a scheduled run.
 
 **Cost.** A probe line sits in the person's rules and must be removed on uninstall. A token echo
 starts the reader, which can need a credential and cost money. The hook logs a load, not that the
-reader followed what it said. The shipped `jarvis-setup` skill
-([SKILL.md](../.agents/skills/jarvis-setup/SKILL.md)) found an equivalent hook mechanism on
-Claude Code only, so elsewhere only the echo is left.
+reader followed what it said. Other harnesses may
+have a load hook; [`harnesses.md`](harnesses.md) does not cover hooks, so read the harness's own
+docs, and with none only the echo is left.
 
 Status: sourced (the hook); the probe is the example's own advice, untried here.
 

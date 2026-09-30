@@ -27,8 +27,8 @@ completed it alone". What goes wrong:
 - **Nobody else** — one developer has no second person to approve.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc.
+from the tool's documentation). Quotes were checked against the linked pages by the quote-check and
+doc-review runs on the pull requests that added them; the first set on 2026-09-18.
 
 ## The options
 
@@ -173,8 +173,8 @@ your own token approves over the API. Keyless signing with
 but its cache means "you only need to auth once every 10 minutes" — inside that window an agent
 can sign. For a package, npm's `npm stage publish` can run from CI with OIDC, while approving the
 staged version needs "proof of presence", at the CLI or npmjs.com
-([trusted publishers](https://docs.npmjs.com/trusted-publishers/)); that step is free and the
-agent cannot perform it.
+([trusted publishers](https://docs.npmjs.com/trusted-publishers/)); that step needs a person and the
+agent cannot perform it. npm's pages state no plan or price for it, so check yours.
 
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
@@ -327,7 +327,7 @@ First, in order:
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
 | 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
-| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs none of that |
+| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
 | 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
