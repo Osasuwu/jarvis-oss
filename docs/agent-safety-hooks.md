@@ -48,8 +48,8 @@ it treats such files "as context, not enforced configuration"
 default branch requires an approved pull request (on GitHub: Pro, Team or Enterprise), and the
 account the agent pushes from is not a repo admin.
 
-GitHub: protected branches are on Free for public repositories and on the paid plans for private ones
-([protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)).
+GitHub lists required reviewers and protected branches among what Pro, Team and Enterprise add to
+private repositories ([plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)).
 
 **Best pick when** no file the agent can change on a branch weakens that review. A workflow
 edited on a branch changes the check run on that pull request; close that with code owners
@@ -272,7 +272,7 @@ Secret scanning also reads issue and pull request text, as alerts
 CI can run a scanner on each pull request; a required review (linked under option 1) gates who
 may merge, and code owners do it per path
 ([code owners](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)).
-A push ruleset can restrict file paths, on Team
+A push ruleset can restrict file paths, on Team and only in private or internal repositories
 ([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
 
 **Fits only if** your plan has the check you want (GitHub's plans; elsewhere, check your host's):

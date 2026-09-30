@@ -28,7 +28,8 @@ closes that gap, and brings its own ways to go wrong:
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
 from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc.
+review run on the last commit of the pull request that added this doc; option 8's Install and Check
+were added on 2026-09-30 (#167).
 
 ## The options
 
@@ -47,8 +48,8 @@ weekly.
 **Cost.** Free to start. Every miss is found by a reader, if at all.
 
 **Lifecycle.** A file to keep current. Status: tried — `write-doc` is how our docs are drafted;
-the shape it asks for beyond frontmatter (sections, option fields) is checked by nobody but
-review.
+the shape it asks for beyond frontmatter (sections, option fields) is checked only for a doc that
+declares `kind:`, and none does yet, so review is the only check.
 
 ### 2. A JSON Schema for frontmatter
 
@@ -178,7 +179,8 @@ changes and its companion file does not. [conftest](https://www.conftest.dev/opt
 `--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
 own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
 frontmatter keys, a 30000-byte cap, relative links that must resolve, `pairs_with` targets that
-must exist, example provenance and staleness, and the sign-off ledger rules.
+must exist, example provenance and staleness, the sign-off ledger rules, and for a doc that
+declares `kind:` its contract (requires, hub children, option sections).
 
 **Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
 rule no tool above has.
@@ -194,9 +196,11 @@ seconds of local pytest, and the parser and its tests to update when the doc con
 `applies_when`, `applies_when_not`, `signed_off`; `doc_over_size_cap` past 30000 bytes;
 `boundary_evidence_unresolvable` for a relative link that resolves to no file. Examples:
 `example_missing_key:fit` / `:pairs_with`, `example_missing_provenance` (needs `last_seen`, or
-`source` + `verified`), `example_last_seen_stale` after 180 days. Both: `pairs_with_unresolvable`
-for any comma-separated target that is not a file, and `pairs_with_empty` for a key naming
-nothing. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
+`source` + `verified`), `example_last_seen_stale` after 180 days, `pairs_with_unresolvable` for any
+comma-separated target that is not a file, and `pairs_with_empty` for a key naming nothing. A doc
+that declares `kind:` also gets the contract codes of `_check_kind_docs` (`doc_kind_invalid`,
+`requires_unresolvable`, `hub_*`, `option_*`, `external_link_date_*`); no doc declares one yet, so
+none fires here. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
 against [`SIGNOFF.md`](SIGNOFF.md). Tests:
 [`tests/test_structure_gate.py`](../tests/test_structure_gate.py), fixtures per code plus a run
 against the real tree that must return nothing. CI:
@@ -342,10 +346,10 @@ where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its 
 [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
 **Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
-sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 319-line
-script and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
-below; 9, since a person reviews substance. Gaps: sections and option fields are not checked, so a doc can drop "How to
-choose" and pass; nothing checks that every doc has an example — `pairs_with`
+sign-off ledger), so 8, with 1 for everything the script does not check. It costs a script of
+about 780 lines and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
+below; 9, since a person reviews substance. Gaps: sections and option fields are checked only for a doc that declares `kind:`, and none
+does yet, so a doc can drop "How to choose" and pass; nothing checks that every doc has an example — `pairs_with`
 points from example to doc, not back; the ledger rule was met by splitting commits with nothing
 read ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); the
 scan is whole-tree, which is how one squash merge turned `main` red; and a pull request can edit

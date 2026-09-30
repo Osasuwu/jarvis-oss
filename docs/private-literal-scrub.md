@@ -87,7 +87,7 @@ up with the hook and the list.
 **Cost.** Free. Every machine and clone needs the setup and the list. Git's hooks are skipped with
 `--no-verify`; gitleaks' pre-commit hook with `SKIP=gitleaks`.
 
-**Lifecycle.** A hook plus a private list per machine. Status: sourced.
+**Lifecycle.** A hook plus a private list per machine. Status: tried — the scripts are ours.
 
 **Install (ours).** Two local hooks read the same list as the CI scrub, match the same variants
 and never print a value. Once per device that pushes to, or writes pull requests on, a public
