@@ -45,15 +45,14 @@ it treats such files "as context, not enforced configuration"
 ([memory](https://code.claude.com/docs/en/memory)).
 
 **Fits only if** the repo is private, the agent's credentials reach nothing outside it, its
-default branch requires an approved pull request (on GitHub: Pro, Team or Enterprise), and the
+default branch requires an approved pull request (on GitHub: Pro, Team or Enterprise, which add
+required reviewers and protected branches for private repositories,
+[plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)), and the
 account the agent pushes from is not a repo admin.
 
-GitHub lists required reviewers and protected branches among what Pro, Team and Enterprise add to
-private repositories ([plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)).
-
 **Best pick when** no file the agent can change on a branch weakens that review. A workflow
-edited on a branch changes the check run on that pull request; close that with code owners
-(option 8) or a token that cannot write workflow files (option 6).
+edited on a branch changes the check run on it; close that with code owners (option 8) or a token
+that cannot write workflow files (option 6).
 
 **Cost.** Every failure mode above; nothing fires if the agent forgets or is steered off course.
 
@@ -150,8 +149,7 @@ and input fields against the current tools. Status: tried — the scripts are ou
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) runs two of them on constructed tool
 calls. This repo ships them unwired: none of its settings loads them.
 
-**Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and input
-parsing. A local Python process per matched call: no network, no model tokens.
+**Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing. A local Python process per matched call: no network, no tokens.
 
 - [`secret-scanner.py`](../.agents/hooks/secret-scanner.py) denies `Bash` commands, GitHub MCP
   inputs (reads included) and `Edit`/`Write`/`NotebookEdit` inputs holding secret-shaped strings
@@ -167,10 +165,10 @@ parsing. A local Python process per matched call: no network, no model tokens.
   GitHub matcher is `^mcp__github__`, the whole server, since a list of write tools fails open
   on a rename ([`mcp-matcher-tool-name-drift.md`](../examples/mcp-matcher-tool-name-drift.md));
   change the prefix if your server has another name.
-- Worktrees: the untracked `.claude/settings.local.json` is not in a fresh checkout. Here it is
-  in [`.worktreeinclude`](../.worktreeinclude), so Claude Code copies it into the worktrees it
-  creates; one made by `git worktree add`, or before the install, needs a hand copy, and one on a
-  branch older than a hook's script is blocked by its `|| exit 2` until rebased.
+- Worktrees: the untracked `.claude/settings.local.json` is not in a fresh checkout. Here it is in
+  [`.worktreeinclude`](../.worktreeinclude), so Claude Code copies it into the worktrees it makes;
+  one made by `git worktree add` needs a hand copy, and one on a branch older than a hook's script
+  is blocked by its `|| exit 2` until rebased.
 
 #### Check
 
@@ -178,9 +176,9 @@ Both hooks are silent when they do not fire, so a session never shows whether th
 
 1. Trip one on purpose: ask the agent to write a `sk-ant-` string of 20+ characters to a scratch
    file, or to edit a `PROTECTED_CANONICAL` path. A wired hook denies with a `BLOCKED:` reason in
-   the agent's transcript; one that fails to launch blocks with the shell's error text instead.
+   the transcript; one that fails to launch blocks with the shell's error text instead.
 2. `claude --debug` logs every hook invocation and exit code, silent exit-0 runs included, to
-   `~/.claude/debug/<session-id>.txt`. Neither hook keeps a log of its own. Claude Code's `/hooks`
+   `~/.claude/debug/<session-id>.txt`. Neither keeps a log of its own. Claude Code's `/hooks`
    menu lists what is configured.
 
 ### 5. OS sandbox or container
@@ -280,7 +278,9 @@ A push ruleset can restrict file paths, on Team and only in private or internal 
 - a CI scan: any plan; on a private repo it spends Actions minutes;
 - push protection: a public repo, or a private one with Secret Protection, sold only on Team and Enterprise
   ([Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security));
-- required review or code owners: a public repo, or a private one on Pro, Team or Enterprise, and the account the agent pushes from is not a repo admin.
+- required review or code owners: a public repo, or a private one on Pro, Team or Enterprise
+  ([protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)),
+  and the account the agent pushes from is not a repo admin.
 
 **Best pick when** several people or agents write to one repo and you need one check none of
 them can switch off locally.
@@ -417,15 +417,15 @@ whose own token writes (9 is out). Local sessions run, by the maintainer's repor
 requests under the maintainer's own admin account (1 is out on both counts). We ship 4 as four
 scripts, each under option 4's Install: a secret scanner, a protected-file block, a literal gate
 and an authority guard.
-None is wired into this repo's settings; a clone copies the snippet. Under 8, push protection
+They run from the untracked `.claude/settings.local.json`; a clone copies the snippet. Under 8, push protection
 and secret scanning are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
 `machinery-guard` and `waiting-human-review` — admins included (`gh api repos/Osasuwu/jarvis-oss`
 and its `/branches/main/protection`, read on 2026-09-30). The review check
 does not bind a local session without that guard: its token is the maintainer's admin token, which can remove the
 `waiting-human-review` label or switch the protection off — see
 [`review-hold-cleared-by-same-account.md`](../examples/review-hold-cleared-by-same-account.md).
-The protected-file hook blocks our own edits too, since a hook's stdin is always piped and a
-presence check would see every session as unattended; see
+The protected-file hook blocks our own edits too, with no bypass for a person at the keyboard;
+see
 [`protected-files-fail-closed.md`](../examples/protected-files-fail-closed.md).
 Known gaps: the protected set lists no workflow file; the repo has no code owners file;
 the protected-file hook does not see shell writes — option 3's `Edit` deny rules would close
