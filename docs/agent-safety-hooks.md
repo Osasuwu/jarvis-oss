@@ -147,7 +147,7 @@ body) at the moment of the call, including calls to remote APIs that never touch
 **Lifecycle.** Scripts plus a settings entry per harness; updating means re-checking matchers
 and input fields against the current tools. Status: tried — the scripts are ours, and
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) runs two of them on constructed tool
-calls. They load from the untracked `.claude/settings.local.json`.
+calls.
 
 **Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing. A local Python process per matched call: no network, no tokens.
 
@@ -155,8 +155,9 @@ calls. They load from the untracked `.claude/settings.local.json`.
   inputs (reads included) and `Edit`/`Write`/`NotebookEdit` inputs holding secret-shaped strings
   or `.env`-exfiltration commands. [`protected-files.py`](../.agents/hooks/protected-files.py)
   denies file-edit calls on `PROTECTED_CANONICAL` paths, with no bypass for a person at the
-  keyboard. Both have `CUSTOMIZE` constants (`PROTECTED_CANONICAL`, `PROTECTED_MIRROR`,
-  `_SECRET_VARS`, `SECRET_PATTERNS`); add or remove entries for your stack.
+  keyboard. Both have `CUSTOMIZE` constants. Replace `PROTECTED_CANONICAL` (this repo's gate files) and
+  `PROTECTED_MIRROR` (ships empty) with yours; edit the working `SECRET_PATTERNS` and
+  `_SECRET_VARS`.
 - [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) wires them through
   `$CLAUDE_PROJECT_DIR`, plus `literal-gate.py` (option 3 of
   [`private-literal-scrub.md`](private-literal-scrub.md)) and `github-authority-guard.py`
