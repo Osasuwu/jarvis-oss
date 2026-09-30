@@ -156,7 +156,7 @@ calls. They load from the untracked `.claude/settings.local.json`.
   or `.env`-exfiltration commands. [`protected-files.py`](../.agents/hooks/protected-files.py)
   denies file-edit calls on `PROTECTED_CANONICAL` paths, with no bypass for a person at the
   keyboard. Both have `CUSTOMIZE` constants (`PROTECTED_CANONICAL`, `PROTECTED_MIRROR`,
-  `_SECRET_VARS`, `SECRET_PATTERNS`) that ship as placeholders; set yours.
+  `_SECRET_VARS`, `SECRET_PATTERNS`); add or remove entries for your stack.
 - [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) wires them through
   `$CLAUDE_PROJECT_DIR`, plus `literal-gate.py` (option 3 of
   [`private-literal-scrub.md`](private-literal-scrub.md)) and `github-authority-guard.py`

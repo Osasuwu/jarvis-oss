@@ -180,7 +180,7 @@ changes and its companion file does not. [conftest](https://www.conftest.dev/opt
 own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
 frontmatter keys, a 30000-byte cap, relative links that must resolve, `pairs_with` targets that
 must exist, example provenance and staleness, the sign-off ledger rules, and for a doc that
-declares `kind:` its contract (requires, anchors, plan names, hub children, option sections, link dates).
+declares `kind:` its contract (the kind itself, requires, anchors, plan names, hub children, option sections, link dates).
 
 **Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
 rule no tool above has.
