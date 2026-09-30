@@ -20,6 +20,12 @@ Three files, ported from the source project this practice is drawn from:
   block that wires the hooks in this directory into `.claude/settings.json`, using the built-in
   `$CLAUDE_PROJECT_DIR` env var so the paths resolve regardless of where the repo is checked out.
 
+The snippet also wires two more hooks from the same directory, which this page does not cover:
+`literal-gate.py` (see [`pre-push-leak-gate.md`](pre-push-leak-gate.md)) and
+`github-authority-guard.py`, which blocks merging a pull request, removing the
+`waiting-human-review` label, and writing branch protection or rulesets. "Both hooks" and
+"neither hook" below mean the first two.
+
 **Worktrees.** A committed `.claude/settings.json` is in every checkout, worktrees included. An
 install into the untracked `.claude/settings.local.json` is not: a worktree is a fresh checkout,
 and a session there runs without the hooks, silently. This repo lists that file in
@@ -41,10 +47,11 @@ is not something a normal session will ever surface on its own. Two ways to chec
    scratch file, or attempt to edit a path listed in `protected-files.py`'s `PROTECTED_CANONICAL`.
    A wired-up hook returns a `permissionDecision: deny` with a `BLOCKED:` reason and the tool call
    is refused; the agent sees this in its own transcript, not a separate log. A hook that fails to
-   *launch* — `python3` missing, or too old to run the script — also blocks the call, but with
-   the shell's error text and no `BLOCKED:` reason: each command in `settings.snippet.json` is
-   `python3 "…" || exit 2`, so a launch failure exits 2 too, instead of the non-blocking non-zero
-   exit the harness would otherwise see.
+   *launch* — no working `python3` or `python`, or one too old to run the script — also blocks
+   the call, but with the shell's error text and no `BLOCKED:` reason. Each command in
+   `settings.snippet.json` tries `python3`, falls back to `python` when `python3` does not run
+   (on Windows it can be the Microsoft Store stub), and ends in `|| exit 2`. So a launch failure
+   exits 2 too, instead of the non-blocking non-zero exit the harness would otherwise see.
 2. **`claude --debug`** (or the equivalent flag for your harness) writes each hook invocation
    and its exit code to a debug log (Claude Code: `~/.claude/debug/<session-id>.txt`, not the
    terminal), including the ones that exit 0 and produce no other output — this is the only place
@@ -74,8 +81,8 @@ field name the scanner's source has never named, not a fixed field list to re-ch
 
 `PROTECTED_CANONICAL`/`PROTECTED_MIRROR` in `protected-files.py` and `_SECRET_VARS` in
 `secret-scanner.py` are marked `CUSTOMIZE` at their definition, and `SECRET_PATTERNS` in that
-file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files and a
-`.gitleaks.toml`, `PROTECTED_MIRROR` is empty, and the other two list common provider key
-formats and env-var names — placeholders, not a claim that they are right for every reader's
-repo. Point them at whatever your own project's review-gate files and credential-shaped env
-vars actually are.
+file's docstring. As shipped, `PROTECTED_CANONICAL` names this repo's own hook files, a
+`.gitleaks.toml` and `.worktreeinclude`, `PROTECTED_MIRROR` is empty, and the other two list
+common provider key formats and env-var names — placeholders, not a claim that they are right
+for every reader's repo. Point them at whatever your own project's review-gate files and
+credential-shaped env vars actually are.

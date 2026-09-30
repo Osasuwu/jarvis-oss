@@ -59,8 +59,8 @@ jobs:
           # Fine-grained PAT scoped to this repo (contents, issues,
           # pull-requests: write), NOT the default GITHUB_TOKEN: a push or PR
           # made with GITHUB_TOKEN triggers no other workflow, so the required
-          # checks (structure-gate, gitleaks, waiting-human-review) would never
-          # report on the worker's PR and it could never merge.
+          # checks would never report on the worker's PR and it could never
+          # merge.
           github_token: ${{ secrets.AGENT_DISPATCH_PAT }}
           prompt: |
             Implement GitHub issue #${{ github.event.issue.number }} in
