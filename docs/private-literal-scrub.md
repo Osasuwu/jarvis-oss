@@ -87,7 +87,8 @@ up with the hook and the list.
 **Cost.** Free. Every machine and clone needs the setup and the list. Git's hooks are skipped with
 `--no-verify`; gitleaks' pre-commit hook with `SKIP=gitleaks`.
 
-**Lifecycle.** A hook plus a private list per machine. Status: sourced.
+**Lifecycle.** A hook plus a private list per machine. Status: tried — this repo, in two places (see Our own
+choice).
 
 ### 4. A server-side push block
 
