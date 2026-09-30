@@ -121,9 +121,9 @@ you have to write and keep working, and one that can block legitimate work.
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
 somewhere the agent does not decide. A CI check on a protected branch does (see CI). The
-harness's permission rules come part of the way where the harness has them: in Claude Code a
-matching deny rule blocks the call, but it matches the command text the agent writes, so it covers the usual form of a command
-and not every way to run it; see
+harness's permission rules are another, where the harness has them: in Claude Code a matching deny
+rule blocks the call. A Bash rule matches the command text the agent writes, so it covers the usual
+form of a command and not every way to run it, while a Read or Edit rule matches by path; see
 [Configure permissions](https://code.claude.com/docs/en/permissions) (checked 2026-09-30).
 If you have none of those, a git hook needs no account or paid plan. It
 stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
