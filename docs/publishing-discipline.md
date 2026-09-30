@@ -326,7 +326,7 @@ separate-commit rule
 ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
 and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
 hardware-signed tag), either of which closes the first gap below. Open gaps: the same account
-can clear the label, as #70's was, with no way to tell person from agent; administrators bypass protection on this repo; 3 and 5 are not in place.
+can clear the label, as #70's was, with no way to tell person from agent; an administrator can switch protection off on this repo; 3 and 5 are not in place.
 The hold, the ledger and its checks: Install and Check in options 4, 6 and 7. The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure
 around it is [#44](https://github.com/Osasuwu/jarvis-oss/issues/44).

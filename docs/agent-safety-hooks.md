@@ -147,7 +147,7 @@ body) at the moment of the call, including calls to remote APIs that never touch
 **Lifecycle.** Scripts plus a settings entry per harness; updating means re-checking matchers
 and input fields against the current tools. Status: tried — the scripts are ours, and
 [`test_agent_safety_hooks.py`](../tests/test_agent_safety_hooks.py) runs two of them on constructed tool
-calls. This repo ships them unwired: none of its settings loads them.
+calls. They load from the untracked `.claude/settings.local.json`.
 
 **Install (ours).** Claude Code only as shipped; other harnesses need their own wiring and parsing. A local Python process per matched call: no network, no tokens.
 
@@ -156,7 +156,7 @@ calls. This repo ships them unwired: none of its settings loads them.
   or `.env`-exfiltration commands. [`protected-files.py`](../.agents/hooks/protected-files.py)
   denies file-edit calls on `PROTECTED_CANONICAL` paths, with no bypass for a person at the
   keyboard. Both have `CUSTOMIZE` constants (`PROTECTED_CANONICAL`, `PROTECTED_MIRROR`,
-  `_SECRET_VARS`, `SECRET_PATTERNS`) that ship as this repo's placeholders; point them at yours.
+  `_SECRET_VARS`, `SECRET_PATTERNS`) that ship as placeholders; set yours.
 - [`settings.snippet.json`](../.agents/hooks/settings.snippet.json) wires them through
   `$CLAUDE_PROJECT_DIR`, plus `literal-gate.py` (option 3 of
   [`private-literal-scrub.md`](private-literal-scrub.md)) and `github-authority-guard.py`
@@ -279,7 +279,7 @@ A push ruleset can restrict file paths, on Team and only in private or internal 
 - push protection: a public repo, or a private one with Secret Protection, sold only on Team and Enterprise
   ([Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security));
 - required review or code owners: a public repo, or a private one on Pro, Team or Enterprise
-  ([protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)),
+  (the availability note on [protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)),
   and the account the agent pushes from is not a repo admin.
 
 **Best pick when** several people or agents write to one repo and you need one check none of
