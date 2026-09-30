@@ -1,7 +1,7 @@
 ---
 applies_when: you are setting up an agent to work in a git repository on GitHub and a practice doc here asks for a branch, a pull request, a CI check, a rules file, a skill or a hook that you have not used before
 applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which harness to pick or where its files live is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one
-signed_off:
+signed_off: 2026-10-01
 kind: basics
 ---
 
