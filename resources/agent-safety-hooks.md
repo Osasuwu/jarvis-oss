@@ -20,6 +20,12 @@ Three files, ported from the source project this practice is drawn from:
   block that wires the hooks in this directory into `.claude/settings.json`, using the built-in
   `$CLAUDE_PROJECT_DIR` env var so the paths resolve regardless of where the repo is checked out.
 
+The snippet also wires two more hooks from the same directory, which this page does not cover:
+`literal-gate.py` (see [`pre-push-leak-gate.md`](pre-push-leak-gate.md)) and
+`github-authority-guard.py`, which blocks merging a pull request, removing the
+`waiting-human-review` label, and writing branch protection or rulesets. "Both hooks" and
+"neither hook" below mean the first two.
+
 **Worktrees.** A committed `.claude/settings.json` is in every checkout, worktrees included. An
 install into the untracked `.claude/settings.local.json` is not: a worktree is a fresh checkout,
 and a session there runs without the hooks, silently. This repo lists that file in

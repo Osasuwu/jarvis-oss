@@ -1,7 +1,7 @@
 """Every command in settings.snippet.json must find a working Python and still fail closed (#181).
 
 On Windows, `python3` can be the Microsoft Store alias stub: it is on PATH, runs, prints an
-install hint and exits 9009. A command that calls `python3` directly then exits non-zero on
+install hint and exits non-zero (9009 in #181). A command that calls `python3` directly then exits non-zero on
 every call, and its `|| exit 2` turns that into a deny for every matched tool call. So each
 command probes `python3`, falls back to `python`, and still ends in `|| exit 2` for the case
 where neither starts.
