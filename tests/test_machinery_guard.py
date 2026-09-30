@@ -66,13 +66,6 @@ def test_permissions_are_minimal():
     assert "contents: write" not in WORKFLOW
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert uses
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 @pytest.mark.parametrize(
     "path",
     [

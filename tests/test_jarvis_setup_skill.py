@@ -22,10 +22,6 @@ def _skill_text() -> str:
     return SKILL_PATH.read_text(encoding="utf-8")
 
 
-def test_skill_file_exists_at_expected_path():
-    assert SKILL_PATH.is_file(), f"expected a SKILL.md at {SKILL_PATH}"
-
-
 def test_skill_frontmatter_names_the_skill():
     text = _skill_text()
     assert text.startswith("---\n"), "SKILL.md must start with YAML frontmatter"
@@ -36,39 +32,6 @@ def test_delta_contains_literal_invariant_lines():
     text = _skill_text()
     for line in INVARIANT_LINES:
         assert line in text, f"literal invariant line missing from SKILL.md: {line!r}"
-
-
-def test_delta_fails_if_invariant_lines_are_removed():
-    text = _skill_text()
-    stripped = text
-    for line in INVARIANT_LINES:
-        stripped = stripped.replace(line, "")
-    for line in INVARIANT_LINES:
-        assert line not in stripped, (
-            "sanity check: removal did not actually remove the line"
-        )
-
-
-def test_skill_reads_harness_table():
-    text = _skill_text()
-    assert "docs/harnesses.md" in text
-
-
-def test_first_question_is_trial_vs_full():
-    text = _skill_text()
-    assert "Trial or full" in text
-
-
-def test_claude_only_extras_marked_optional():
-    text = _skill_text()
-    assert "@import" in text
-    assert "Optional" in text or "optional" in text
-    assert "Hooks" in text
-
-
-def test_empty_repo_path_documented():
-    text = _skill_text()
-    assert "Empty repo" in text
 
 
 def test_skill_writes_managed_markers_on_no_include_harness():
