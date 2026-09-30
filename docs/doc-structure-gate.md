@@ -48,8 +48,9 @@ weekly.
 **Cost.** Free to start. Every miss is found by a reader, if at all.
 
 **Lifecycle.** A file to keep current. Status: tried — `write-doc` is how our docs are drafted;
-the shape it asks for beyond frontmatter is checked only for a doc that declares `kind:` (option
-headings, `#### Check`, `Relations:`), and none does yet, so review is the only check.
+it asks for a `#### Check` under an Install but not for option headings, `Relations:` or a
+`kind:` key, and the gate checks options only for `kind: practice`, which no doc declares yet, so
+review is the only check on shape.
 
 ### 2. A JSON Schema for frontmatter
 
@@ -200,9 +201,11 @@ seconds of local pytest, and the parser and its tests to update when the doc con
 `example_missing_key:fit` / `:pairs_with`, `example_missing_provenance` (needs `last_seen`, or
 `source` + `verified`), `example_last_seen_stale` after 180 days, `pairs_with_unresolvable` for any
 comma-separated target that is not a file, and `pairs_with_empty` for a key naming nothing. A doc
-that declares `kind:` also gets the contract codes of `_check_kind_docs` (`doc_kind_invalid`,
-`requires_unresolvable`, `anchor_unresolvable`, `plan_name_in_frontmatter`, `hub_*`, `option_*`,
-`options_*`, `external_link_date_*`); no doc declares one yet, so none fires here. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
+that declares `kind:` also gets the contract codes of `_check_kind_docs`: `doc_kind_invalid`,
+`requires_unresolvable`, `anchor_unresolvable`, `plan_name_in_frontmatter` and
+`external_link_date_*` fire today for `docs/basics.md` (`kind: basics`); `option_*` and
+`options_*` fire only for `kind: practice`, and `hub_*` only for a `hub:` key or `kind: hub`, and
+no doc is either yet. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
 against [`SIGNOFF.md`](SIGNOFF.md). Tests:
 [`tests/test_structure_gate.py`](../tests/test_structure_gate.py), fixtures per code plus a run
 against the real tree that must return nothing. CI:
@@ -243,6 +246,24 @@ wrong, and text in the doc can steer the model that reads it.
 **Lifecycle.** A prompt file plus a CI job. Status: sourced. Not ours, on fit: a person reviews
 substance here ([`publishing-discipline.md`](publishing-discipline.md)).
 
+### 10. A harness hook blocks the agent's edit
+
+**How it works.** The agent's harness runs a program before each edit and refuses the call on
+exit 2 ([hooks](https://code.claude.com/docs/en/hooks)). A path list in it keeps the agent off the
+gate, its tests and the template, so the pull request cannot loosen its own check; it needs no
+branch protection. An edit call carries only the changed text, so this guards the check, not the
+docs' shape.
+
+**Best pick when** an agent writes the docs and you cannot require a check (a private repo on
+GitHub Free), or an unattended run merges.
+
+**Cost.** One script per harness; it covers only sessions that load it and does not see shell
+writes.
+
+**Lifecycle.** Code. Status: tried, for other files — `.agents/hooks/protected-files.py`, see
+option 4 of [`agent-safety-hooks.md`](agent-safety-hooks.md).
+Ours lists the hook files, not the gate.
+
 ## What every option depends on
 
 A check blocks nothing unless it runs on every pull request as a **required** status check. One
@@ -257,8 +278,10 @@ reject the push itself.
 
 Required checks need branch protection or rulesets. On GitHub Free, private repositories have
 neither, so every option there reports and nothing blocks — and the review hold that replaces it
-is itself advisory, because a draft or a label only holds while whoever merges respects it
-([`publishing-discipline.md`](publishing-discipline.md)). Two cheap exits: GitHub Pro lists
+is advisory: a draft holds only while whoever merges respects it, and a label hold needs a
+required check, which this plan lacks
+([`publishing-discipline.md`](publishing-discipline.md)). Option 10 is the one that still blocks,
+at the agent's own write. Two cheap exits: GitHub Pro lists
 "Protected branches" among its tools for private repositories, and a public repository gets both
 protected branches and rulesets on Free. And if the pull request under check can also edit the
 check, only review stops it — see "At more than one developer".
@@ -287,7 +310,7 @@ First, in order:
    reports, but nothing below blocks a merge. A review hold is a fallback only while a person does
    the merging and respects it; if an agent or a scheduled job merges, nothing holds, and a
    pre-commit hook on each clone is a stand-in anyone can skip. Paying for Pro, or making the repo
-   public, turns this to yes.
+   public, turns this to yes; 10 blocks the agent's own edit to the check files without either.
 2. **Do you need a rule across files?** "Every doc has an example" → 8 (a script, or conftest on
    extracted frontmatter). "This field names an entry" → also 5's `reference()`, if you build with
    Astro. "This field names a file" → also flint's Asset Existence (3).
@@ -309,13 +332,15 @@ First, in order:
 | 7 | combined with another option — links only |
 | 8 | you need a rule no tool above has, and someone maintains it; a cross-file rule alone can be conftest `--combine` over `yq --front-matter=extract` output, with no parser of your own |
 | 9 | a person reads what it flags; never the only required check |
+| 10 | the agent edits in a harness that supports hooks, and you want it kept off the check or the template; no required check needed |
 
 Rows are not exclusive: 2 or 3 for keys plus 6's MD043 for headings is a normal pair, and so is
 3 plus a generator's `--strict`. If several are left, list your rules and count what each covers: mdschema (4) takes keys,
 headings, size and links in one config; 5 adds no tool if the build already runs; 8 takes
 anything and costs a parser; 2 and 3 take keys only. Add 7 unless the option already checks
 links (mdschema, Docusaurus, MkDocs `--strict`). If nothing fits, keep 1 and put the shape rules
-in the review checklist.
+in the review checklist, which needs a person: where nobody reviews (an unattended run), 1
+enforces nothing, and step 1's exits are the way out.
 
 **At more than one developer.** One owner keeps the template, and the check changes in the same
 pull request as the template it encodes. The rest of this is about who can edit the check rather
@@ -325,9 +350,10 @@ code owners on the check files, a ruleset that restricts those paths, an organiz
 that requires a workflow kept in another repo, or `pull_request_target`, which runs the workflow
 from the base repository's **default** branch — not the branch the pull request targets — and
 under which you must never run the pull request's code. All four are GitHub. Rulesets themselves
-are free on a public repository, but restricting paths is a *push* ruleset, "available for the
-GitHub Team plan in internal and private repositories"
+are free on a public repository, but restricting paths is a *push* ruleset
 ([available rules](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)),
+which About rulesets describes for GitHub Team and Enterprise, in private or internal repositories
+([rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)),
 and the organization ruleset that requires a workflow from another repo is documented for
 Enterprise Cloud and Enterprise Server
 ([Enterprise Cloud](https://docs.github.com/en/enterprise-cloud@latest/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets)).
@@ -355,8 +381,8 @@ where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its 
 **Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
 sign-off ledger), so 8, with 1 for everything the script does not check. It costs a script of
 about 780 lines and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
-below; 9, since a person reviews substance. Gaps: nothing checks "How to choose", and the option checks run only for a doc that declares
-`kind:`, which none does yet, so a doc can drop "How to choose" and pass; nothing checks that every doc has an example — `pairs_with`
+below; 9, since a person reviews substance; 10 for the gate files, which would close the last gap. Gaps: nothing checks "How to choose", and the option checks run only for `kind: practice`,
+which no doc declares yet, so a doc can drop "How to choose" and pass; nothing checks that every doc has an example — `pairs_with`
 points from example to doc, not back; the ledger rule was met by splitting commits with nothing
 read ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); the
 scan is whole-tree, which is how one squash merge turned `main` red; and a pull request can edit

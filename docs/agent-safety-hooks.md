@@ -276,7 +276,7 @@ A push ruleset can restrict file paths, on Team and only in private or internal 
 - push protection: a public repo, or a private one with Secret Protection, sold only on Team and Enterprise
   ([Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security));
 - required review or code owners: a public repo, or a private one on Pro, Team or Enterprise
-  (the availability note on [protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)),
+  ([plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)),
   and the account the agent pushes from is not a repo admin.
 
 **Best pick when** several people or agents write to one repo and you need one check none of
@@ -395,8 +395,7 @@ anyone can skip it with `--no-verify`; 10 is a judgement, not a rule.
 **At more than one developer.** Project-settings hooks reach every clone, but each person can
 switch them off locally; only server-side checks apply to every contributor alike, and in a free
 organization's private repos GitHub gives only 8's CI scan (make the repo public or move to Team).
-A blocked
-edit should route to a reviewer other than its author — the same shift
+A blocked edit goes to a reviewer other than its author, the shift
 [`publishing-discipline.md`](publishing-discipline.md) makes for its sign-off.
 
 **Examples.** *Solo, GitHub Free, private repo, attended, git only:* 1 is out (no required
@@ -416,10 +415,11 @@ same condition, and push protection only with Secret Protection bought.
 **Our own choice.** This repo is public. Our agent runs in Claude Code on a developer's machine
 and as an unattended CI job ([`agent-dispatch.yml`](../.github/workflows/agent-dispatch.yml))
 whose own token writes (9 is out). Local sessions run, by the maintainer's report, often with nobody approving each call (2 is out), and open issues and pull
-requests under the maintainer's own admin account (1 is out on both counts). We ship 4 as four
+requests under the maintainer's own admin account (1 is out on both counts). We ship 4 for local sessions as four
 scripts, each under option 4's Install: a secret scanner, a protected-file block, a literal gate
 and an authority guard.
-They run from the untracked `.claude/settings.local.json`; a clone copies the snippet. Under 8, push protection
+They run from the untracked `.claude/settings.local.json`; a clone copies the snippet. The CI job
+is bounded by option 3: deny rules and an allowlist (`agent-dispatch.yml`, lines 129-130). Under 8, push protection
 and secret scanning are on, and `main` requires five checks — `gitleaks`, `structure-gate`, `tests`,
 `machinery-guard` and `waiting-human-review` — admins included (`gh api repos/Osasuwu/jarvis-oss`
 and its `/branches/main/protection`, read on 2026-09-30). The review check
@@ -430,8 +430,8 @@ The protected-file hook blocks our own edits too, with no bypass for a person at
 see
 [`protected-files-fail-closed.md`](../examples/protected-files-fail-closed.md).
 Known gaps: the protected set lists no workflow file; the repo has no code owners file;
-the protected-file hook does not see shell writes — option 3's `Edit` deny rules would close
-most of that and are our next step; the first two
+the protected-file hook does not see shell writes in a local session — option 3's `Edit` deny rules
+would close most of that and are our next step; the first two
 exit 0 on input they cannot parse; the scanner's shell matcher is `Bash` alone, so commands run
 through Claude Code's PowerShell tool are not scanned; it strips heredoc bodies before its
 dangerous-command check, so a heredoc fed to an interpreter (`bash <<'EOF'`) runs without

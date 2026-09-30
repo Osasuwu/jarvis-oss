@@ -170,7 +170,7 @@ between versions.
   [`harnesses.md`](harnesses.md).
 
 So the real check isn't "is the line present" but "did the content load": in Claude Code,
-`/context` lists loaded memory files.
+`/context` lists loaded memory files. With nobody at the prompt, use option 8.
 
 Where the file is a program slot with no include, such as a git hook, the same idea runs the
 other way: the tool takes the slot and calls the person's program. pre-commit installs "in a
@@ -243,8 +243,9 @@ Status: sourced.
 *in substance* — same commitment, any wording — and write only what is missing. The judge is a
 model or a person, not a string match. This is what `jarvis-setup` does.
 
-It decides *what* to write, not *where*: the delta still goes in with another option. Plain
-append is option 2 unguarded.
+It decides *what* to write, not *where*: the delta still goes in with another option. The
+judge can replace option 2's guard, so a plain append of the delta also works; it is the
+variant with no update and no uninstall, below.
 
 **Best pick when** the target is prose that the person may already cover in their own words, and
 two phrasings of one rule would drift apart.
@@ -253,8 +254,10 @@ two phrasings of one rule would drift apart.
 - **Not deterministic** (follows from the run: one verdict was a close call). Whether a rule
   headed "No hardcoded secrets" covers "Secrets never land in any persistent surface" is a
   judgement; two reviewers can disagree.
-- **Sees one file** (seen in the run). Content the person delivers through an include, or from a
-  user-level file, is invisible to it, so it can add what is already loaded.
+- **Sees only what it reads.** The run's skill read one file; the shipped one now also reads every
+  file the rules file `@import`s, on harnesses whose row lists include support (closed after the
+  run, in §2 of its SKILL.md). Content from a user-level file that nothing imports is still
+  invisible to it, so it can add what is already loaded.
 - **No update, no uninstall** when appended plainly (follows from the run: nothing marks what it
   wrote). A re-run finds the old wording already stated in substance and writes nothing.
 
@@ -262,6 +265,26 @@ two phrasings of one rule would drift apart.
 the person's file minus the tool's block or file, and the tool rewrites that block or file whole.
 
 Status: tried.
+
+### 8. Probe that it loaded
+
+**How it works.** After any write, test that the reader picked the content up, by a means that
+needs nobody at the prompt. Put a line in the content that asks the reader to echo a fixed token,
+start the reader non-interactively, and look for the token in its output. Or log which
+instruction files were loaded: Claude Code's `InstructionsLoaded` hook fires "when a CLAUDE.md or
+.claude/rules/*.md file is loaded into context", with a reason that includes `include`
+([hooks](https://code.claude.com/docs/en/hooks)). The interactive check, `/context`, is for a
+person at the prompt.
+
+**Best pick when** the write went through 4, or any option whose failure is silent (see 4), and
+the run has nobody to look: CI, a devcontainer build, a scheduled run.
+
+**Cost.** A probe line sits in the person's rules and must be removed on uninstall. A token echo
+starts the reader, which can need a credential and cost money. The hook logs a load, not that the
+reader followed what it said. Hooks exist only on harnesses that have them: [`harnesses.md`](harnesses.md)
+says which, and on the others only the echo is left.
+
+Status: sourced (the hook); the probe is the example's own advice, untried here.
 
 ### Across all of them: show before writing, or do not write
 
@@ -292,19 +315,23 @@ has to read, or paste.
 elsewhere, or the person opted out? Yes → **print, do not write**. Nobody there to have opted out
 or to approve a write (CI, a devcontainer build, a scheduled run)? Then print to the log, unless
 the person authorised writing in advance in the tool's own config; even then write only through
-3 or 4, in a region or file the tool owns.
+3 or 4, in a region or file the tool owns. If the format has neither comments nor an include
+(bare JSON such as `.mcp.json`), nothing is left to write through: end the run with the content
+printed and a non-zero exit, so a person sees that it is undone, rather than a log line nobody
+reads. Seed-once (1) still applies where the file is absent.
 
 **What to write.** Prose the person may already state their own way → **option 7** picks what's
 missing, when a model or a person is there to judge (see 7); it has no place of its own, so the
 option that carries it decides update and uninstall. With neither, skip 7: write the whole block
-with 3 or 4 and accept that it may repeat something the person already said.
+with 3 or 4 and accept that it may repeat something the person already said. Where the format
+has neither, the paragraph above applies: print and fail the run.
 
 **Where.** No option fits every setup; choose by the trade-off in its own *best pick when* and
 *cost*. The table rules out by checkable fact.
 
 | Option | Fits only if |
 |---|---|
-| 1, split | the format loads a second file the person accepts editing |
+| 1, split | the format loads a second file, and a person is there to agree to editing it |
 | 2 | your content is a line or two, and a bare line stays valid (not JSON) |
 | 3 | the format has comments to use as markers |
 | 4 | the format has an include, drop-in, or a slot you can wrap |
@@ -318,7 +345,8 @@ grows via include without touching theirs, or takes a program slot, which can re
 person had there; 5 sets only your keys, keeps the rest, but can overwrite theirs and needs a
 record to uninstall; 6 costs a stored base and conflicts to resolve. Showing first fits every
 option. If nothing is left: print the lines and let the person add them — nothing here
-overwrites what they already have.
+overwrites what they already have. With no person present, that step has no owner: fail the run
+so it is noticed, as under **First**.
 
 A line for `~/.bashrc` passes 2, 3 and 4: nvm took 2, conda 3, rustup 4. A key in `package.json`
 passes 5, not 2: a bare line can break JSON.
@@ -327,8 +355,9 @@ passes 5, not 2: a bare line can break JSON.
 rules a person already has, so it takes 7, carried by 4 on Claude Code and by 3 on every other
 harness, including the five whose row in [`harnesses.md`](harnesses.md) lists include support
 (OpenCode, Gemini CLI, Cursor, GitHub Copilot, Windsurf): its shipped skill writes the include form
-only on Claude Code. It shows first, then writes; both carry an update and an uninstall step,
-documented in `jarvis-setup`'s own SKILL.md.
+only on Claude Code. It asks trial or full setup before reading anything: trial prints the delta and writes
+nothing, full writes it. Both carry an update and an uninstall step, documented in
+`jarvis-setup`'s own SKILL.md.
 
 One gap is open. The skill looks for the harness's rules-file name and, finding none, creates it.
 In a repo that has only an `AGENTS.md`, that creates a `CLAUDE.md` on Claude Code, and

@@ -250,13 +250,39 @@ code and "only 48%" always check it
 
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report URL goes in the ledger entry's `facts:`. Cost: a model run per
-review-doc pass. Harness: a skill file any harness that loads skills can run
-([`harnesses.md`](harnesses.md)).
+review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
+copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
+directory, most of it unverified.
 
 #### Check
 
 The report is a comment on the pull request, and the ledger entry's `facts:` URL opens it.
 `facts: human` means no report was used.
+
+### 8. Make a change cheap to undo
+
+**How it works.** When nobody independent reads a change first, limit what it can do and make
+undoing it fast. Ship behind a feature flag or a staged rollout
+([Unleash](https://www.getunleash.io/) is one flag service), and keep the revert one action away:
+GitHub can open a pull request that undoes a merged one
+([revert](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/reverting-a-pull-request)).
+For a doc the event to bound is publishing: a preview path before the real one, or a release one
+command rolls back. It proves nothing about who acted or who read; it caps the cost of a change
+nobody read, and needs no second person at merge time.
+
+**Best pick when** a run is unattended or solo, and a wrong change is recoverable (a doc, a page, a
+package version you can yank). Not for a leaked secret, which a revert does not undo.
+
+**Cost.** A flag or preview step to run and a revert someone or something performs; a wrong change
+is live until it is noticed.
+
+**Lifecycle.** Config in the publish path. Status: sourced.
+
+**Install.** A preview or flag step in the publish job, and the revert named in your runbook.
+
+#### Check
+
+Revert one test change and time it: the previous version must be back within the time you chose.
 
 ## What every option depends on
 
@@ -269,8 +295,8 @@ Level 4 wants "two trusted persons to review all changes"
 
 ## How to choose
 
-These are layers: one to prove who acted (2, 3 or 5), one to hold (4), and optionally a record (6)
-and a cheaper read (7).
+These are layers: one to prove who acted (2, 3 or 5), one to hold (4), and optionally a record (6),
+a cheaper read (7), and where nobody independent reads, a cap on the damage (8).
 
 First, in order:
 
@@ -283,7 +309,9 @@ First, in order:
    the agent was given. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
    credentials away), or 5 (require something the agent lacks) if that same token cannot administer
    the repo and switch the check off. No → the merge click is the
-   person's, and 4 and 6 record who it was.
+   person's, and 4 and 6 record who it was. If nobody is present when it merges (a scheduled
+   job), the answer is Yes and no hold gets cleared in that run: stop the job merging (3, or a
+   draft from 4), leave the change for a person, and cap the damage with 8.
 3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
    rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
    required pipelines and can restrict merging to Maintainers, but no approval rules.
@@ -297,17 +325,22 @@ First, in order:
 | 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
+| 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
 
-Among what is left: for two people, 2 is the proof. For one developer, 3 with a hosted agent that
-cannot merge makes the merge click yours, and costs an identity and sometimes a plan; 5 needs a
+Among what is left: for two people where required approvals are available (a public repo or a
+paid plan), 2 is the proof; on a private GitHub Free repo it is out, and the team has 4, 7 and 8,
+or goes public or pays. For one developer, 3 with a hosted agent that
+cannot merge makes the merge click yours, and costs an identity and, on a private repo, a paid Copilot plan; 5 needs a
 hardware key and a check you maintain, and required checks, so on a private GitHub Free repo it is
 not buildable. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
 not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
-On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated,
-unless you make the repo public, pay for a plan, or use a hosted agent that cannot merge.
+On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated and
+8 to cap what merges unread, unless you make the repo public or pay, for a plan or for a hosted
+agent that cannot merge. An unattended run cannot produce proof of reading: stop it merging and
+leave the change for a person.
 
-**At more than one developer.** The approval must come from someone other than the author and the
-last pusher (2), and whoever clears a hold (4) or signs a record (6) must not be the one who
+**At more than one developer.** The approval (2, where available) must come from someone other than the author and the
+last pusher, and whoever clears a hold (4) or signs a record (6) must not be the one who
 drafted — a teammate, not the drafter. Code owners route docs to people who can judge them. The
 credential rule still applies: an agent shared by the team must not run as any one of them.
 
@@ -332,7 +365,8 @@ separate-commit rule
 ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); we emptied the
 ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
 and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
-hardware-signed tag), either of which closes the first gap below. Open gaps: the same account
+hardware-signed tag), either of which closes the first gap below; 8, so a doc is live on `main`
+when it merges and a person reverts it. Open gaps: the same account
 can clear the label, as #70's was, with no way to tell person from agent; an administrator can switch protection off on this repo; 3 and 5 are not in place.
 The hold, the ledger and its checks: Install and Check in options 4, 6 and 7. The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure
