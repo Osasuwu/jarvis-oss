@@ -184,8 +184,42 @@ must exist, example provenance and staleness, and the sign-off ledger rules.
 rule no tool above has.
 
 **Cost.** You write, test and maintain a parser. Ours reads only flat `key: value` frontmatter.
+One Actions job per pull request (checkout with full history, Python 3.12, pytest), a few
+seconds of local pytest, and the parser and its tests to update when the doc contract changes.
 
 **Lifecycle.** Code with its own tests. Status: tried — this repo, required on `main`.
+
+**Install.** Rules: [`tests/structure_gate.py`](../tests/structure_gate.py), where
+`check_tree(root)` returns violations, each a path and a code. Docs: `doc_missing_key:<key>` for
+`applies_when`, `applies_when_not`, `signed_off`; `doc_over_size_cap` past 30000 bytes;
+`boundary_evidence_unresolvable` for a relative link that resolves to no file. Examples:
+`example_missing_key:fit` / `:pairs_with`, `example_missing_provenance` (needs `last_seen`, or
+`source` + `verified`), `example_last_seen_stale` after 180 days. Both: `pairs_with_unresolvable`
+for any comma-separated target that is not a file, and `pairs_with_empty` for a key naming
+nothing. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
+against [`SIGNOFF.md`](SIGNOFF.md). Tests:
+[`tests/test_structure_gate.py`](../tests/test_structure_gate.py), fixtures per code plus a run
+against the real tree that must return nothing. CI:
+[`structure-gate.yml`](../.github/workflows/structure-gate.yml) on every pull request with
+`fetch-depth: 0`, because the sign-off rules read git history; `structure-gate` is a required
+check on `main`. To adopt: copy the script and its tests, change the key tuples and the size cap
+to your contract, and make the job required.
+
+The parser reads flat `key: value` lines only: a YAML list is recorded as the key with an empty
+value, a `- ` item with no colon is dropped, and `- a: b` becomes a bogus key `- a`. A required
+key written as a list would pass with nothing in it, so a key that names targets (`pairs_with`)
+fails when it yields none. Not checked: whether every doc has an example pointing at it.
+
+#### Check
+
+- On a pull request, the `structure-gate` check lists `tests/test_structure_gate.py` results; a
+  failure prints the violation code and the path, such as `doc_missing_key:applies_when`.
+- Locally, `python -m pytest tests/test_structure_gate.py -q` passes on a clean tree. Delete
+  `applies_when:` from any doc and rerun; it must fail. If it passes, the tree test is not
+  pointed at the repo root.
+- If the check never appears on a pull request, the workflow is disabled or not triggered. If it
+  is red and the merge button still works, it is not required — see
+  [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
 ### 9. A model reviews the doc as a check
 
@@ -311,10 +345,10 @@ where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its 
 sign-off ledger), so 8, with 1 for everything the script does not check. It costs a 319-line
 script and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
 below; 9, since a person reviews substance. Gaps: sections and option fields are not checked, so a doc can drop "How to
-choose" and pass; nothing checks that every doc has an example and a resource — `pairs_with`
+choose" and pass; nothing checks that every doc has an example — `pairs_with`
 points from example to doc, not back; the ledger rule was met by splitting commits with nothing
 read ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); the
 scan is whole-tree, which is how one squash merge turned `main` red; and a pull request can edit
 the gate, which only the review hold catches
-([`publishing-discipline.md`](publishing-discipline.md)). The gate and how to run it:
-[`structure-gate.md`](../resources/structure-gate.md).
+([`publishing-discipline.md`](publishing-discipline.md)). The gate and how to run it: option 8's
+Install and Check above.

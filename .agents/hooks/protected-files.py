@@ -1,3 +1,4 @@
+# Install and check: docs/agent-safety-hooks.md#4-a-program-that-inspects-each-call-before-it-runs
 """PreToolUse hook: block edits to protected files, regardless of who is editing.
 
 Standalone counterpart to a user-level (interactive-session-scoped) copy of the same

@@ -99,10 +99,11 @@ of the doc.
 - A recorded run or a third-party case that shows an option at work → `examples/`, with `fit`
   and either `last_seen` (ours) or `source` + `verified` (theirs), and `pairs_with` pointing at
   the doc.
-- Something a reader can install or copy → `resources/`, with `pairs_with`, `harnesses` and
-  `cost`.
+- Something a reader can install or copy → the option's own section: an **Install** paragraph
+  (what it does, what it costs, which harness) and a `#### Check` (how to tell it ran). Put the
+  code file in the repo and give its header a one-line comment pointing at the option's anchor.
 
-Link them from the option they illustrate. Keep the doc itself under the size cap by moving
+Link examples from the option they illustrate. Keep the doc itself under the size cap by moving
 detail there, not by dropping options.
 
 ## Before review
