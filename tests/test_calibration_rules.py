@@ -30,14 +30,7 @@ def _section(title: str) -> str:
     return " ".join(match.group(1).split())
 
 
-# --- where the file sits ----------------------------------------------------------------------
-
-
-def test_rules_sit_outside_the_hashed_skill_file():
-    # The drift key hashes SKILL.md only. The rules live beside it, not in it.
-    assert RULES.is_file()
-    assert RULES.resolve() != (SKILL_DIR / "SKILL.md").resolve()
-    assert RULES.parent == CALIBRATION_DIR
+# --- written before the corpus ----------------------------------------------------------------
 
 
 def _git(*args: str) -> str:

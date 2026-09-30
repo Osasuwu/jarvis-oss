@@ -23,10 +23,6 @@ def _fields() -> dict[str, bool]:
     return fields
 
 
-def test_template_exists():
-    assert TEMPLATE_PATH.is_file()
-
-
 def test_template_applies_doc_error_label():
     text = TEMPLATE_PATH.read_text(encoding="utf-8")
     labels_line = next(line for line in text.splitlines() if line.startswith("labels:"))

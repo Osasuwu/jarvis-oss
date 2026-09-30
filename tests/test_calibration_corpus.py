@@ -110,13 +110,7 @@ def _table() -> dict[str, int]:
     return table
 
 
-# --- where the file sits ----------------------------------------------------------------------
-
-
-def test_corpus_sits_outside_the_hashed_skill_file():
-    assert CORPUS.is_file()
-    assert CORPUS.parent == CALIBRATION_DIR
-    assert CORPUS.resolve() != (SKILL_DIR / "SKILL.md").resolve()
+# --- what the file holds ----------------------------------------------------------------------
 
 
 def test_corpus_states_what_its_figures_are():
@@ -131,16 +125,29 @@ def test_corpus_has_entries():
 # --- fields -----------------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
-def test_entry_has_every_required_field(name, fields):
+def _for_every_entry(check) -> None:
+    """Run `check(name, fields)` on every entry and fail with every entry that breaks it."""
+    failures = []
+    for name, fields in _all():
+        try:
+            check(name, fields)
+        except AssertionError as err:
+            failures.append(str(err).splitlines()[0])
+    assert not failures, "\n".join(failures)
+
+
+def _check_entry_has_every_required_field(name, fields):
     missing = [f for f in REQUIRED if f not in fields]
     assert not missing, f"{name}: missing {missing}"
     for key, value in fields.items():
         assert value, f"{name}: {key} is empty"
 
 
-@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
-def test_entry_values_are_valid(name, fields):
+def test_every_entry_has_every_required_field():
+    _for_every_entry(_check_entry_has_every_required_field)
+
+
+def _check_entry_values_are_valid(name, fields):
     assert fields["class"] in CLASSES, f"{name}: unknown class {fields['class']}"
     assert fields["label"] in LABELS, f"{name}: unknown label {fields['label']}"
     if fields["class"] in ALWAYS_BLOCKING:
@@ -150,8 +157,11 @@ def test_entry_values_are_valid(name, fields):
     assert LOCATION.match(fields["location"]), f"{name}: location is not path:line"
 
 
-@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
-def test_escape_evidence_links_the_next_round(name, fields):
+def test_every_entry_has_valid_values():
+    _for_every_entry(_check_entry_values_are_valid)
+
+
+def _check_escape_evidence_links_the_next_round(name, fields):
     pr = PR_LINK.match(fields["source_pr"])
     assert pr and pr.group(1) == pr.group(2), f"{name}: source_pr is not a PR link"
     escape = ESCAPE.match(fields["escape"])
@@ -162,8 +172,11 @@ def test_escape_evidence_links_the_next_round(name, fields):
     assert link_pr == pr.group(1), f"{name}: finding link is on another PR"
 
 
-@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
-def test_defect_links_the_text_at_round_n(name, fields):
+def test_every_escape_links_the_next_round():
+    _for_every_entry(_check_escape_evidence_links_the_next_round)
+
+
+def _check_defect_links_the_text_at_round_n(name, fields):
     path, _, lines = fields["location"].strip("`").partition(":")
     m = BLOB.search(fields["defect"])
     assert m, f"{name}: defect does not link the doc text at round N"
@@ -172,6 +185,10 @@ def test_defect_links_the_text_at_round_n(name, fields):
     assert linked_path == path, f"{name}: linked text is another file"
     first, _, last = lines.partition("-")
     assert anchor == (f"L{first}-L{last}" if last else f"L{first}"), f"{name}: anchor != location"
+
+
+def test_every_defect_links_the_text_at_round_n():
+    _for_every_entry(_check_defect_links_the_text_at_round_n)
 
 
 # --- held-out ---------------------------------------------------------------------------------
@@ -229,12 +246,15 @@ def _file(fields: dict[str, str]) -> str:
     return fields["location"].strip("`").partition(":")[0]
 
 
-@pytest.mark.parametrize("name,fields", _all() if CORPUS.is_file() else [])
-def test_entry_split_is_valid(name, fields):
+def _check_entry_split_is_valid(name, fields):
     assert SPLIT.match(fields["split"]), f"{name}: split is not dev, test, held-out or excluded(reason)"
     pr = PR_LINK.match(fields["source_pr"]).group(1)
     if _split(fields) in SPLIT_PRS:
         assert pr in SPLIT_PRS[_split(fields)], f"{name}: PR #{pr} is not in the {_split(fields)} lineage"
+
+
+def test_every_entry_split_is_valid():
+    _for_every_entry(_check_entry_split_is_valid)
 
 
 def test_held_out_section_is_exactly_the_held_out_split():

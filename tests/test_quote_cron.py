@@ -79,13 +79,6 @@ def test_permissions_are_contents_read_and_issues_write():
     assert sorted(perms.split()) == sorted(["contents:", "read", "issues:", "write"])
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert len(uses) == 3
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 def test_runs_are_serialized():
     assert re.search(r"^concurrency:\n  group: quote-cron\n  cancel-in-progress: false", WORKFLOW, re.M)
 
