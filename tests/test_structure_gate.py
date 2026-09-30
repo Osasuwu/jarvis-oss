@@ -271,3 +271,274 @@ def test_example_pairs_with_must_resolve(tmp_path):
     assert [(v.path, v.code) for v in violations] == [
         ("examples/paired.md", "pairs_with_unresolvable")
     ]
+
+
+# --- #160: kind / requires / hub. The rules below apply only to docs that declare `kind:`. ---
+
+
+def _kind_doc(kind: str | None = "practice", extra: str = "", body: str = "# Doc\n") -> str:
+    kind_line = "" if kind is None else f"kind: {kind}\n"
+    return (
+        "---\napplies_when: fixture\napplies_when_not: fixture\nsigned_off:\n"
+        f"{kind_line}{extra}---\n\n{body}"
+    )
+
+
+def _codes(root: Path) -> set[tuple[str, str]]:
+    return {(v.path, v.code) for v in check_tree(root)}
+
+
+def test_kind_outside_practice_hub_basics_fails(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc("guide"))
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "doc_kind_invalid")]
+    assert "guide" in violations[0].message
+
+
+def test_kind_practice_hub_basics_pass(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc("practice"))
+    _write(tmp_path / "docs" / "b.md", _kind_doc("basics"))
+    _write(tmp_path / "docs" / "c.md", _kind_doc("hub", body="# Hub\n\n## Children\n"))
+    assert check_tree(tmp_path) == []
+
+
+def test_empty_kind_value_fails(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc(""))
+    assert ("docs/a.md", "doc_kind_invalid") in _codes(tmp_path)
+
+
+def test_requires_resolving_to_headings_passes(tmp_path):
+    _write(
+        tmp_path / "docs" / "basics.md",
+        _kind_doc("basics", body="# Basics\n\n## CI\n\n## Hooks\n"),
+    )
+    _write(
+        tmp_path / "docs" / "a.md",
+        _kind_doc(extra="requires: basics#ci, basics#hooks\n"),
+    )
+    assert check_tree(tmp_path) == []
+
+
+def test_requires_anchor_missing_is_named(tmp_path):
+    _write(tmp_path / "docs" / "basics.md", _kind_doc("basics", body="# Basics\n\n## CI\n"))
+    _write(
+        tmp_path / "docs" / "a.md",
+        _kind_doc(extra="requires: basics#ci, basics#hooks\n"),
+    )
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "requires_unresolvable")]
+    assert "basics#hooks" in violations[0].message
+    assert "basics#ci" not in violations[0].message
+
+
+def test_requires_doc_missing_is_named(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc(extra="requires: nowhere#ci\n"))
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "requires_unresolvable")]
+    assert "nowhere#ci" in violations[0].message
+
+
+def test_requires_item_without_anchor_form_fails(tmp_path):
+    _write(tmp_path / "docs" / "basics.md", _kind_doc("basics", body="# Basics\n\n## CI\n"))
+    for bad in ("basics", "basics#", "#ci", "docs/basics#ci"):
+        _write(tmp_path / "docs" / "a.md", _kind_doc(extra=f"requires: {bad}\n"))
+        violations = check_tree(tmp_path)
+        assert [(v.path, v.code) for v in violations] == [("docs/a.md", "requires_unresolvable")], (
+            bad
+        )
+
+
+def test_requires_ignored_on_a_doc_without_kind(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc(kind=None, extra="requires: nowhere#ci\n"))
+    assert check_tree(tmp_path) == []
+
+
+def test_requires_anchor_follows_the_github_heading_slug_rule(tmp_path):
+    body = (
+        "# Title\n\n"
+        "## Чем проверять: хуки\n\n"
+        "## Hooks & `pre-push` (v2)\n\n"
+        "## [Linked](#setup) *heading* _one_\n\n"
+        "## Setup\n\n## Setup\n\n"
+        "## Closed heading ##\n\n"
+        "```\n## Not a heading\n```\n"
+    )
+    _write(tmp_path / "docs" / "basics.md", _kind_doc("basics", body=body))
+    good = (
+        "basics#чем-проверять-хуки, basics#hooks--pre-push-v2, basics#linked-heading-one, "
+        "basics#setup, basics#setup-1, basics#closed-heading, basics#title"
+    )
+    _write(tmp_path / "docs" / "a.md", _kind_doc(extra=f"requires: {good}\n"))
+    assert check_tree(tmp_path) == []
+    _write(tmp_path / "docs" / "a.md", _kind_doc(extra="requires: basics#not-a-heading\n"))
+    assert ("docs/a.md", "requires_unresolvable") in _codes(tmp_path)
+    _write(tmp_path / "docs" / "a.md", _kind_doc(extra="requires: basics#setup-2\n"))
+    assert ("docs/a.md", "requires_unresolvable") in _codes(tmp_path)
+
+
+def test_in_doc_anchor_link_must_resolve(tmp_path):
+    body = "# Doc\n\n## Setup\n\nSee [setup](#setup) and [Настройка](#%D0%BD%D0%B0%D1%81%D1%82%D1%80%D0%BE%D0%B9%D0%BA%D0%B0).\n\n## Настройка\n"
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body=body))
+    assert check_tree(tmp_path) == []
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# Doc\n\nSee [gone](#gone).\n"))
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "anchor_unresolvable")]
+    assert "#gone" in violations[0].message
+
+
+def test_relative_link_anchor_must_resolve(tmp_path):
+    _write(tmp_path / "docs" / "b.md", _kind_doc(body="# B\n\n## Hooks\n"))
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[hooks](b.md#hooks)\n"))
+    assert check_tree(tmp_path) == []
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[hooks](b.md#gone)\n"))
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "anchor_unresolvable")]
+    assert "b.md#gone" in violations[0].message
+
+
+def test_relative_link_anchor_reaches_outside_docs(tmp_path):
+    _write(
+        tmp_path / "examples" / "e.md",
+        "---\nfit: x\nlast_seen: 2999-01-01\npairs_with: docs/a.md\n---\n\n# E\n\n## Run\n",
+    )
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[e](../examples/e.md#run)\n"))
+    assert check_tree(tmp_path) == []
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[e](../examples/e.md#gone)\n"))
+    assert ("docs/a.md", "anchor_unresolvable") in _codes(tmp_path)
+
+
+def test_relative_link_to_missing_file_is_reported_once(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[x](nope.md#any)\n"))
+    assert [(v.path, v.code) for v in check_tree(tmp_path)] == [
+        ("docs/a.md", "boundary_evidence_unresolvable")
+    ]
+
+
+def test_external_and_mailto_links_are_not_anchor_checked(tmp_path):
+    body = "# A\n\n[x](https://example.com/p#frag) [m](mailto:a@b.c)\n"
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body=body))
+    assert check_tree(tmp_path) == []
+
+
+def test_doc_without_kind_keeps_todays_link_check(tmp_path):
+    # Until the flip (#178) a doc with no `kind` gets exactly the old checks: a `file.md#anchor`
+    # link is still reported, and an in-doc `(#anchor)` link is still skipped, never resolved.
+    _write(tmp_path / "docs" / "b.md", _kind_doc(kind=None, body="# B\n\n## Hooks\n"))
+    _write(
+        tmp_path / "docs" / "a.md",
+        _kind_doc(kind=None, body="# A\n\n[h](b.md#hooks) [g](#gone)\n"),
+    )
+    assert [(v.path, v.code) for v in check_tree(tmp_path)] == [
+        ("docs/a.md", "boundary_evidence_unresolvable")
+    ]
+
+
+def test_fragment_on_a_non_markdown_target_is_not_a_heading_anchor(tmp_path):
+    # `script.py#L10` is a GitHub line anchor, not a heading: only markdown targets are resolved.
+    _write(tmp_path / "docs" / "run.py", "print('x')\n")
+    _write(tmp_path / "docs" / "a.md", _kind_doc(body="# A\n\n[code](run.py#L1)\n"))
+    assert check_tree(tmp_path) == []
+
+
+def _hub(children: list[str], extra_section: str = "") -> str:
+    bullets = "".join(f"- [{name}]({name}.md) — child\n" for name in children)
+    return _kind_doc("hub", body=f"# Hub\n\n## Children\n\n{bullets}{extra_section}")
+
+
+def _child(hub: str = "h", kind: str | None = "practice") -> str:
+    return _kind_doc(kind, extra=f"hub: {hub}\n")
+
+
+def test_hub_listing_exactly_its_children_passes(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _hub(["a", "b"]))
+    _write(tmp_path / "docs" / "a.md", _child())
+    _write(tmp_path / "docs" / "b.md", _child())
+    _write(tmp_path / "docs" / "other.md", _kind_doc())  # no `hub:`: not a child
+    assert check_tree(tmp_path) == []
+
+
+def test_hub_children_may_be_listed_in_any_order_with_anchors(tmp_path):
+    body = "# Hub\n\n## Children\n\n- [b](b.md#x)\n* [a](a.md)\n\n## Next\n\nprose\n"
+    _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body=body))
+    _write(tmp_path / "docs" / "a.md", _child())
+    _write(
+        tmp_path / "docs" / "b.md", _kind_doc("practice", extra="hub: h\n", body="# B\n\n## X\n")
+    )
+    assert check_tree(tmp_path) == []
+
+
+def test_hub_target_must_have_kind_hub(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _kind_doc("practice"))
+    _write(tmp_path / "docs" / "a.md", _child())
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/a.md", "hub_target_not_hub")]
+    assert "h" in violations[0].message
+
+
+def test_hub_target_without_kind_or_missing_fails(tmp_path):
+    _write(tmp_path / "docs" / "plain.md", _kind_doc(kind=None))
+    _write(tmp_path / "docs" / "a.md", _child(hub="plain"))
+    _write(tmp_path / "docs" / "b.md", _child(hub="nowhere"))
+    _write(tmp_path / "docs" / "c.md", _child(hub=""))
+    codes = _codes(tmp_path)
+    assert {
+        ("docs/a.md", "hub_target_not_hub"),
+        ("docs/b.md", "hub_target_not_hub"),
+        ("docs/c.md", "hub_target_not_hub"),
+    } <= codes
+
+
+def test_hub_missing_a_child_names_it(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _hub(["a"]))
+    _write(tmp_path / "docs" / "a.md", _child())
+    _write(tmp_path / "docs" / "b.md", _child())
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/h.md", "hub_children_mismatch")]
+    assert "docs/b.md" in violations[0].message
+    assert "docs/a.md" not in violations[0].message
+
+
+def test_hub_listing_an_extra_doc_names_it(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _hub(["a", "stray"]))
+    _write(tmp_path / "docs" / "a.md", _child())
+    _write(tmp_path / "docs" / "stray.md", _kind_doc())  # exists, but does not declare hub: h
+    violations = check_tree(tmp_path)
+    assert [(v.path, v.code) for v in violations] == [("docs/h.md", "hub_children_mismatch")]
+    assert "docs/stray.md" in violations[0].message
+    assert "docs/a.md" not in violations[0].message
+
+
+def test_hub_names_missing_and_extra_together(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _hub(["stray"]))
+    _write(tmp_path / "docs" / "stray.md", _kind_doc())
+    _write(tmp_path / "docs" / "a.md", _child())
+    (violation,) = check_tree(tmp_path)
+    assert violation.code == "hub_children_mismatch"
+    assert "missing docs/a.md" in violation.message
+    assert "extra docs/stray.md" in violation.message
+
+
+def test_hub_without_children_section_fails(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body="# Hub\n\nNo section.\n"))
+    assert _codes(tmp_path) == {("docs/h.md", "hub_children_missing")}
+
+
+def test_hub_children_section_must_be_a_bullet_list_of_links(tmp_path):
+    _write(tmp_path / "docs" / "a.md", _child())
+    for bad in ("a.md is the only child\n", "- a\n", "- [a](a.md)\nfree prose\n", "1. [a](a.md)\n"):
+        body = f"# Hub\n\n## Children\n\n{bad}"
+        _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body=body))
+        assert ("docs/h.md", "hub_children_malformed") in _codes(tmp_path), bad
+
+
+def test_hub_child_declared_on_a_doc_without_kind_is_not_counted(tmp_path):
+    _write(tmp_path / "docs" / "h.md", _hub([]))
+    _write(tmp_path / "docs" / "a.md", _kind_doc(kind=None, extra="hub: h\n"))
+    assert check_tree(tmp_path) == []
+
+
+def test_hub_child_bullet_may_continue_on_an_indented_line(tmp_path):
+    body = "# Hub\n\n## Children\n\n- [a](a.md) — first line\n  continued here\n"
+    _write(tmp_path / "docs" / "h.md", _kind_doc("hub", body=body))
+    _write(tmp_path / "docs" / "a.md", _child())
+    assert check_tree(tmp_path) == []

@@ -12,6 +12,7 @@ import subprocess
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
+from urllib.parse import unquote
 
 STALE_AFTER_DAYS = 180
 
@@ -43,8 +44,14 @@ DOC_SIZE_CAP_BYTES = 30_000
 
 DOC_REQUIRED_KEYS = ("applies_when", "applies_when_not", "signed_off")
 RESOURCE_REQUIRED_KEYS = ("pairs_with", "harnesses", "cost")
+# #160: a doc that declares `kind:` opts in to the contract checks below; a doc without it keeps
+# exactly the checks above until every doc is migrated (#178).
+DOC_KINDS = ("practice", "hub", "basics")
 
 _MARKDOWN_LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+_HEADING_RE = re.compile(r"^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$")
+_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_BULLET_LINK_RE = re.compile(r"^[-*+][ \t]+\[[^\]]*\]\(([^)\s]+)\)")
 
 
 @dataclass(frozen=True)
@@ -70,6 +77,68 @@ def _parse_frontmatter(text: str) -> dict[str, str]:
         key, _, value = line.partition(":")
         fields[key.strip()] = value.strip()
     return fields
+
+
+def _body_after_frontmatter(text: str) -> str:
+    if not text.startswith("---\n"):
+        return text
+    end = text.find("\n---", 4)
+    return text if end == -1 else text[end + 4 :]
+
+
+def _scan_lines(text: str) -> list[tuple[str, tuple[int, str] | None]]:
+    """Each body line with its (level, heading text) when it is an ATX heading; lines in
+    fenced code, and the fences themselves, are never headings."""
+    scanned: list[tuple[str, tuple[int, str] | None]] = []
+    fence: str | None = None
+    for line in _body_after_frontmatter(text).splitlines():
+        fence_match = _FENCE_RE.match(line)
+        if fence_match:
+            marker = fence_match.group(1)
+            if fence is None:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = None
+            scanned.append((line, None))
+            continue
+        heading_match = _HEADING_RE.match(line) if fence is None else None
+        if heading_match and heading_match.group(2):
+            scanned.append((line, (len(heading_match.group(1)), heading_match.group(2))))
+        else:
+            scanned.append((line, None))
+    return scanned
+
+
+def _headings(text: str) -> list[tuple[int, str]]:
+    return [heading for _, heading in _scan_lines(text) if heading is not None]
+
+
+def _github_slug(heading: str) -> str:
+    """GitHub's heading-slug rule: rendered text, lowercased, everything except letters,
+    digits, underscore, hyphen and space dropped, each space turned into a hyphen."""
+    text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", heading)
+    text = re.sub(r"(?<!\w)_+(.+?)_+(?!\w)", r"\1", text)
+    text = re.sub(r"[^\w\- ]", "", text.strip().lower())
+    return text.replace(" ", "-")
+
+
+def _anchors(text: str) -> set[str]:
+    """Every anchor GitHub generates for the doc; a repeated heading gets -1, -2, ..."""
+    anchors: set[str] = set()
+    seen: dict[str, int] = {}
+    for _, heading in _headings(text):
+        slug = _github_slug(heading)
+        count = seen.get(slug, 0)
+        seen[slug] = count + 1
+        anchors.add(slug if count == 0 else f"{slug}-{count}")
+    return anchors
+
+
+def _anchors_of(path: Path, cache: dict[Path, set[str]]) -> set[str]:
+    resolved = path.resolve()
+    if resolved not in cache:
+        cache[resolved] = _anchors(resolved.read_text(encoding="utf-8"))
+    return cache[resolved]
 
 
 def _rel(path: Path, root: Path) -> str:
@@ -116,7 +185,10 @@ def _check_docs(root: Path) -> list[Violation]:
         for link in _MARKDOWN_LINK_RE.findall(text):
             if "://" in link or link.startswith(("#", "mailto:")):
                 continue
-            target = (doc_path.parent / link).resolve()
+            # A kind doc's `file.md#anchor` link is resolved by _check_kind_docs (#160, #84);
+            # a doc without `kind` keeps the old check and reports it.
+            file_part = link.partition("#")[0] if "kind" in fields else link
+            target = (doc_path.parent / file_part).resolve()
             if not target.is_file():
                 violations.append(
                     Violation(
@@ -125,6 +197,187 @@ def _check_docs(root: Path) -> list[Violation]:
                         message=f"{rel} references '{link}', which does not resolve to a file",
                     )
                 )
+    return violations
+
+
+def _check_requires(
+    root: Path, rel: str, value: str, cache: dict[Path, set[str]]
+) -> list[Violation]:
+    # #160 D7: a flat comma-separated list of `<doc-stem>#<anchor>`; each names a heading of
+    # docs/<doc-stem>.md.
+    violations: list[Violation] = []
+    for item in (part.strip() for part in value.split(",")):
+        if not item:
+            continue
+        stem, sep, anchor = item.partition("#")
+        target = root / "docs" / f"{stem}.md"
+        resolves = (
+            bool(sep and stem and anchor)
+            and "/" not in stem
+            and "\\" not in stem
+            and target.is_file()
+            and anchor in _anchors_of(target, cache)
+        )
+        if not resolves:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="requires_unresolvable",
+                    message=(
+                        f"{rel} requires '{item}', which does not resolve to a heading "
+                        "of docs/<doc-stem>.md"
+                    ),
+                )
+            )
+    return violations
+
+
+def _check_anchor_links(
+    doc_path: Path, rel: str, text: str, cache: dict[Path, set[str]]
+) -> list[Violation]:
+    # The one anchor resolver for links: `(#anchor)` in this doc and `other.md#anchor`. A link
+    # whose file does not exist is already reported by _check_docs, so it is skipped here.
+    violations: list[Violation] = []
+    for link in _MARKDOWN_LINK_RE.findall(text):
+        if "://" in link or link.startswith("mailto:"):
+            continue
+        file_part, _, fragment = link.partition("#")
+        if not fragment:
+            continue
+        target = (doc_path.parent / file_part).resolve() if file_part else doc_path
+        if not target.is_file() or target.suffix != ".md":
+            continue
+        if unquote(fragment) not in _anchors_of(target, cache):
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="anchor_unresolvable",
+                    message=f"{rel} links to '{link}', which does not resolve to a heading",
+                )
+            )
+    return violations
+
+
+def _children_links(text: str) -> tuple[list[str], list[str]] | None:
+    """(links, malformed lines) of the `## Children` section, or None when there is none."""
+    links: list[str] = []
+    malformed: list[str] = []
+    in_section = False
+    found = False
+    for line, heading in _scan_lines(text):
+        if heading is not None:
+            if in_section and heading[0] <= 2:
+                break
+            if heading == (2, "Children"):
+                in_section = found = True
+            continue
+        if not in_section or not line.strip() or line[0] in " \t":
+            continue
+        match = _BULLET_LINK_RE.match(line)
+        if match:
+            links.append(match.group(1))
+        else:
+            malformed.append(line.strip())
+    return (links, malformed) if found else None
+
+
+def _check_hub_target(hub_rel: str, rel: str, kinds: dict[str, str]) -> list[Violation]:
+    if hub_rel in kinds and kinds[hub_rel] == "hub":
+        return []
+    reason = "does not exist" if hub_rel not in kinds else f"has kind '{kinds[hub_rel]}'"
+    return [
+        Violation(
+            path=rel,
+            code="hub_target_not_hub",
+            message=f"{rel} declares hub '{hub_rel}', which {reason}, not kind: hub",
+        )
+    ]
+
+
+def _check_hub_children(
+    root: Path, doc_path: Path, rel: str, text: str, children: set[str]
+) -> list[Violation]:
+    section = _children_links(text)
+    if section is None:
+        return [
+            Violation(
+                path=rel,
+                code="hub_children_missing",
+                message=f"{rel} is kind: hub and has no '## Children' section",
+            )
+        ]
+    links, malformed = section
+    violations = [
+        Violation(
+            path=rel,
+            code="hub_children_malformed",
+            message=f"{rel} '## Children' holds a line that is not a bullet link: '{line}'",
+        )
+        for line in malformed
+    ]
+    listed: set[str] = set()
+    for link in links:
+        target = (doc_path.parent / link.partition("#")[0]).resolve()
+        try:
+            listed.add(target.relative_to(root.resolve()).as_posix())
+        except ValueError:
+            listed.add(link)
+    missing, extra = sorted(children - listed), sorted(listed - children)
+    if missing or extra:
+        parts = [f"missing {', '.join(missing)}"] if missing else []
+        parts += [f"extra {', '.join(extra)}"] if extra else []
+        violations.append(
+            Violation(
+                path=rel,
+                code="hub_children_mismatch",
+                message=(
+                    f"{rel} '## Children' does not list exactly the docs that declare "
+                    f"hub '{doc_path.stem}': {'; '.join(parts)}"
+                ),
+            )
+        )
+    return violations
+
+
+def _check_kind_docs(root: Path) -> list[Violation]:
+    docs_dir = root / "docs"
+    if not docs_dir.is_dir():
+        return []
+    violations: list[Violation] = []
+    cache: dict[Path, set[str]] = {}
+    declared: list[tuple[Path, str, str, dict[str, str]]] = []
+    for doc_path in sorted(docs_dir.rglob("*.md")):
+        rel = _rel(doc_path, root)
+        if is_excluded_doc(rel):
+            continue
+        text = doc_path.read_text(encoding="utf-8")
+        fields = _parse_frontmatter(text)
+        if "kind" in fields:
+            declared.append((doc_path, rel, text, fields))
+    kinds = {rel: fields["kind"] for _, rel, _, fields in declared}
+    children: dict[str, set[str]] = {}
+    for doc_path, rel, text, fields in declared:
+        if fields["kind"] not in DOC_KINDS:
+            violations.append(
+                Violation(
+                    path=rel,
+                    code="doc_kind_invalid",
+                    message=(
+                        f"{rel} has kind '{fields['kind']}', not one of {', '.join(DOC_KINDS)}"
+                    ),
+                )
+            )
+        violations.extend(_check_requires(root, rel, fields.get("requires", ""), cache))
+        violations.extend(_check_anchor_links(doc_path, rel, text, cache))
+        if "hub" in fields:
+            hub_rel = f"docs/{fields['hub']}.md"
+            violations.extend(_check_hub_target(hub_rel, rel, kinds))
+            children.setdefault(hub_rel, set()).add(rel)
+    for doc_path, rel, text, fields in declared:
+        if fields["kind"] == "hub":
+            violations.extend(
+                _check_hub_children(root, doc_path, rel, text, children.get(rel, set()))
+            )
     return violations
 
 
@@ -323,6 +576,7 @@ def check_tree(root: Path) -> list[Violation]:
     root = Path(root)
     violations: list[Violation] = []
     violations.extend(_check_docs(root))
+    violations.extend(_check_kind_docs(root))
     violations.extend(_check_signoff(root))
     violations.extend(_check_examples(root))
     violations.extend(_check_resources(root))
