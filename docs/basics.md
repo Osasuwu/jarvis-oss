@@ -1,6 +1,6 @@
 ---
 applies_when: you are setting up an agent to work in a git repository on GitHub and a practice doc here asks for a branch, a pull request, a CI check, a rules file, a skill or a hook that you have not used before
-applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which harness to pick or where its files live is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
+applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which file names and directories a given harness uses is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
 kind: basics
 ---
 
@@ -14,11 +14,10 @@ that, such as which harness reads which file, is one hop away in [the harness ta
 ## Branches and pull requests
 
 In Git, a branch is a movable pointer to a commit, so a separate line of changes costs almost
-nothing to create. `git switch -c <name>` makes one and switches to it; `git push -u origin <name>`
-publishes it to GitHub; see [Git - git-push Documentation](https://git-scm.com/docs/git-push) (checked 2026-10-01).
-For branches themselves see
-[Git - Branches in a Nutshell](https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell) (checked 2026-09-30)
-and, for how GitHub treats branches, [Branches](https://docs.github.com/en/pull-requests/reference/branches) (checked 2026-09-30).
+nothing to create, and `git switch -c <name>` makes one and switches to it; see
+[Git - Branches in a Nutshell](https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell) (checked 2026-09-30).
+`git push -u origin <name>` publishes it to GitHub; see [Git - git-push Documentation](https://git-scm.com/docs/git-push) (checked 2026-10-01).
+For how GitHub treats branches, see [Branches](https://docs.github.com/en/pull-requests/reference/branches) (checked 2026-09-30).
 
 A pull request proposes merging the changes on one branch into another and gives a place to
 review them first. See
@@ -51,8 +50,10 @@ A check only stops a merge if the branch is protected and lists it as required. 
 default the rule does not apply to repository admins, which on your own repository means you and
 an agent working with your token, until you turn on **Do not allow bypassing the above settings**. See
 [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-10-01).
-Protection on a private repository needs a paid plan: the plans page lists it under GitHub Pro and
-GitHub Team, and on GitHub Free it covers public repositories only. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
+Protection on a private repository needs a paid plan. The same page's **Who can use this
+feature?** box says protected branches are available "in public repositories with GitHub Free and
+GitHub Free for organizations", and "in public and private repositories with GitHub Pro, GitHub
+Team, GitHub Enterprise Cloud, and GitHub Enterprise Server".
 Without protection a failing check still shows in the pull request's **Checks** tab (see
 [Status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks) (checked 2026-10-01)),
 but nothing blocks the merge. The check then binds only someone who looks before merging; in an
@@ -86,8 +87,8 @@ check.
 You have it when you ask the agent what its project instructions say and it answers from the file
 (in Claude Code, `/context` also lists a loaded `CLAUDE.md` under **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
 `--bare` is set: that flag skips `CLAUDE.md`, hooks and skills, and the docs recommend it for
-scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode also needs an
-API key in `ANTHROPIC_API_KEY`, not a subscription login. To load the file as in a session, leave
+scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode never reads a
+subscription login, so it needs `ANTHROPIC_API_KEY`, an `apiKeyHelper`, or a cloud provider's own credentials. To load the file as in a session, leave
 `--bare` off; see
 [Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-09-30).
 Either way that shows the file is loaded, not that the agent follows every line.
@@ -103,8 +104,9 @@ The format is an open standard that a growing number of agent products have adop
 vary between tools; see the
 [Agent Skills specification](https://agentskills.io/specification) (checked 2026-09-30).
 The specification does not say which directory a tool reads skills from; for that, the harness
-table has a skills directory column, and where it says unverified, check your harness's own docs.
-If your harness has no skills, a short procedure can go in the rules file, at the cost described next.
+table has a skills directory column. Where it says unverified, look in your harness's own docs;
+if they name no skills directory, or your harness has no skills, a short procedure can go in the
+rules file, at the cost described next.
 
 Use a skill for a procedure and a rules file for a standing fact. A long procedure in the rules
 file is loaded every session whether or not it is needed.
@@ -118,8 +120,8 @@ A hook is a shell command your harness runs at a fixed point in the agent's work
 before a tool call or after a file edit. It runs whether or not the agent decides to follow an
 instruction. See
 [Automate actions with hooks](https://code.claude.com/docs/en/hooks-guide) (checked 2026-09-30).
-In an unattended `claude -p` run, `--bare` skips hooks and needs an API key rather than a
-subscription login, so leave it off if you rely on them.
+In an unattended `claude -p` run, `--bare` skips hooks and never reads a subscription login (see
+Rules file), so leave it off if you rely on them.
 
 That is the difference from a rules file: a rules-file line asks, a hook enforces. Practice docs
 here use hooks for rules that must not depend on the agent remembering them. The cost is a script
@@ -128,21 +130,28 @@ you have to write and keep working, and one that can block legitimate work.
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
 somewhere the agent does not decide. A required CI check on a protected branch does, if the
-protection binds the account the agent acts as and the agent's token can change neither the
-protection nor the workflow files (see CI and below). A git hook
+protection binds the account the agent acts as, the agent's token cannot change the protection,
+and the agent cannot, on its own, change what the check runs (see CI and below). A git hook
 needs no account or paid plan. It stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
 directory, so it holds against slips, not against an agent that decides to skip it; see
 [Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30). Permission
 rules and an OS sandbox, where your harness has them, are options in
 [Stopping an agent's writes before they land](agent-safety-hooks.md). One option there does not
 depend on the harness: not giving the agent a token that can do the forbidden thing. Without any of
-these, nothing stops the agent, and a step that must not happen unattended has to stay with a person.
+these, nothing stops the agent, so keep a step that must not happen unattended out of the run: the
+agent gets no credential for it, the run ends before it, and a person does it afterwards.
 
 You have it when a hook blocks or changes an action in a session without the agent being asked.
 Where your harness has no hooks, you have a substitute when something the agent cannot switch off
 stops the same action: a token without that permission, or a required CI check whose protection
-binds the account the agent acts as, while the agent's token can change neither the protection nor
-the workflow files. An admin account is exempt unless the protection binds admins (see CI). A token
-that can administer the repository can switch the protection off. A token that can write workflow
-files can make the check pass from its own branch, because a pull request runs the workflow as
-that branch edited it.
+binds the account the agent acts as and which the agent's branch cannot change. An admin account
+is exempt unless the protection binds admins (see CI). A token that can administer the repository
+can switch the protection off. A check triggered by `pull_request` takes the workflow file, and
+the scripts and tests it calls, from the branch, so a token that can push to that branch can make
+the check pass. It holds if the agent cannot merge an edit to those files without someone else's
+approval. A `pull_request_target` workflow that never checks out the pull request reads nothing
+from the branch, so the branch cannot fake its result, but an edit to its files that the agent
+merges changes every later run, unless the check fails any pull request that edits them; see
+[Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows) (checked 2026-10-01)
+and step 4 of [How to choose](agent-safety-hooks.md#how-to-choose) in Stopping an agent's writes
+before they land.
