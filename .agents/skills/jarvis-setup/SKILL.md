@@ -33,7 +33,8 @@ applies. Do not guess a rules-file name from training data — the table is pull
 so this skill reads it fresh instead of hard-coding a path (the note under
 `docs/harnesses.md`'s heading).
 
-Look for that rules-file at the repo root.
+On Claude Code the row names two files, so pick the rules file with the next step; on every
+other harness look for the row's file at the repo root. Either way:
 
 - **Found** → read it in full, then read every file it `@import`s (recursively, the same way the
   harness itself would resolve them), on any harness whose row in `docs/harnesses.md` lists
@@ -43,6 +44,36 @@ Look for that rules-file at the repo root.
   the trial output rather than guessing its contents; this is the limit of what the persona check
   can see. This is the baseline for §3's diff.
 - **Not found** → the repo is empty for this purpose. Skip straight to §4.
+
+### Claude Code: `AGENTS.md` or `CLAUDE.md`
+
+`AGENTS.md` is the single rules file. Claude Code reads it directly, but only when no `CLAUDE.md`
+counts, so creating a `CLAUDE.md` next to a team's `AGENTS.md` would make Claude Code stop loading
+the `AGENTS.md`. Decide in this order and say in the trial output which case applied:
+
+1. **A `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` already exists** in the repo root or
+   any directory above it → Claude Code reads those and not `AGENTS.md`. The rules file is the
+   `CLAUDE.md` that is there (read the `@AGENTS.md` import inside it as §2 says). Do not create an
+   `AGENTS.md` beside it, because it would not load. If only a `CLAUDE.local.md` exists, say that
+   it hides `AGENTS.md` and that the reader's **Project instructions** setting
+   (`claude-md-and-agents-md`) is what loads both.
+2. **None exists, and Claude Code reads `AGENTS.md` directly** → the rules file is `AGENTS.md`:
+   write into the one that is there, or create it. **Never create a `CLAUDE.md` in this case.**
+   Claude Code reads `AGENTS.md` directly on v2.1.277 or later with the built-in `agents-md`
+   plugin on and the **Project instructions** setting (`/config`) not `claude-md` or
+   `managed-only`.
+3. **None exists, and Claude Code does not read `AGENTS.md` directly** (older than v2.1.277, the
+   plugin disabled, the setting `claude-md` or `managed-only`) → fall back to `CLAUDE.md`. If an
+   `AGENTS.md` exists, create a `CLAUDE.md` whose first line is a bare `@AGENTS.md` import, and put
+   §5's output after it; say that this is the fallback and which condition caused it. If there is
+   no `AGENTS.md`, create a plain `CLAUDE.md` as §4 says.
+
+To tell 2 from 3, run `claude --version` and look under `agents-md@builtin` in `pluginConfigs` in
+`~/.claude/settings.json` for an `instructionFiles` value; **Project instructions** is absent from
+`/config` when the session cannot read `AGENTS.md`. Before v2.1.281, sessions on Amazon Bedrock or
+with telemetry disabled also read `CLAUDE.md` only. If you cannot tell, ask the reader; do not
+guess, because a wrong guess in case 2 leaves the rules unloaded and a wrong guess in case 3 only
+adds a `CLAUDE.md`.
 
 ## 3. Compute the delta
 
@@ -80,7 +111,8 @@ ready to append (`## Jarvis` heading, then the missing lines/blocks under it).
 
 If §2 found no rules file, there is nothing to diff against, so the delta is all three items
 from §3 — persona, autonomy tier, the two invariants verbatim — written as a complete, valid
-new rules file (heading + the three sections). This still goes through §3's logic; an empty
+new rules file (heading + the three sections). On Claude Code that new file is `AGENTS.md`, or
+`CLAUDE.md` only in §2's case 3. This still goes through §3's logic; an empty
 repo is just the case where nothing was already present.
 
 ## 5. Write or show, per §1's answer
@@ -94,7 +126,8 @@ repo is just the case where nothing was already present.
 
   - **Include support (currently Claude Code)** — own file, one bare import line. Write the delta
     body to its own file (e.g. `.claude/jarvis.md`) and, if the rules file does not already have
-    it, add one bare `@.claude/jarvis.md` import line. On a re-run, overwrite the owned file whole
+    it, add one bare `@.claude/jarvis.md` import line. This works in `AGENTS.md` too: Claude Code
+    expands `@path` imports inside each `AGENTS.md` it reads. On a re-run, overwrite the owned file whole
     — never touch anything else in the rules file. This is option 4 of
     `docs/writing-into-user-owned-files.md`: the tool never edits inside the reader's own content.
   - **No include support (every other harness)** — managed marker block, directly in the rules
@@ -114,7 +147,8 @@ repo is just the case where nothing was already present.
 ## 6. Optional extras
 
 Everything above works verbatim on any harness listed in `docs/harnesses.md`, using plain
-rules-file text; on Claude Code the write step in §5 always uses the owned-file `@import` path.
+rules-file text; on Claude Code the write step in §5 always uses the owned-file `@import` path, into the file
+§2's Claude Code step chose.
 Extras exist on top of that core path:
 
 - **Split the delta into its own file** — instead of inlining the delta body, write it to a
@@ -139,8 +173,11 @@ Extras exist on top of that core path:
     with this option is not "is the import line present" but "did the content load": run
     `/context` and confirm the owned file (e.g. `.claude/jarvis.md`) appears in the loaded memory
     files list. An import line with no matching entry in `/context` means the include did not
-    resolve — say so, don't report success on the strength of the line alone. This skill has no
-    load check for other harnesses; elsewhere, trust the write.
+    resolve — say so, don't report success on the strength of the line alone. When the rules file
+    is `AGENTS.md`, run `/memory` as well and confirm the `AGENTS.md` path is listed; before
+    v2.1.280 neither command lists an `AGENTS.md` that Claude Code read directly, so on those
+    versions ask Claude what its project instructions say instead. This skill has no load check
+    for other harnesses; elsewhere, trust the write.
 - **Hooks** — Claude Code can enforce the two invariants mechanically via hook scripts (e.g.
   blocking a tool call that would persist a secret). Offer this only on Claude Code; on
   every other harness the invariants stay prose-only, enforced by the agent reading them.
@@ -158,6 +195,11 @@ Removes only what this skill wrote — never anything the reader authored.
 - **No include support (marker block)** — delete everything from `<!-- jarvis-setup:begin -->`
   through `<!-- jarvis-setup:end -->` inclusive, including the markers themselves. Leave
   everything outside the markers untouched.
+
+A `CLAUDE.md` that §2's case 3 created holds `@AGENTS.md` and the owned-file import. After the
+owned-file import line is removed, a `CLAUDE.md` left with only `@AGENTS.md` is this skill's too;
+tell the reader it can be deleted on Claude Code v2.1.277 or later, and leave the deletion to
+them.
 
 If neither an owned file/import nor a marker block is found, this skill has not written anything
 to remove — say so rather than editing the rules file.

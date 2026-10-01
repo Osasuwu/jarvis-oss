@@ -1,7 +1,6 @@
 ---
 applies_when: a tool, script, installer, generator, skill or agent you are building has to put its own content into a file a person already owns and edits — an agent rules file, a shell profile, a config file, a manifest
 applies_when_not: the tool creates the file and nobody else ever edits it (regenerate it and stop reading), or it is a one-off manual edit with nothing to re-run
-signed_off:
 ---
 
 # Writing into files the user already owns
@@ -281,9 +280,12 @@ the run has nobody to look: CI, a devcontainer build, a scheduled run.
 
 **Cost.** A probe line sits in the person's rules and must be removed on uninstall. A token echo
 starts the reader, which can need a credential and cost money. The hook logs a load, not that the
-reader followed what it said. Other harnesses may
-have a load hook; [`harnesses.md`](harnesses.md) does not cover hooks, so read the harness's own
-docs, and with none only the echo is left.
+reader followed what it said. It also stays silent for an `AGENTS.md` that Claude Code reads
+directly, as opposed to one a `CLAUDE.md` imports: "Don’t fire. They fire as usual for an
+`AGENTS.md` that a `CLAUDE.md` imports or symlinks to"
+([memory docs](https://code.claude.com/docs/en/memory#where-agents-md-differs-from-claude-md)).
+Other harnesses may have a load hook; [`harnesses.md`](harnesses.md) does not cover hooks, so
+read the harness's own docs, and with none only the echo is left.
 
 Status: sourced (the hook); the probe is the example's own advice, untried here.
 
@@ -361,7 +363,12 @@ only on Claude Code. It asks trial or full setup before reading anything: trial 
 nothing, full writes it. Both carry an update and an uninstall step, documented in
 `jarvis-setup`'s own SKILL.md.
 
-One gap is open. The skill looks for the harness's rules-file name and, finding none, creates it.
-In a repo that has only an `AGENTS.md`, that creates a `CLAUDE.md` on Claude Code, and
-[which of the two Claude Code loads](https://code.claude.com/docs/en/memory#agents-md) then
-changes, so the team's own rules can stop loading. Check for `AGENTS.md` before creating one.
+Which file it writes into on Claude Code follows what Claude Code loads. A repo with only an
+`AGENTS.md`, on v2.1.277 or later with no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md`
+in the repo or above it, loads that `AGENTS.md` directly, so the skill writes into it, or creates
+it, and does not create a `CLAUDE.md`: with both present Claude Code reads
+"Your `CLAUDE.md` files only" ([memory docs](https://code.claude.com/docs/en/memory#agents-md)),
+and the team's rules would stop loading. Where Claude Code cannot read `AGENTS.md` directly (for
+example an older version, or the **Project instructions** setting at `claude-md`), it creates a `CLAUDE.md`
+that starts with a bare `@AGENTS.md` import and says it fell back. A `CLAUDE.md` already there is
+always the file it writes into.

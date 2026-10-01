@@ -1,7 +1,6 @@
 ---
 applies_when: an agent drafts changes in your repo — code, docs, a pull request — and before they merge, publish, or get marked "reviewed" you need something that shows a person actually read them, not just that a button was pressed
 applies_when_not: people write and review every change with no agent drafting — ordinary required reviews cover that; which checks must pass before a merge is a separate question (merge gates, Osasuwu/jarvis-oss#44); keeping private strings out of a public repo is docs/private-literal-scrub.md
-signed_off:
 ---
 
 # Proving a person read what an agent drafted
@@ -144,17 +143,24 @@ included — and the event log shows the account, not the person. It records int
 Drafts as the hold: sourced.
 
 **Install (ours).** [`waiting-human-review.yml`](../.github/workflows/waiting-human-review.yml):
-on a freshly opened or ready-for-review pull request with no reviewer requested, it adds a
-`waiting-human-review` label and fails; on every later event it fails while the label is on or a
-review request is pending. Nothing removes the label automatically. Cost: one Actions job per
-pull request event, one label clear per pull request. To adopt: copy the workflow, create the
-label, and add `waiting-human-review` to the default branch's required checks — unrequired, a red
-run blocks nothing.
+the hold covers documents only. On a freshly opened or ready-for-review pull request that changes
+a file under `docs/` (decision records under `docs/adr/` excepted) or `examples/`, with no
+reviewer requested, it adds a `waiting-human-review` label and fails. After the label is cleared,
+a push that changes one of the pull request's documents puts it back; a push that changes only
+other files does not, and if the push cannot be compared, the label goes back. On every other
+event it fails while the label is on or a review request is pending. Nothing removes the label
+automatically. A pull request that changes no document passes and merges on its other checks.
+Cost: one Actions job per pull request event, one label clear per document pull request and per
+push that changes a document after a clear. To adopt: copy the workflow, set the document paths
+in its `isDocPath`, create the label, and add `waiting-human-review` to the default branch's
+required checks — unrequired, a red run blocks nothing.
 
 #### Check
 
-A new pull request gets the label within a minute and the `waiting-human-review` check is red
-with "Human review is owed". Clear the label and the check re-runs green on `unlabeled`. No label:
+A new pull request that changes a document gets the label within a minute and the
+`waiting-human-review` check is red with "Human review is owed" and a list of the documents. One
+that changes only other files gets no label and a green check. Clear the label and the check
+re-runs green on `unlabeled`. No label on a document pull request:
 the workflow is not installed or lacks `issues: write`. Red check but the merge button works: the
 check is not required, or you are an administrator and protection does not apply to you.
 
@@ -206,34 +212,29 @@ Signed-off-by tags" and asks for `Assisted-by:` instead
 ([coding assistants](https://docs.kernel.org/process/coding-assistants.html)) — a policy, not a
 barrier. A rule like "separate commit" is met by splitting commits, not by reading.
 
-**Lifecycle.** A file convention and a check. Status: tried — our frontmatter date plus
-[`SIGNOFF.md`](SIGNOFF.md) ledger, gamed twice; see
+**Lifecycle.** A file convention and a check. Status: tried — our frontmatter date plus a
+ledger file, gamed twice, then removed ([#217](https://github.com/Osasuwu/jarvis-oss/issues/217)); see
 [`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md). Trailers,
 freshness metadata and notes: sourced.
 
-**Install (ours).** [`SIGNOFF.md`](SIGNOFF.md) entries
-`` - `docs/<doc>.md`: <date>; facts: <human | report URL> ``, plus the doc's own `signed_off:`
-field, empty on the drafting pull request. [`tests/structure_gate.py`](../tests/structure_gate.py)
-checks them: `signoff_missing_entry` (date set, no ledger line), `signoff_missing_facts` (a line
-with the matching date and no `facts:`), `signoff_same_commit` (line added in the commit that
-last changed the doc body), run by
-[`structure-gate.yml`](../.github/workflows/structure-gate.yml) with `fetch-depth: 0`, because the
-checks read the doc's git history. Cost: one structure-gate run per pull request event and one
-follow-up sign-off pull request per doc. It does not prove that a person, rather than an agent
-holding the same token, wrote the line; see [What every option depends on](#what-every-option-depends-on).
+**Install.** A reviewed-date field in each doc's frontmatter, or a ledger file with one line per
+doc, and a CI check that fails when the date is set and the matching record is missing; for
+trailers, the DCO app or a check on commit messages. A rule that the record lands in its own
+commit reads git history, so the CI checkout needs full history. Cost: a check to maintain, and
+a follow-up pull request per doc if the record must land after the body. It does not prove that
+a person, rather than an agent holding the same token, wrote the record; see
+[What every option depends on](#what-every-option-depends-on).
 
 #### Check
 
-Fill in `signed_off:` on a doc without adding a ledger line; `structure-gate` goes red naming
-`signoff_missing_entry` and the doc path. A green run prints the pytest summary for
-`tests/test_structure_gate.py`.
+Set the date on a doc without adding its record; the check must go red and name the doc.
 
 ### 7. Make the reading checkable
 
 **How it works.** Instead of asking the person to read everything, a context that did not write
-the change checks facts against sources and lists what to read closely; the sign-off records the
-report. Our [`review-doc`](../.agents/skills/review-doc/SKILL.md) skill does this, and a ledger
-entry names it (`facts: <report URL>`). Tools that push toward evidence of reading:
+the change checks facts against sources and lists what to read closely; the person reads the
+change with the report. Our [`review-doc`](../.agents/skills/review-doc/SKILL.md) skill does
+this. Tools that push toward evidence of reading:
 [Reviewable](https://docs.reviewable.io/files.html) tracks "the reviewed state of each file, at
 each revision, for each reviewer", while GitHub's own
 [mark as viewed](https://github.blog/news-insights/product-news/mark-files-as-viewed/)
@@ -252,15 +253,14 @@ code and "only 48%" always check it
 **Lifecycle.** A skill or CI job. Status: tried in this repo.
 
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
-did not write the doc; its report URL goes in the ledger entry's `facts:`. Cost: a model run per
+did not write the doc; its report is a comment on the pull request. Cost: a model run per
 review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
 copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
 directory, most of it unverified.
 
 #### Check
 
-The report is a comment on the pull request, and the ledger entry's `facts:` URL opens it.
-`facts: human` means no report was used.
+The report is a comment on the pull request. No comment means no review ran.
 
 ### 8. Make a change cheap to undo
 
@@ -361,18 +361,18 @@ trailer, is the proof; see
 
 **Our own choice.** One personal account on a public repo, and the agent runs with that account's
 token — so 2 is out *on fit*, and every record we can produce is intent. We use 4 (a
-`waiting-human-review` label and required check), 6 (an empty `signed_off:` on the drafting pull
-request, then a date and a [`SIGNOFF.md`](SIGNOFF.md) line in a separate commit) and 7 (a
-`review-doc` report named in the entry). It costs a label clear and a follow-up pull request per doc. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
+`waiting-human-review` label and required check) and 7 (a `review-doc` report on the pull
+request), both on pull requests that change a document; the scripts and workflows that support
+the documents merge on their own checks. It costs a label clear per document pull request. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
 ([`self-signed-signoff-pr-50.md`](../examples/self-signed-signoff-pr-50.md)); a ledger line
 was removed and re-added seven seconds apart, pushed straight to `main`, satisfying the
 separate-commit rule
-([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); we emptied the
-ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
-and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
+([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)). Row 6 does
+not hold for us — nothing proves who wrote a ledger line — so it added no check the hold lacks,
+and we removed it ([#217](https://github.com/Osasuwu/jarvis-oss/issues/217)). Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
 hardware-signed tag), either of which closes the first gap below; 8, so a doc is live on `main`
 when it merges and a person reverts it. Open gaps: the same account
 can clear the label, as #70's was, with no way to tell person from agent; an administrator can switch protection off on this repo; 3 and 5 are not in place.
-The hold, the ledger and its checks: Install and Check in options 4, 6 and 7. The history
+The hold and the report: Install and Check in options 4 and 7. The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure
 around it is [#44](https://github.com/Osasuwu/jarvis-oss/issues/44).

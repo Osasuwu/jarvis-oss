@@ -340,8 +340,8 @@ candidate 2. E entries stay outside every candidate until an execution lever exi
   and shown in the "caught, wrong label" column.
 - Scoring is done in a fresh context against this rule only, with the worksheet (entry × run →
   verdict, finding ID or none, one-line reason) in the PR. Test scorings are also written as one
-  line each into the sign-off ledger `docs/SIGNOFF.md`, dated, with the run links, so a scoring
-  cannot be quietly redone.
+  line each into this file, under the calibration that ran them, dated, with the run links, so a
+  scoring cannot be quietly redone.
 - **Budget.** At most 2 test scorings for procedure candidates and 1 for a model change. A third
   procedure candidate needs a new test split.
 

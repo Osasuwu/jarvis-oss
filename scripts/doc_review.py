@@ -34,13 +34,13 @@ import subprocess
 import sys
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 WORKFLOW_PATH = ".github/workflows/doc-review.yml"
 SKILL_PATH = ".agents/skills/review-doc/SKILL.md"
 CALIBRATION_PATH = ".agents/skills/review-doc/CALIBRATION.md"
-SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"  # same exclusion as tests/structure_gate.py
 # Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
 # Mirrored byte for byte in tests/structure_gate.py; tests/test_doc_review.py pins the two equal.
 EXCLUDED_DOC_DIRS = ("docs/adr/",)
@@ -95,9 +95,8 @@ class Unreviewable(Exception):
 
 
 def is_excluded_doc(path: str) -> bool:
-    """The sign-off ledger and every file under an excluded directory: one rule, shared with the
-    structure gate."""
-    return path == SIGNOFF_LEDGER_PATH or path.startswith(EXCLUDED_DOC_DIRS)
+    """Every file under an excluded directory: one rule, shared with the structure gate."""
+    return path.startswith(EXCLUDED_DOC_DIRS)
 
 
 def is_reviewable_doc(path: str) -> bool:
@@ -109,6 +108,39 @@ def reviewable_docs(paths: list[str]) -> list[str]:
     return sorted({p for p in paths if is_reviewable_doc(p)})
 
 
+def is_example(path: str) -> bool:
+    """An example is any examples/**/*.md, the set the structure gate checks."""
+    return path.startswith("examples/") and path.endswith(".md")
+
+
+def pairs_with_targets(text: str) -> list[str]:
+    """The comma-separated `pairs_with:` value of an example's frontmatter.
+
+    Read the way the structure gate reads it: flat `key: value` lines between the `---` fences.
+    """
+    if not text.startswith("---\n"):
+        return []
+    end = text.find("\n---", 4)
+    if end == -1:
+        return []
+    for line in text[4:end].splitlines():
+        key, sep, value = line.partition(":")
+        if sep and key.strip() == "pairs_with":
+            return [t.strip() for t in value.split(",") if t.strip()]
+    return []
+
+
+def docs_to_review(changed: list[str], paired: Mapping[str, list[str]]) -> list[str]:
+    """Each changed reviewable doc, plus each reviewable doc a changed example pairs with.
+
+    An example is reviewed as part of its doc: the review-doc skill's scope for a doc takes in
+    every example that names it in `pairs_with` (#213). `paired` maps an example path to the
+    targets of its `pairs_with` at the reviewed commit.
+    """
+    targets = [t for p in changed if is_example(p) for t in paired.get(p, ())]
+    return reviewable_docs([*changed, *targets])
+
+
 @dataclass(frozen=True)
 class Classification:
     status: str  # "review", "pass" or "fail"
@@ -116,9 +148,16 @@ class Classification:
     docs: tuple[str, ...] = ()
 
 
-def classify(*, event: str, is_fork: bool, is_draft: bool, changed: list[str]) -> Classification:
+def classify(
+    *,
+    event: str,
+    is_fork: bool,
+    is_draft: bool,
+    changed: list[str],
+    paired: Mapping[str, list[str]] | None = None,
+) -> Classification:
     """Fork, then draft, then no doc change; everything else is reviewed."""
-    docs = tuple(reviewable_docs(changed))
+    docs = tuple(docs_to_review(changed, paired or {}))
     if event == "workflow_dispatch":
         if not docs:
             return Classification("fail", "not reviewed: no reviewable doc in the `files` input")
@@ -128,7 +167,9 @@ def classify(*, event: str, is_fork: bool, is_draft: bool, changed: list[str]) -
     if is_draft:
         return Classification("fail", "not reviewed: draft")
     if not docs:
-        return Classification("pass", "no doc change: this PR changes no reviewable doc")
+        return Classification(
+            "pass", "no doc change: this PR changes no reviewable doc and no example paired with one"
+        )
     return Classification("review", f"reviewing {len(docs)} doc(s)", docs)
 
 
@@ -656,6 +697,11 @@ def _read_blob(rev: str, path: str) -> str | None:
     return None if data is None else data.decode("utf-8", errors="replace")
 
 
+def _paired(rev: str, changed: list[str]) -> dict[str, list[str]]:
+    """`pairs_with` targets at `rev` of each changed example."""
+    return {p: pairs_with_targets(_read_blob(rev, p) or "") for p in changed if is_example(p)}
+
+
 def _api(method: str, path: str, body: dict | None = None):
     token = os.environ["GH_TOKEN"]
     req = urllib.request.Request(
@@ -780,7 +826,8 @@ def cmd_classify(args: argparse.Namespace) -> int:
     if event == "workflow_dispatch":
         requested = parse_files_input(env.get("DISPATCH_FILES", ""))
         changed = [p for p in requested if _git_bytes(head, p) is not None]
-        result = classify(event=event, is_fork=False, is_draft=False, changed=changed)
+        result = classify(event=event, is_fork=False, is_draft=False, changed=changed,
+                          paired=_paired(head, changed))
     else:
         repo, pr = env["REPO"], env["PR_NUMBER"]
         # Live PR state: a re-run's event payload still says what was true when it first ran.
@@ -792,7 +839,8 @@ def cmd_classify(args: argparse.Namespace) -> int:
         if diff is None:
             raise SystemExit("git diff against the base failed")
         changed = [p for p in diff.splitlines() if p]
-        result = classify(event=event, is_fork=is_fork, is_draft=is_draft, changed=changed)
+        result = classify(event=event, is_fork=is_fork, is_draft=is_draft, changed=changed,
+                          paired=_paired(head, changed))
         if result.status == "review":
             comments = _fetch_comments(repo, pr)
 
