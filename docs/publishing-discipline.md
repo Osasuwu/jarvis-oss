@@ -255,8 +255,8 @@ code and "only 48%" always check it
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report is a comment on the pull request. Cost: a model run per
 review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
-copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
-directory, most of it unverified.
+copy it there first, and [`harnesses.md`](harnesses.md) has a skills directory column, which for
+most other harnesses reads "unverified".
 
 #### Check
 
@@ -327,9 +327,9 @@ First, in order:
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
-| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
+| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging — a required approval it cannot give, or push restrictions (organization repos only) — so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
-| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), the protection binds the account the agent acts as (an admin account only with **Do not allow bypassing the above settings** on), and the agent's token cannot change the protection; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
+| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer who is not the account that starts the run (GitHub public repo or Enterprise), the protection binds the account the agent acts as (an admin account only with **Do not allow bypassing the above settings** on), and the agent's token cannot change the protection; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
 | 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
