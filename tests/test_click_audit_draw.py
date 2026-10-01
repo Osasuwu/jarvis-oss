@@ -42,18 +42,20 @@ def _doc_text(n_quotes: int) -> str:
 # --- candidate population ---------------------------------------------------------------------
 
 
-def test_candidates_cover_quotes_statuses_and_linked_claims():
+def test_candidates_are_quotes_and_linked_claims_and_a_status_marker_is_not_one():
+    # #159 removed the status class: a Status marker makes no claim of its own. A paragraph
+    # holding one is a candidate only if it links a source, and then as a linked claim.
     text = (
         "---\napplies_when: x\n---\n\n"
         'The manual says "a quoted source passage" [here](https://example.com/q).\n\n'
         "**Lifecycle.** Edit a file. Status: tried in our private project.\n\n"
-        "**Lifecycle.** Harness setting. Status: sourced.\n\n"
+        "**Lifecycle.** Harness setting. Status: sourced, per [it](https://example.com/s).\n\n"
         "Depth is four hops, per [the docs](https://example.com/depth).\n\n"
-        "A paragraph with no source and no status.\n\n"
+        "A paragraph with no source.\n\n"
         "```\nStatus: tried \"inside a code fence\" https://example.com/fence\n```\n"
     )
     got = [(c.kind, c.line) for c in candidates(text)]
-    assert got == [("quote", 5), ("status", 7), ("status", 9), ("linked", 11)]
+    assert got == [("quote", 5), ("linked", 9), ("linked", 11)]
 
 
 def test_quote_paragraph_is_not_also_a_linked_claim():

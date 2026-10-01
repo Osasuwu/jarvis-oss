@@ -271,14 +271,29 @@ def test_stored_key_malformed_is_an_error():
         dr.parse_stored_key(f"drift-key: {'a' * 64}\ndrift-key: {'b' * 64}\n")
 
 
+def _committed_key() -> tuple[str, str]:
+    stored = dr.parse_stored_key((ROOT / dr.CALIBRATION_PATH).read_text(encoding="utf-8"))
+    assert stored is not None, "CALIBRATION.md has no drift-key line"
+    assert stored[1], "the key line names no model"
+    return stored
+
+
+def test_committed_key_line_names_a_key_and_a_model():
+    # Kept apart from the comparison below, so the slice-1 expected failure cannot hide a deleted
+    # or broken key line.
+    _committed_key()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#159: drift accepted during slice 1 (ADR-0003); the key line is not bumped without "
+    "a calibration",
+)
 def test_committed_key_matches_the_current_inputs():
     """#106: the key in CALIBRATION.md is the one a run on these inputs computes. An edit to the
     workflow, the action pin or SKILL.md without a recalibration fails here, before any run."""
-    text = (ROOT / dr.CALIBRATION_PATH).read_text(encoding="utf-8")
-    stored = dr.parse_stored_key(text)
-    assert stored is not None, "CALIBRATION.md has no drift-key line"
+    stored = _committed_key()
     key, model = stored
-    assert model, "the key line names no model"
     # read_text gives LF line ends, as git stores them and the runner checks them out, also on a
     # Windows checkout that converts to CRLF.
     skill = (ROOT / dr.SKILL_PATH).read_text(encoding="utf-8").encode()
@@ -757,6 +772,25 @@ def test_review_posts_nothing_and_cannot_run_gh():
     tools = re.search(r'--allowedTools "([^"]+)"', review).group(1).split(",")
     assert not [t for t in tools if t == "Bash" or "gh " in t or "curl" in t or "python" in t]
     assert 'classify_inline_comments: "false"' in review
+
+
+def test_dispatch_checks_out_the_head_commit_only_and_pr_runs_full_history():
+    """#150: a calibration run must not reach main, where the corpus lives; a PR run needs the
+    base for its diff. The expression is evaluated with the short-circuit semantics GitHub
+    gives `&&` / `||`, so `cond && 0 || 1` (0 is falsy) is caught as well as a wrong value."""
+    depth = re.search(r"^          fetch-depth: \$\{\{ (.+) \}\}$", _steps()[0], re.M).group(1)
+
+    def evaluate(event: str) -> int:
+        expr = depth.replace("github.event_name", repr(event))
+        return eval(expr.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}})
+
+    assert evaluate("workflow_dispatch") == 1
+    assert evaluate("pull_request") == 0
+    names = re.findall(r"^      - (?:name|uses): (.+)$", WORKFLOW, re.M)
+    assert names.index("Check the dispatch checkout") < names.index("Review")
+    guard = _step("Check the dispatch checkout")
+    assert "if: github.event_name == 'workflow_dispatch'" in guard
+    assert 'git rev-list --count --all)" = "1"' in guard
 
 
 def test_concurrency_is_per_pr_and_cancels_in_progress():

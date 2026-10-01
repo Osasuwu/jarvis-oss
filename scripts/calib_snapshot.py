@@ -20,7 +20,8 @@ present; a commit whose parent is not `<sha>`.
 
 The overlay list is `OVERLAY` below. `CALIBRATION.md` is not copied: the file on `main` quotes
 corpus entries, so the snapshot gets a stub that carries only its `drift-key:` line, which the
-verdict step reads. `calibration/corpus.md` is the answer key and is absent from every snapshot.
+verdict step reads. `calibration/corpus.md` is the answer key and is absent from every snapshot;
+so is `calibration/shadow.md`, which records human findings on doc PRs (#159).
 """
 
 from __future__ import annotations
@@ -45,7 +46,7 @@ OVERLAY = (
     f"{SKILL_DIR}/calibration/draw_click_audit.py",
 )
 STUB = f"{SKILL_DIR}/CALIBRATION.md"
-REMOVED = (f"{SKILL_DIR}/calibration/corpus.md",)
+REMOVED = (f"{SKILL_DIR}/calibration/corpus.md", f"{SKILL_DIR}/calibration/shadow.md")
 BRANCH_PREFIX = "calib2"
 
 _DRIFT_LINE_RE = re.compile(r"^drift-key: .*$", re.M)

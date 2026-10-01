@@ -182,6 +182,14 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 |---|---|---|---|---|
 | `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | — |
 
+**Drift during slice 1.** #159 changed `SKILL.md` and the review workflow, so every doc-review
+run since computes a different key and its verdict is `drift`. That is accepted until calibration
+3 records a new key: doc-review is not a required check, and the report is still produced
+([ADR-0003](../../../docs/adr/0003-doc-contract-delivery-reviewer.md)). The line above is not
+bumped without a calibration, so `test_committed_key_matches_the_current_inputs` is marked as a
+strict expected failure for the same window. It goes red when a recalibration makes the key
+match, and the mark comes off then.
+
 ## Snapshot branches (#138)
 
 Written on 2026-09-23. It replaces the calibration-1 build, which the post-hoc audit above found
@@ -205,7 +213,8 @@ absent if it did not exist there. There are three exceptions:
   overlay ref's `drift-key:` line, which the verdict step reads. The full file quotes corpus
   entries, so it is kept out.
 - **Removed.** `.agents/skills/review-doc/calibration/corpus.md` is the answer key. It is absent
-  from every snapshot.
+  from every snapshot. So is `calibration/shadow.md`: it records the human findings on doc PRs,
+  which a reviewer must not find by grepping the repo.
 
 **Build and check.** [`scripts/calib_snapshot.py`](../../../scripts/calib_snapshot.py) holds
 the lists above. The build writes the snapshot commit without touching the working tree, and
@@ -223,11 +232,19 @@ A candidate's snapshots are built with its branch as the overlay ref, so they ca
 its workflow and its drift key. The branch name carries the overlay commit, so no rebuild moves
 a branch that earlier runs were dispatched on.
 
-**Residual channel.** The workflow checks out with full history and allows `git show` and
-`git log`, so a run can still read `main`, `corpus.md` included. Closing that channel changes
-the workflow and with it the drift key, so it is left open until a PR that changes the key
-anyway closes it (#150). Until then, every scoring of a snapshot run checks each catch for a
-citation of a file, line or commit that is not in the snapshot.
+**Residual channel.** The workflow used to check out with full history and allow `git show` and
+`git log`, so a run could read `main`, `corpus.md` included. It was closed in practice only by
+accident: until #214, every Bash call in the review run failed (`socat not installed`).
+Commit 0a8be72 closes it for dispatch runs (#150). A `workflow_dispatch` run now checks out the
+head commit alone, and a step before Review fails the run if any other commit or `origin/main`
+is reachable. [Run 36848112930](https://github.com/Osasuwu/jarvis-oss/actions/runs/36848112930)
+is the first to show it. A snapshot carries the workflow of its overlay ref, so the channel is
+closed only on a snapshot whose overlay ref contains 0a8be72. Branches built before that keep
+the old checkout.
+
+One channel stays open: the repository is public, and the reviewer has WebFetch, so a run can
+still fetch `corpus.md` from github.com. Every scoring of a snapshot run therefore still checks
+each catch for a citation of a file, line or commit that is not in the snapshot.
 
 ## Calibration 2 — plan (#143)
 
@@ -254,7 +271,7 @@ test doc never share a file, a `pairs_with` target or a link, and
 | dev | PR #62 | 15, all `blocking` | 6: `8067d67`, `59a27d9`, `4074b0b`, `f677a54`, `a6d0c01`, `9dbed9e` | 14 / 15: `62-npm` needs the command run |
 | test | PR #75, #81 | 16: 10 `blocking`, 6 `how-to-choose` follow-ups | 3: `3d896f9`, `79bc90c`, `af950ea` | 9 / 10: `81-heredoc` needs the command run |
 | held-out | PR #75 | 1: `75-ghd` | reported, not scored | — |
-| excluded | — | 3: `81-gitleaks`, `62-tried`, `62-today` | none | — |
+| excluded | — | 2: `81-gitleaks`, `62-today`; `62-tried` left the corpus in #159, which removed the `status` class | none | — |
 
 The dev runs tune the procedure and may be read as often as needed. The test runs are scored at
 most twice for procedure candidates and once more only for a model change; after that the test
@@ -384,8 +401,8 @@ run's verdict comment; the share follows the **Cost** procedure above.
 **Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
 target is unmet, and after it, until a later calibration says otherwise. It is the draw
 [`calibration/RULES.md`](calibration/RULES.md) defines: k = 5 claims, or all if there are fewer,
-drawn by `draw_click_audit.py` seeded with the PR head SHA over every quotation, every `tried` or
-`sourced` status and every other source-linking paragraph, whatever the claim's class.
+drawn by `draw_click_audit.py` seeded with the PR head SHA over every quotation and every other
+source-linking paragraph, whatever the claim's class.
 
 ## History
 

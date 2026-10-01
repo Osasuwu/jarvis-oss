@@ -49,7 +49,10 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
+          # A PR run needs the base for its diff. A dispatch run is a calibration run on a
+          # snapshot branch and gets the head commit alone, so it cannot read main, where the
+          # calibration corpus lives (#150).
+          fetch-depth: ${{ github.event_name == 'workflow_dispatch' && 1 || 0 }}
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
@@ -72,13 +75,50 @@ jobs:
         run: |
           mkdir -p "$HOME/.claude/skills"
           ln -s "$GITHUB_WORKSPACE/.agents/skills/review-doc" "$HOME/.claude/skills/review-doc"
-      - name: Install bubblewrap
+      - name: Install the Bash sandbox
         if: steps.classify.outputs.status == 'review'
-        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs it; without it Claude Code
-        # refuses to start.
+        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step runs every Bash command in Claude
+        # Code's sandbox, which on Linux needs bubblewrap and socat. Without bubblewrap Claude
+        # Code refuses to start; without socat it starts, but Bash fails and the reviewer cannot
+        # run git (#214). On Ubuntu 24.04 AppArmor can stop bwrap creating user namespaces; the
+        # profile is the one the sandboxing docs give for that case.
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends bubblewrap
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF
+            sudo systemctl reload apparmor
+          fi
+      - name: Check the Bash sandbox
+        if: steps.classify.outputs.status == 'review'
+        # Fail here rather than start the model without a working Bash: a delta review that
+        # cannot run git diff is partly blind, and its verdict still reads as a full one (#214).
+        run: |
+          command -v bwrap > /dev/null || { echo "::error::bubblewrap is not installed"; exit 1; }
+          command -v socat > /dev/null || { echo "::error::socat is not installed"; exit 1; }
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --die-with-parent true ||
+            { echo "::error::bwrap cannot start a sandbox (user namespaces blocked?)"; exit 1; }
+          echo "Bash sandbox: bubblewrap, socat and user namespaces available"
+      - name: Check the dispatch checkout
+        if: github.event_name == 'workflow_dispatch' && steps.classify.outputs.status == 'review'
+        # The reviewer may run git log and git show, so a calibration run that can reach any
+        # commit but its own can read the corpus. Fail before the model starts (#150).
+        run: |
+          git log --oneline
+          [ "$(git rev-list --count --all)" = "1" ] ||
+            { echo "::error::the checkout holds more than the head commit"; exit 1; }
+          if git rev-parse --verify -q origin/main; then
+            echo "::error::origin/main is reachable"; exit 1
+          fi
+          echo "Dispatch checkout: head commit only, origin/main not reachable"
       - name: Review
         id: review
         if: steps.classify.outputs.status == 'review'
