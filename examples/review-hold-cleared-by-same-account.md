@@ -6,10 +6,10 @@ pairs_with: docs/publishing-discipline.md
 
 # PR #70: a review hold cleared by the account the agent uses
 
-This repo holds every pull request with a `waiting-human-review` label and a required check of the
-same name that fails while the label is on
-([workflow](../.github/workflows/waiting-human-review.yml)). A person removes the label after
-reading.
+At the time, this repo held every pull request with a `waiting-human-review` label and a required
+check of the same name that fails while the label is on
+([workflow](../.github/workflows/waiting-human-review.yml)); since #213 it holds only those that
+change a document. A person removes the label after reading.
 
 [PR #70](https://github.com/Osasuwu/jarvis-oss/pull/70)'s timeline:
 
