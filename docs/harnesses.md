@@ -2,6 +2,8 @@
 applies_when: setup skill needs to resolve a harness's rules-file name, skills directory, or include support
 applies_when_not: choosing which harness to use, or judging a harness's overall capability
 signed_off:
+kind: basics
+hub: own-agent
 ---
 
 # Harness table
@@ -51,7 +53,7 @@ each harness's own primary documentation (not a mirror or a secondary summary).
   "All instruction files are combined with your `AGENTS.md` files." The `instructions` array in
   `opencode.json` accepts glob patterns (example given: `packages/*/AGENTS.md`) and remote URLs
   (5s fetch timeout). This corrects the
-  [previous row](https://github.com/Osasuwu/jarvis-oss/blob/0397c401ea665c2fa6d39cf5e83b2dc8dd09f776/docs/harnesses.md),
+  [previous row](https://github.com/Osasuwu/jarvis-oss/blob/0397c401ea665c2fa6d39cf5e83b2dc8dd09f776/docs/harnesses.md) (checked 2026-10-01),
   which claimed "No documented import/include mechanism" and cited the skills doc rather than the
   rules doc.
 
