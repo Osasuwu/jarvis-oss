@@ -143,17 +143,24 @@ included — and the event log shows the account, not the person. It records int
 Drafts as the hold: sourced.
 
 **Install (ours).** [`waiting-human-review.yml`](../.github/workflows/waiting-human-review.yml):
-on a freshly opened or ready-for-review pull request with no reviewer requested, it adds a
-`waiting-human-review` label and fails; on every later event it fails while the label is on or a
-review request is pending. Nothing removes the label automatically. Cost: one Actions job per
-pull request event, one label clear per pull request. To adopt: copy the workflow, create the
-label, and add `waiting-human-review` to the default branch's required checks — unrequired, a red
-run blocks nothing.
+the hold covers documents only. On a freshly opened or ready-for-review pull request that changes
+a file under `docs/` (decision records under `docs/adr/` excepted) or `examples/`, with no
+reviewer requested, it adds a `waiting-human-review` label and fails. After the label is cleared,
+a push that changes one of the pull request's documents puts it back; a push that changes only
+other files does not, and if the push cannot be compared, the label goes back. On every other
+event it fails while the label is on or a review request is pending. Nothing removes the label
+automatically. A pull request that changes no document passes and merges on its other checks.
+Cost: one Actions job per pull request event, one label clear per document pull request and per
+push that changes a document after a clear. To adopt: copy the workflow, set the document paths
+in its `isDocPath`, create the label, and add `waiting-human-review` to the default branch's
+required checks — unrequired, a red run blocks nothing.
 
 #### Check
 
-A new pull request gets the label within a minute and the `waiting-human-review` check is red
-with "Human review is owed". Clear the label and the check re-runs green on `unlabeled`. No label:
+A new pull request that changes a document gets the label within a minute and the
+`waiting-human-review` check is red with "Human review is owed" and a list of the documents. One
+that changes only other files gets no label and a green check. Clear the label and the check
+re-runs green on `unlabeled`. No label on a document pull request:
 the workflow is not installed or lacks `issues: write`. Red check but the merge button works: the
 check is not required, or you are an administrator and protection does not apply to you.
 
@@ -355,7 +362,8 @@ trailer, is the proof; see
 **Our own choice.** One personal account on a public repo, and the agent runs with that account's
 token — so 2 is out *on fit*, and every record we can produce is intent. We use 4 (a
 `waiting-human-review` label and required check) and 7 (a `review-doc` report on the pull
-request). It costs a label clear per pull request. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
+request), both on pull requests that change a document; the scripts and workflows that support
+the documents merge on their own checks. It costs a label clear per document pull request. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
 ([`self-signed-signoff-pr-50.md`](../examples/self-signed-signoff-pr-50.md)); a ledger line
 was removed and re-added seven seconds apart, pushed straight to `main`, satisfying the
 separate-commit rule
