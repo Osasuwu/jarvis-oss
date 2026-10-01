@@ -279,7 +279,8 @@ Relations: needs: [basics](basics.md#skills)
 ### Option 8. Move the rule out of the file
 
 **How it works.** The rule becomes something the model does not decide: a hook that blocks the
-action, a deny rule in settings, a required CI check on a protected branch. Claude Code's docs:
+action, a deny rule in settings, a required CI check on a protected branch that the agent cannot
+get around (the three conditions are under Hooks in [basics](basics.md#hooks)). Claude Code's docs:
 "To block an action regardless of what Claude decides, use a PreToolUse hook instead"
 ([memory](https://code.claude.com/docs/en/memory) (checked 2026-10-01)), and an instruction like "never edit `.env`" in a rules file or skill
 "is a request, not a guarantee" ([Extend Claude Code](https://code.claude.com/docs/en/features-overview) (checked 2026-10-01)).

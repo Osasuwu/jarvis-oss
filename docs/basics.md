@@ -50,10 +50,8 @@ A check only stops a merge if the branch is protected and lists it as required. 
 default the rule does not apply to repository admins, which on your own repository means you and
 an agent working with your token, until you turn on **Do not allow bypassing the above settings**. See
 [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-10-01).
-Protection on a private repository needs a paid plan. The same page's **Who can use this
-feature?** box says protected branches are available "in public repositories with GitHub Free and
-GitHub Free for organizations", and "in public and private repositories with GitHub Pro, GitHub
-Team, GitHub Enterprise Cloud, and GitHub Enterprise Server".
+Protection on a private repository needs a paid plan: the plans page lists protected branches
+among GitHub Pro's and GitHub Team's tools for private repositories. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
 Without protection a failing check still shows in the pull request's **Checks** tab (see
 [Status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks) (checked 2026-10-01)),
 but nothing blocks the merge. The check then binds only someone who looks before merging; in an
