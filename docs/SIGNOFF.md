@@ -61,7 +61,9 @@ The date must match the doc's own `signed_off` frontmatter value exactly. An ent
 
 ## Entries
 
-None. Every entry this ledger has ever carried was written by the agent that drafted the doc it
+- `docs/basics.md`: 2026-10-01; facts: human
+
+Every entry this ledger carried before was written by the agent that drafted the doc it
 signed, in a PR that merged with zero reviews — see #41 and #53. They were removed rather than
 left standing, because a ledger that records signatures nobody gave is worse than an empty one.
 Entries return one at a time, each in its own PR, merged by the author after reading the body.
