@@ -21,7 +21,7 @@ The pull request opened at 09:12:17Z and merged at 09:15:40Z with zero reviews, 
 so the two commits survived — the body explains that squashing would have collapsed them and failed
 the gate.
 
-**Why every check passed.** The structure gate asks that a filled `signed_off` date match a ledger
+**Why every check passed.** The structure gate asked that a filled `signed_off` date match a ledger
 line, and that the line land in a different commit from the doc body. Both were true. Nothing
 asked who wrote the line, whether anyone else read the doc, or whether the two commits were
 separated by anything but a `git commit` call. At that point `waiting-human-review` did not exist.

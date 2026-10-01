@@ -1,6 +1,6 @@
 ---
 applies_when: you are setting up an agent to work in a git repository on GitHub and a practice doc here asks for a branch, a pull request, a CI check, a rules file, a skill or a hook that you have not used before
-applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which harness to pick or where its files live is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
+applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which file or directory a harness reads is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
 kind: basics
 ---
 
@@ -51,8 +51,8 @@ A check only stops a merge if the branch is protected and lists it as required. 
 default the rule does not apply to repository admins, which on your own repository means you and
 an agent working with your token, until you turn on **Do not allow bypassing the above settings**. See
 [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-10-01).
-Protection on a private repository needs a paid plan: the plans page lists it under GitHub Pro and
-GitHub Team, and on GitHub Free it covers public repositories only. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
+Protection on a private repository needs a paid plan: the plans page lists protected branches
+among GitHub Pro's and GitHub Team's tools for private repositories. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
 Without protection a failing check still shows in the pull request's **Checks** tab (see
 [Status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks) (checked 2026-10-01)),
 but nothing blocks the merge. The check then binds only someone who looks before merging; in an
@@ -105,6 +105,8 @@ vary between tools; see the
 The specification does not say which directory a tool reads skills from; for that, the harness
 table has a skills directory column.
 If your harness has no skills, a short procedure can go in the rules file, at the cost described next.
+A `claude -p` run with `--bare` skips both skills and `CLAUDE.md`; there, pass the procedure in
+with `--append-system-prompt-file`, as for the rules file above.
 
 Use a skill for a procedure and a rules file for a standing fact. A long procedure in the rules
 file is loaded every session whether or not it is needed.

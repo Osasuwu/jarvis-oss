@@ -414,7 +414,8 @@ Ask these in order; each answer moves a rule to a different place.
    a line is enough, or nothing. Where the harness has no hooks, a git hook or a required CI check
    is the route (see [basics](basics.md#hooks)); Claude Code needs a paid plan, a Console
    account or a cloud provider's credentials, so a setup with none of them has only the git hook
-   and CI.
+   and CI, and CI blocks a merge only on a protected branch, which a private repository on
+   GitHub Free does not get.
 2. **Can the agent learn it from the code?** Then it does not belong in a file (option 1, or
    the pruning in options 2 and 3).
 3. **Is it true of every task, or only of some?** Every task: always loaded (options 2 and 4).

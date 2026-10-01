@@ -1,6 +1,6 @@
 ---
 name: jarvis-setup
-description: One-time setup skill. Asks trial vs full, reads the reader's existing rules file and the harness table, and emits only the delta needed to adopt Jarvis's persona, autonomy tier, and two invariants. The core path needs no Claude-only feature; @import and hooks are optional extras.
+description: One-time setup skill. Asks trial vs full, reads the reader's existing rules file and the harness table, and emits only the delta needed to adopt Jarvis's persona, autonomy tier, and two invariants. The core path needs no Claude-only feature; on Claude Code it writes the delta to its own file behind one @import line, and hooks are optional extras.
 ---
 
 # Jarvis setup
