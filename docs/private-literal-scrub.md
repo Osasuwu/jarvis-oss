@@ -30,8 +30,8 @@ The ways it goes wrong:
 
 Each option is marked **tried** (we run or ran it; the example says where — running is not proof
 it catches anything) or **sourced** (from the tool's documentation or a project's pull request). Quotes
-were checked against the linked pages on 2026-09-18, by a review run on the last commit of the
-pull request that added this doc.
+were checked against the linked pages by review runs on the pull requests that added them, and
+by the quote-check CI on later changes.
 
 ## The options
 
@@ -91,10 +91,11 @@ up with the hook and the list.
 
 **Install (ours).** Two local hooks read the same list as the CI scrub, match the same variants
 and never print a value. Once per device that pushes to, or writes pull requests on, a public
-repository. With the list unset, empty or without a letter or digit, both block and say nothing
-was checked. Cost per device: two hand installs, the variable, and a Python start per push and
+repository. With the list unset, empty or without a letter or digit, the git hook blocks and says nothing
+was checked; `literal-gate` blocks every GitHub MCP call and each `gh` command that sends text, and lets
+other shell calls pass. Cost per device: two hand installs, the variable, and a Python start per push and
 per Bash or GitHub MCP call. Harness: the git hook works under any harness; literal-gate is a
-Claude Code PreToolUse hook whose matchers name Claude Code tools ([`harnesses.md`](harnesses.md)).
+Claude Code PreToolUse hook whose matchers name Claude Code tools (`.agents/hooks/settings.snippet.json`).
 
 - **`scripts/pre_push_leak_gate.py`**, a git `pre-push` hook. It scans each commit the remote
   lacks — message, touched file names, added lines — plus ref names and annotated-tag names and
@@ -348,7 +349,7 @@ First, in order:
 3. **Can your host refuse a push by matching your own list?** An organization with GitHub Secret
    Protection, or a forge whose server hooks you run → 4. GitLab push rules and GitHub rulesets
    match commit metadata, branch names and filenames, not file contents; GitLab secret push
-   protection and GitHub's default patterns take no list of yours — add either alongside another.
+   protection (Ultimate) and GitHub's default patterns (free on a public repository) take no list of yours — add either alongside another.
 4. **Do people open pull requests from forks?** Yes → 6 with a committed salt. 5 reaches them only
    through a data-only `pull_request_target` job; otherwise a fork's run checks nothing, since the
    workflow comes from the merge commit, which includes the fork's edits.

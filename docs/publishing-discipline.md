@@ -27,8 +27,8 @@ completed it alone". What goes wrong:
 - **Nobody else** — one developer has no second person to approve.
 
 Each option is marked **tried** (we run or ran it; the example says where) or **sourced** (read
-from the tool's documentation). Quotes were checked against the linked pages on 2026-09-18, by a
-review run on the last commit of the pull request that added this doc.
+from the tool's documentation). Quotes were checked against the linked pages by review runs on the pull requests that added
+them, and by the quote-check CI on later changes.
 
 ## The options
 
@@ -65,8 +65,8 @@ GitLab "Prevent approvals by users who add commits"
 ([approval settings](https://docs.gitlab.com/user/project/merge_requests/approvals/settings/),
 Premium); Azure DevOps "Prohibit the most recent pusher from approving their own changes"
 ([branch policies](https://learn.microsoft.com/en-us/azure/devops/repos/git/branch-policies)).
-Kubernetes' Prow bars the author from `/lgtm`, but approvers in `OWNERS` can approve their own
-pull request ([owners](https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md)).
+Kubernetes' Prow bars the author from `/lgtm`; its `implicit_self_approve` setting, off by
+default, lets an approver in `OWNERS` approve their own pull request ([owners](https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md)).
 
 **Best pick when** there are two people, or the agent pushes as its own identity (option 3).
 
@@ -102,9 +102,11 @@ approving it"
 default the person opens the pull request, making them its author again.
 
 A weaker variant keeps the agent on your machine and takes the merge away from it: a harness deny
-rule or pre-call hook on `gh pr merge` and `gh pr review --approve`
-([`agent-safety-hooks.md`](agent-safety-hooks.md)). The agent still holds a token that merges
-through any command the rule does not name, so this is a hold (4), not proof.
+rule on `gh pr merge` and `gh pr review --approve` (Claude Code's `Bash(...)` rules, such as
+`Bash(git push *)`, [match a command's written form](https://code.claude.com/docs/en/permissions),
+so the same command written another way can pass), or a pre-call hook
+([`agent-safety-hooks.md`](agent-safety-hooks.md), option 4). The agent still holds a token that
+merges through any command the rule does not name, so this is a hold (4), not proof.
 
 **Best pick when** you are one developer who wants the merge click to be yours: a hosted agent
 that cannot merge, with you merging by hand. Add option 2 only if you are allowed to approve
@@ -169,14 +171,19 @@ which gates a job, not the merge — for one developer it leaves nobody to appro
 your own token approves over the API. Keyless signing with
 [gitsign](https://github.com/sigstore/gitsign) ties a signature to an OIDC login instead of a key,
 but its cache means "you only need to auth once every 10 minutes" — inside that window an agent
-can sign.
+can sign. For a package, npm's `npm stage publish` can run from CI with OIDC, while approving the
+staged version needs "proof of presence", at the CLI or npmjs.com
+([trusted publishers](https://docs.npmjs.com/trusted-publishers/)); that step needs a person and the
+agent cannot perform it. npm's pages state no plan or price for it, so check yours.
 
 **Best pick when** the agent must run with your account and you need proof, not intent.
 
-**Cost.** A CI check you write ("HEAD carries a tag signed by key X"), which blocks only where
-required checks exist and only while the agent's token cannot administer the repo or merge around
-it; hardware — a software key the agent can reach proves nothing; a touch per sign-off. Below Enterprise, required reviewers are "only available for public
-repositories". Still proves presence, not reading.
+**Cost.** A CI check you write, asserting that HEAD carries a tag signed by key X, which blocks
+only where required checks exist and only while the agent's token cannot administer the repo or
+merge around it; hardware — a software key the agent can reach proves nothing; a touch per
+sign-off. Below Enterprise, required reviewers are "only available for public repositories"
+([deployments and environments](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments)).
+Still proves presence, not reading.
 
 **Lifecycle.** Enrol the key, add the check; remove the check to undo. Status: sourced.
 
@@ -246,13 +253,39 @@ code and "only 48%" always check it
 
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report URL goes in the ledger entry's `facts:`. Cost: a model run per
-review-doc pass. Harness: a skill file any harness that loads skills can run
-([`harnesses.md`](harnesses.md)).
+review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
+copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
+directory, most of it unverified.
 
 #### Check
 
 The report is a comment on the pull request, and the ledger entry's `facts:` URL opens it.
 `facts: human` means no report was used.
+
+### 8. Make a change cheap to undo
+
+**How it works.** When nobody independent reads a change first, limit what it can do and make
+undoing it fast. Ship behind a feature flag or a staged rollout
+([Unleash](https://www.getunleash.io/) is one flag service), and keep the revert one action away:
+GitHub can open a pull request that undoes a merged one
+([revert](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/incorporating-changes-from-a-pull-request/reverting-a-pull-request)).
+For a doc the event to bound is publishing: a preview path before the real one, or a release one
+command rolls back. It proves nothing about who acted or who read; it caps the cost of a change
+nobody read, and needs no second person at merge time.
+
+**Best pick when** a run is unattended or solo, and a wrong change is recoverable (a doc, a page, a
+package version you can yank). Not for a leaked secret, which a revert does not undo.
+
+**Cost.** A flag or preview step to run and a revert someone or something performs; a wrong change
+is live until it is noticed.
+
+**Lifecycle.** Config in the publish path. Status: sourced.
+
+**Install.** A preview or flag step in the publish job, and the revert named in your runbook.
+
+#### Check
+
+Revert one test change and time it: the previous version must be back within the time you chose.
 
 ## What every option depends on
 
@@ -265,8 +298,8 @@ Level 4 wants "two trusted persons to review all changes"
 
 ## How to choose
 
-These are layers: one to prove who acted (2, 3 or 5), one to hold (4), and optionally a record (6)
-and a cheaper read (7).
+These are layers: one to prove who acted (2, 3 or 5), one to hold (4), and optionally a record (6),
+a cheaper read (7), and where nobody independent reads, a cap on the damage (8).
 
 First, in order:
 
@@ -279,7 +312,11 @@ First, in order:
    the agent was given. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
    credentials away), or 5 (require something the agent lacks) if that same token cannot administer
    the repo and switch the check off. No → the merge click is the
-   person's, and 4 and 6 record who it was.
+   person's, and 4 and 6 record who it was. If nobody is present when it merges (a scheduled
+   job), the answer is Yes, and a draft (4) does not hold, since the job's own token clears it.
+   Stop the job merging: 3 where a hosted agent or a branch rule can bar the account; otherwise
+   take the merge step out of the job, which then opens the change and leaves it for a person
+   (intent, not proof). Cap the damage with 8.
 3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
    rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
    required pipelines and can restrict merging to Maintainers, but no approval rules.
@@ -288,19 +325,27 @@ First, in order:
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
-| 3 | the agent runs where your token, SSH key and signing key are absent: a hosted agent, an app in CI, or a separate OS user |
+| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
-| 5 | required checks are available, the approval needs hardware touch, re-authentication or an environment reviewer (public repo or Enterprise), and the agent's token cannot administer the repo |
+| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
+| 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
 
-Among what is left: for two people, 2 is the proof. For one developer, 3 with a hosted agent that
-cannot merge makes the merge click yours, and costs an identity and sometimes a plan; 5 needs a
-hardware key and a check you maintain. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
+Among what is left: for two people where required approvals are available (a public repo or a
+paid plan), 2 is the proof; on a private GitHub Free repo it is out, and the team has 4, 7 and 8,
+or goes public or pays. For one developer, 3 with a hosted agent that
+cannot merge makes the merge click yours, and costs an identity and a paid Copilot plan; 5 needs a
+hardware key and a check you maintain, and required checks, so on a private GitHub Free repo it is
+not buildable, except an npm package's staged publish. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
 not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
+On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated and
+8 to cap what merges unread, unless you make the repo public or pay, for a plan or for a hosted
+agent that cannot merge. An unattended run cannot produce proof of reading: stop it merging and
+leave the change for a person.
 
-**At more than one developer.** The approval must come from someone other than the author and the
-last pusher (2), and whoever clears a hold (4) or signs a record (6) must not be the one who
+**At more than one developer.** The approval (2, where available) must come from someone other than the author and the
+last pusher, and whoever clears a hold (4) or signs a record (6) must not be the one who
 drafted — a teammate, not the drafter. Code owners route docs to people who can judge them. The
 credential rule still applies: an agent shared by the team must not run as any one of them.
 
@@ -309,8 +354,8 @@ most-recent-push approval, applied to administrators — the app cannot approve 
 and the person's approval is theirs, so a label adds nothing; push to the branch yourself,
 though, nobody may approve. This points away from our choice. A four-person team on a paid
 plan: 2 with code owners on `docs/` and stale approvals dismissed, plus 7 for long docs. One
-developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI — or
-4 with the gap stated. A mailing-list project: 6's trailers, where the mailing-list reply, not the
+developer whose agent must run as them locally: 5 — a touch-required signed tag checked in CI, on a
+public repo or a paid plan — or 4 with the gap stated, which is all a private GitHub Free repo offers. A mailing-list project: 6's trailers, where the mailing-list reply, not the
 trailer, is the proof; see
 [`kernel-no-ai-signed-off-by.md`](../examples/kernel-no-ai-signed-off-by.md).
 
@@ -325,7 +370,8 @@ separate-commit rule
 ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); we emptied the
 ledger. Row 6 does not hold for us — nothing proves who wrote a ledger line — so we keep it for dates
 and history and call it intent. Not taken yet: 3 (a hosted agent, with us merging) or 5 (a
-hardware-signed tag), either of which closes the first gap below. Open gaps: the same account
+hardware-signed tag), either of which closes the first gap below; 8, so a doc is live on `main`
+when it merges and a person reverts it. Open gaps: the same account
 can clear the label, as #70's was, with no way to tell person from agent; an administrator can switch protection off on this repo; 3 and 5 are not in place.
 The hold, the ledger and its checks: Install and Check in options 4, 6 and 7. The history
 behind the hold is in [#53](https://github.com/Osasuwu/jarvis-oss/issues/53); the gate structure

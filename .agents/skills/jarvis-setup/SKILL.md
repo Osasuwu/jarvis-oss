@@ -139,12 +139,11 @@ Extras exist on top of that core path:
     with this option is not "is the import line present" but "did the content load": run
     `/context` and confirm the owned file (e.g. `.claude/jarvis.md`) appears in the loaded memory
     files list. An import line with no matching entry in `/context` means the include did not
-    resolve — say so, don't report success on the strength of the line alone. No other harness in
-    the table exposes an equivalent load-verification command; elsewhere, trust the write.
+    resolve — say so, don't report success on the strength of the line alone. This skill has no
+    load check for other harnesses; elsewhere, trust the write.
 - **Hooks** — Claude Code can enforce the two invariants mechanically via hook scripts (e.g.
-  blocking a tool call that would persist a secret). Offer this only on Claude Code; no other
-  harness in the table documents an equivalent enforcement mechanism, so on every other harness
-  the invariants stay prose-only, enforced by the agent reading them.
+  blocking a tool call that would persist a secret). Offer this only on Claude Code; on
+  every other harness the invariants stay prose-only, enforced by the agent reading them.
 
 Skipping both extras must still leave a fully working rules file — they are conveniences, not
 requirements of this skill's core path.
