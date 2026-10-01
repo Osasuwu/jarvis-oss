@@ -15,11 +15,10 @@ The shape below is what has worked. Follow it unless the subject needs something
 may be added, dropped, renamed, split or reordered when that serves the reader better. A problem
 with one real answer needs no option list; a subject with two independent choices may need two
 "how to choose" parts. When you depart from the shape, say what and why in the PR, so the
-reviewer and the person who signs can judge the call.
+reviewer and the person who merges can judge the call.
 
 What is not optional is set elsewhere: the frontmatter and size cap that
-[`tests/structure_gate.py`](../../../tests/structure_gate.py) enforces, and the sign-off rules in
-[`docs/SIGNOFF.md`](../../../docs/SIGNOFF.md).
+[`tests/structure_gate.py`](../../../tests/structure_gate.py) enforces.
 
 ## The shape
 
@@ -29,11 +28,8 @@ What is not optional is set elsewhere: the frontmatter and size cap that
 ---
 applies_when: <the reader's situation, in their words, not ours>
 applies_when_not: <the nearby situations this doc does not cover, and where to go instead>
-signed_off:
 ---
 ```
-
-`signed_off` stays empty in the drafting PR. A person fills it later, in a separate PR.
 
 ### Title and "The problem"
 
@@ -138,7 +134,7 @@ A fix is new text, and new text is unreviewed. For each finding:
    round has to check.
 3. Run every step of "Before review" again, then the review.
 
-## Before a person signs
+## Before a person merges
 
 Run [`review-doc`](../review-doc/SKILL.md) on the PR, in contexts that did not write the doc. Fix
 or answer what it finds, and run its delta pass on each fix, until the loop its report section
