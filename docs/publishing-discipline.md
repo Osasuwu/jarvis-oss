@@ -132,7 +132,7 @@ if/unless a certain combination of labels are applied").
 
 **Best pick when** you have one account and want a pause the agent is told not to clear. Drafts
 need no repository settings; the label variant needs required checks, which private repos on
-GitHub Free lack.
+GitHub Free lack (sources under [How to choose](#how-to-choose), question 3).
 
 **Cost.** Anyone with write access can mark ready or remove a label — an agent holding your token
 included — and the event log shows the account, not the person. It records intent, not reading.
@@ -144,11 +144,15 @@ Drafts as the hold: sourced.
 
 **Install (ours).** [`waiting-human-review.yml`](../.github/workflows/waiting-human-review.yml):
 the hold covers documents only. On a freshly opened or ready-for-review pull request that changes
-a file under `docs/` (decision records under `docs/adr/` excepted) or `examples/`, with no
-reviewer requested, it adds a `waiting-human-review` label and fails. After the label is cleared,
-a push that changes one of the pull request's documents puts it back; a push that changes only
-other files does not, and if the push cannot be compared, the label goes back. On every other
-event it fails while the label is on or a review request is pending. Nothing removes the label
+a file under `docs/` (decision records under `docs/adr/` excepted) or `examples/`, it adds a
+`waiting-human-review` label and fails. On a push it adds the label when the push changes one of
+the pull request's documents, whether the label was cleared earlier or the pull request had no
+document until then; a push that changes only other files does not. It also adds the label when
+the push cannot be compared, or when the compare lists 300 files, since GitHub's compare "includes
+up to 300 changed files for the entire comparison"
+([compare two commits](https://docs.github.com/en/rest/commits/commits#compare-two-commits)) and
+the list may be cut short. It adds no label while a reviewer is requested or the label is already
+on. On every other event it fails while the label is on or a review request is pending. Nothing removes the label
 automatically. A pull request that changes no document passes and merges on its other checks.
 Cost: one Actions job per pull request event, one label clear per document pull request and per
 push that changes a document after a clear. To adopt: copy the workflow, set the document paths
@@ -254,9 +258,10 @@ code and "only 48%" always check it
 
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report is a comment on the pull request. Cost: a model run per
-review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
-copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
-directory, most of it unverified.
+review-doc pass. Harness: the skill lives in `.agents/skills/`, which OpenCode reads as it is;
+Claude Code loads `.claude/skills/`, so copy it there first. For Codex CLI, Gemini CLI, Cursor,
+GitHub Copilot, Zed and Windsurf, [`harnesses.md`](harnesses.md) leaves the skills directory
+unverified, so look it up in that harness's own documentation.
 
 #### Check
 
@@ -304,7 +309,7 @@ a cheaper read (7), and where nobody independent reads, a cap on the damage (8).
 First, in order:
 
 1. **Is there a second person with write access, and can required approvals be turned on here?**
-   They exist on public repos and on paid private plans; GitLab's approval rules are Premium. Both
+   They exist on public repos and on paid private plans (question 3); GitLab's approval rules are Premium. Both
    yes → 2, with most-recent-push approval, stale approvals dismissed and no bypass — as long as no
    agent can use the approver's credentials. Two people each running an agent as themselves do not.
 2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the
@@ -313,20 +318,28 @@ First, in order:
    credentials away), or 5 (require something the agent lacks) if that same token cannot administer
    the repo and switch the check off. No → the merge click is the
    person's, and 4 and 6 record who it was. If nobody is present when it merges (a scheduled
-   job), the answer is Yes, and a draft (4) does not hold, since the job's own token clears it.
+   job), the answer is Yes, and neither hold in 4, a draft or a label, stops it, since the job's
+   own token clears either.
    Stop the job merging: 3 where a hosted agent or a branch rule can bar the account; otherwise
    take the merge step out of the job, which then opens the change and leaves it for a person
    (intent, not proof). Cap the damage with 8.
-3. **What can this forge and plan block?** A private GitHub Free repo has no protected branches,
-   rulesets or required checks, so drafts (4) are the only hold; state the gap. GitLab Free has
-   required pipelines and can restrict merging to Maintainers, but no approval rules.
+3. **What can this forge and plan block?** On GitHub a required check is a rule of a protected
+   branch ("Required status checks must have a successful, skipped, or neutral status before
+   collaborators can make changes to a protected branch") or of a ruleset, and both exist only "in
+   public repositories with GitHub Free and GitHub Free for organizations" and in private
+   repositories on paid plans
+   ([protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches),
+   [rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)).
+   So a private GitHub Free repo has no protected branches, rulesets or required checks, and drafts
+   (4) are its only hold, and only in a run a person attends (question 2); state the gap. GitLab
+   Free has required pipelines and can restrict merging to Maintainers, but no approval rules.
 
 | Option | Fits only if |
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
 | 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
-| 4 | drafts: any repo; a label and required check: required checks are available |
+| 4 | a person attends the run (an unattended job's own token clears a draft or a label); drafts: any repo; a label and required check: required checks are available |
 | 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
@@ -334,15 +347,19 @@ First, in order:
 
 Among what is left: for two people where required approvals are available (a public repo or a
 paid plan), 2 is the proof; on a private GitHub Free repo it is out, and the team has 4, 7 and 8,
-or goes public or pays. For one developer, 3 with a hosted agent that
-cannot merge makes the merge click yours, and costs an identity and a paid Copilot plan; 5 needs a
-hardware key and a check you maintain, and required checks, so on a private GitHub Free repo it is
-not buildable, except an npm package's staged publish. 4 is free and cheap to clear, which is its weakness; 6 and 7 add history and focus,
-not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep the hold.
-On a private GitHub Free repo with one developer that is where you end: 4 with the gap stated and
-8 to cap what merges unread, unless you make the repo public or pay, for a plan or for a hosted
-agent that cannot merge. An unattended run cannot produce proof of reading: stop it merging and
-leave the change for a person.
+or goes public or pays. For one developer, 3 comes two ways. A hosted agent that cannot merge
+makes the merge click yours on any repo, and costs a paid Copilot plan. An app or machine user is
+free, but is proof only where a branch rule stops it merging: a public GitHub repo, a paid plan,
+or GitLab Free with merging restricted to Maintainers and the agent's account below Maintainer.
+5 needs a hardware key and a check you maintain, and required checks, so on a private GitHub Free
+repo it is not buildable, except an npm package's staged publish. 4 is free and cheap to clear,
+which is its weakness, and holds only while a person attends the run; 6 and 7 add history and
+focus, not proof. If nothing proves who acted, say so in writing — "a hold, not proof" — and keep
+the hold. On a private GitHub Free repo with one developer that is where you end, unless you make
+the repo public or pay, for a plan or for a hosted agent that cannot merge: in an attended run, 4
+with the gap stated and 8 to cap what merges unread; in an unattended run no hold works, so take
+the merge step out of the job (question 2) and keep 8. An unattended run cannot produce proof of
+reading: stop it merging and leave the change for a person.
 
 **At more than one developer.** The approval (2, where available) must come from someone other than the author and the
 last pusher, and whoever clears a hold (4) or signs a record (6) must not be the one who
@@ -363,7 +380,8 @@ trailer, is the proof; see
 token — so 2 is out *on fit*, and every record we can produce is intent. We use 4 (a
 `waiting-human-review` label and required check) and 7 (a `review-doc` report on the pull
 request), both on pull requests that change a document; the scripts and workflows that support
-the documents merge on their own checks. It costs a label clear per document pull request. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
+the documents merge on their own checks. It costs a label clear per document pull request, and
+another per push that changes a document after a clear. What went wrong: before the hold, #50 merged its own sign-off three minutes after opening
 ([`self-signed-signoff-pr-50.md`](../examples/self-signed-signoff-pr-50.md)); a ledger line
 was removed and re-added seven seconds apart, pushed straight to `main`, satisfying the
 separate-commit rule
