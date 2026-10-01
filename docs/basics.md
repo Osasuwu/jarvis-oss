@@ -80,8 +80,8 @@ check.
 You have it when the harness lists the file as loaded (in Claude Code, `/context` lists it under
 **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
 `--bare` is set: that flag skips `CLAUDE.md`, hooks and skills, and the docs recommend it for
-scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode also needs an
-API key in `ANTHROPIC_API_KEY`, not a subscription login. To load the file as in a session, leave
+scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode also does not
+read a subscription login, and the page below lists the credentials it takes instead. To load the file as in a session, leave
 `--bare` off; see
 [Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-09-30).
 Either way that shows the file is loaded, not that the agent follows every line.
@@ -96,7 +96,7 @@ The file format is an open specification that several tools follow, and some opt
 between tools; see the
 [Agent Skills specification](https://agentskills.io/specification) (checked 2026-09-30).
 The specification does not say which directory a tool reads skills from; for that, the harness
-table has a skills directory column, and where it says unverified, check your harness's own docs.
+table has a skills directory column.
 If your harness has no skills, a short procedure can go in the rules file, at the cost described next.
 
 Use a skill for a procedure and a rules file for a standing fact. A long procedure in the rules
@@ -111,8 +111,7 @@ A hook is a shell command your harness runs at a fixed point in the agent's work
 before a tool call or after a file edit. It runs whether or not the agent decides to follow an
 instruction. See
 [Automate actions with hooks](https://code.claude.com/docs/en/hooks-guide) (checked 2026-09-30).
-In an unattended `claude -p` run, `--bare` skips hooks and needs an API key rather than a
-subscription login, so leave it off if you rely on them.
+In an unattended `claude -p` run, `--bare` skips hooks, so leave it off if you rely on them.
 
 That is the difference from a rules file: a rules-file line asks, a hook enforces. Practice docs
 here use hooks for rules that must not depend on the agent remembering them. The cost is a script

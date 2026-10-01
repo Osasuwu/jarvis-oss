@@ -304,7 +304,8 @@ a cheaper read (7), and where nobody independent reads, a cap on the damage (8).
 First, in order:
 
 1. **Is there a second person with write access, and can required approvals be turned on here?**
-   They exist on public repos and on paid private plans; GitLab's approval rules are Premium. Both
+   On GitHub they exist on public repos and on paid private plans, and GitLab's approval rules are
+   Premium; on another forge, such as Gerrit or Azure DevOps above, check its own plans. Both
    yes → 2, with most-recent-push approval, stale approvals dismissed and no bypass — as long as no
    agent can use the approver's credentials. Two people each running an agent as themselves do not.
 2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the

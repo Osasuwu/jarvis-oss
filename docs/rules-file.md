@@ -413,8 +413,9 @@ Ask these in order; each answer moves a rule to a different place.
 1. **What does a violation cost, and can it be undone?** If it becomes public or permanent before
    anyone reads it, do not write a rule: build the check (option 8). If it is a style preference,
    a line is enough, or nothing. Where the harness has no hooks, a git hook or a required CI check
-   is the route (see [basics](basics.md#hooks)); Claude Code needs a paid plan or a Console
-   account, so a free setup has only the git hook and CI.
+   is the route (see [basics](basics.md#hooks)); Claude Code needs a paid plan, a Console
+   account or a cloud provider's credentials, so a setup with none of them has only the git hook
+   and CI.
 2. **Can the agent learn it from the code?** Then it does not belong in a file (option 1, or
    the pruning in options 2 and 3).
 3. **Is it true of every task, or only of some?** Every task: always loaded (options 2 and 4).

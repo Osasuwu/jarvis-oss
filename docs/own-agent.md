@@ -1,6 +1,6 @@
 ---
 applies_when: you want an agent that works the way you do in your own repositories, and you are deciding which of its standing parts to set up (rules file, skills, hooks, a persona) and where to read about each
-applies_when_not: you want a full ready-made persona installed for you, since the only persona text this repo installs is the one line `jarvis-setup` writes; you only need one harness's file names, which is docs/harnesses.md
+applies_when_not: you want a full ready-made persona installed for you, since `jarvis-setup` installs only a one-line persona, an autonomy tier and two invariants; you only need one harness's file names, which is docs/harnesses.md
 signed_off:
 kind: hub
 ---
@@ -11,9 +11,10 @@ An agent that works your way is a few plain files you write yourself: a rules fi
 start of each session, skills for jobs you repeat, hooks for rules that must hold, and a persona
 if you want one. This page says what each part is and where to read about it. Each part is yours
 to write, so the docs below help you decide what to put in it, not what to copy. This repo ships
-two things you can install: the `jarvis-setup` skill, which writes a one-line persona (a name and
-a role) into your rules file, and a few optional hook scripts, which the hooks doc below marks as
-ours and which run on Claude Code only, so they need a plan that includes it
+two things you can install: the `jarvis-setup` skill, which adds whichever of a one-line persona
+(a name and a role), an autonomy tier and two invariants your rules file lacks, either as a block
+in it or, on Claude Code, as its own file the rules file imports; and a few optional hook scripts,
+which the hooks doc below marks as ours and which run on Claude Code only, so they need access to it
 ([plans](#unattended-runs-and-plans)).
 
 ## Children
@@ -24,8 +25,7 @@ ours and which run on Claude Code only, so they need a plan that includes it
 ## The parts
 
 **Which harness, and what it reads.** Rules-file names, skills directories and include support
-differ per harness. [The harness table](harnesses.md) has them, dated per row; its skills directory
-is checked only where the row says so.
+differ per harness. [The harness table](harnesses.md) has them, dated per row.
 
 **The rules file.** The standing instructions the agent loads each session. The decision is not
 only what to write but where a rule lives: always loaded, loaded for some paths, loaded on demand,
@@ -64,9 +64,10 @@ any other, so the failure modes in [the rules-file doc](rules-file.md#the-proble
 
 ## Unattended runs and plans
 
-Claude Code itself needs a paid plan or a Console account; the setup page says "Claude Code
-requires a Pro, Max, Team, Enterprise, or Console account. The free claude.ai plan does not
-include Claude Code access"
+Claude Code itself needs a paid plan, a Console account or a cloud provider's credentials; the
+setup page says "Claude Code requires a Pro, Max, Team, Enterprise, or Console account. The free
+claude.ai plan does not include Claude Code access" and "You can also use Claude Code with a
+third-party API provider like Amazon Bedrock, Google Cloud's Agent Platform, or Microsoft Foundry"
 ([Advanced setup](https://code.claude.com/docs/en/setup) (checked 2026-10-01)). The shipped hook
 scripts and Claude Code's output styles need it.
 
