@@ -61,7 +61,7 @@ The date must match the doc's own `signed_off` frontmatter value exactly. An ent
 
 ## Entries
 
-- `docs/basics.md`: 2026-10-01; facts: https://github.com/Osasuwu/jarvis-oss/pull/187#issuecomment-5915103809
+- `docs/basics.md`: 2026-10-01; facts: human
 
 Every entry this ledger carried before was written by the agent that drafted the doc it
 signed, in a PR that merged with zero reviews — see #41 and #53. They were removed rather than
