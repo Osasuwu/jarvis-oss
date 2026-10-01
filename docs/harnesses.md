@@ -26,7 +26,7 @@ Every claim below has a verbatim-quote source in [Verification notes](#verificat
 
 | Harness | Rules-file | Skills dir | Include support | Verified | Source |
 |---|---|---|---|---|---|
-| Claude Code | `CLAUDE.md` | `.claude/skills/` (project), `~/.claude/skills/` (user) | Yes — **in-file include line**: `@path/to/file` syntax, expanded inline at session start, recursive up to four hops, relative/absolute/home-dir paths; also a **drop-in directory**: any `.md` file placed in `.claude/rules/` (recursive, subdirectories included) is auto-loaded, no per-file registration | 2026-09-17 | https://code.claude.com/docs/en/memory |
+| Claude Code | `CLAUDE.md`; also reads `AGENTS.md`, but only when no `CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` is in the working directory or above it (with one of those present it reads `CLAUDE.md` only; a personal `~/.claude/CLAUDE.md` does not count), only on v2.1.277 or later, and not with the built-in `agents-md` plugin disabled. A `CLAUDE.md` that imports `AGENTS.md` loads it too. The **Project instructions** setting in `/config` changes the default (see Verification notes) | `.claude/skills/` (project), `~/.claude/skills/` (user) | Yes — **in-file include line**: `@path/to/file` syntax, expanded inline at session start, recursive up to four hops, relative/absolute/home-dir paths; also a **drop-in directory**: any `.md` file placed in `.claude/rules/` (recursive, subdirectories included) is auto-loaded, no per-file registration | 2026-10-01 | https://code.claude.com/docs/en/memory |
 | OpenCode | `AGENTS.md` | `.opencode/skills/`, `~/.config/opencode/skills/`, `.claude/skills/`, `~/.claude/skills/`, `.agents/skills/`, `~/.agents/skills/` | Yes — **config-level file list**: `instructions` array in `opencode.json`, supports glob patterns (e.g. `packages/*/AGENTS.md`) and remote URLs; combined with `AGENTS.md` | 2026-09-17 | https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/rules.mdx |
 | Codex CLI | `AGENTS.md` (or `AGENTS.override.md` if present) | unverified | No in-file include line, config-level list, or drop-in directory — but **directory-hierarchy concatenation**: `AGENTS.md` files from repo root down to cwd are auto-joined (closer file wins on conflict), capped at `project_doc_max_bytes` (32 KiB default) | 2026-09-17 | https://learn.chatgpt.com/docs/agent-configuration/agents-md |
 | Gemini CLI | `GEMINI.md` | unverified | Yes — **in-file include line**: `@file.md` import syntax, relative/absolute paths (no documented `~` home-dir support), default max import depth 5 (configurable), nested imports, circular-import detection | 2026-09-17 | https://github.com/google-gemini/gemini-cli/blob/main/docs/reference/memport.md |
@@ -46,6 +46,16 @@ each harness's own primary documentation (not a mirror or a secondary summary).
   pass also found a second, separate mechanism not in the prior row: "Place markdown files in your
   project's `.claude/rules/` directory... All `.md` files are discovered recursively, so you can
   organize rules into subdirectories" — a genuine drop-in directory, distinct from `@import`.
+  Rules-file cell, checked 2026-10-01 against the same page: "By default, Claude reads `AGENTS.md`
+  only when you have no `CLAUDE.md` in your working directory or above it." "Reading `AGENTS.md`
+  directly requires Claude Code v2.1.277 or later." The files that count for that check are "a
+  `CLAUDE.md`, `.claude/CLAUDE.md`, or `CLAUDE.local.md` in your working directory or any
+  directory above it"; "your `~/.claude/CLAUDE.md`, your organization’s managed `CLAUDE.md`, and
+  `.claude/rules/` files" do not count and "keep loading alongside `AGENTS.md`". Sessions that
+  read `CLAUDE.md` only include "You’re on a Claude Code version before v2.1.277" and "You
+  disabled the built-in `agents-md` plugin in `/plugin`". The **Project instructions** setting
+  takes `claude-md-or-agents-md` (the default), `claude-md-and-agents-md`, `claude-md` or
+  `managed-only`.
 
 - **OpenCode** — https://github.com/anomalyco/opencode/blob/dev/packages/web/src/content/docs/rules.mdx —
   "All instruction files are combined with your `AGENTS.md` files." The `instructions` array in
