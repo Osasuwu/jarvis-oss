@@ -1,6 +1,6 @@
 ---
 applies_when: you want an agent that works the way you do in your own repositories, and you are deciding which of its standing parts to set up (rules file, skills, hooks, a persona) and where to read about each
-applies_when_not: you want a ready-made persona installed for you, since none is shipped or installed; you only need one harness's file names, which is docs/harnesses.md
+applies_when_not: you want a full ready-made persona installed for you, since the only persona text this repo installs is the one line `jarvis-setup` writes; you only need one harness's file names, which is docs/harnesses.md
 signed_off:
 kind: hub
 ---
@@ -9,10 +9,12 @@ kind: hub
 
 An agent that works your way is a few plain files you write yourself: a rules file it reads at the
 start of each session, skills for jobs you repeat, hooks for rules that must hold, and a persona
-if you want one. This page says what each part is and where to read about it. No persona is
-shipped or installed, and each part is yours to write, so the docs below help you decide what to
-put in it, not what to copy. The one thing this repo does ship is a few optional hook scripts,
-which the hooks doc below marks as ours.
+if you want one. This page says what each part is and where to read about it. Each part is yours
+to write, so the docs below help you decide what to put in it, not what to copy. This repo ships
+two things you can install: the `jarvis-setup` skill, which writes a one-line persona (a name and
+a role) into your rules file, and a few optional hook scripts, which the hooks doc below marks as
+ours and which run on Claude Code only, so they need a plan that includes it
+([plans](#unattended-runs-and-plans)).
 
 ## Children
 
@@ -43,10 +45,11 @@ instruction. [The basics](basics.md#hooks) say what one is. For which writes to 
 hook catches and misses, see
 [stopping an agent's writes before they land](agent-safety-hooks.md).
 
-**A persona, built by hand.** A voice, a role, a way of answering. Nothing here ships one and
-nothing installs one: you write it, in your own words, and no doc in this repo can say what is
-right for you. It can sit in the rules file as plain text, whichever harness you use; tone is one
-of the things [the rules-file doc](rules-file.md) lists for the personal file. Claude Code also
+**A persona, built by hand.** A voice, a role, a way of answering. Apart from the one-line role
+that `jarvis-setup` writes, nothing here ships one and nothing installs one: you write it, in
+your own words, and no doc in this repo can say what is right for you. It can sit in the rules
+file as plain text, whichever harness you use; tone is one of the things
+[the rules-file doc](rules-file.md) lists for the personal file. Claude Code also
 gives it a place of its own: an output style changes the instructions Claude Code gives Claude to
 set "role, tone, and response format", and a custom style leaves out Claude Code's built-in
 software engineering instructions unless `keep-coding-instructions` is `true`. The docs say the
@@ -61,9 +64,15 @@ any other, so the failure modes in [the rules-file doc](rules-file.md#the-proble
 
 ## Unattended runs and plans
 
-A persona, like the rest of the rules file, can silently not load in an unattended `claude -p` run:
-`--bare` skips hooks, skills and `CLAUDE.md`, so a scripted agent needs its parts passed in
-explicitly. [The basics](basics.md#rules-file) have the details. Claude Code itself needs a paid
-plan or a Console account; the setup page says "Claude Code requires a Pro, Max, Team, Enterprise,
-or Console account. The free claude.ai plan does not include Claude Code access"
-([Advanced setup](https://code.claude.com/docs/en/setup) (checked 2026-10-01)).
+Claude Code itself needs a paid plan or a Console account; the setup page says "Claude Code
+requires a Pro, Max, Team, Enterprise, or Console account. The free claude.ai plan does not
+include Claude Code access"
+([Advanced setup](https://code.claude.com/docs/en/setup) (checked 2026-10-01)). The shipped hook
+scripts and Claude Code's output styles need it.
+
+A persona, like the rest of the rules file, can silently not load in an unattended `claude -p` run
+that uses `--bare`, which skips hooks, skills and `CLAUDE.md`. Without `--bare` the run loads the
+same context an interactive session would; with it, the parts have to be passed in explicitly
+and the run needs credentials other than a subscription login
+([Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-10-01)).
+[The basics](basics.md#rules-file) have the details.

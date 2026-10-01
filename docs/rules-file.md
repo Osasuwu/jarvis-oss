@@ -382,7 +382,9 @@ the file "is marked as read-only, and cached if prompt caching is enabled"
 than interactive use ([memory](https://code.claude.com/docs/en/memory) (checked 2026-10-01)). In an unattended `claude -p` run, `--bare`
 skips "hooks, skills, custom commands, subagents, installed plugins, MCP servers, auto memory, and
 CLAUDE.md" and "doesn't use your subscription login", so the rules file has to be passed in this way
-and the run needs an `ANTHROPIC_API_KEY` from a Console key
+and the run needs credentials other than a subscription login: an `ANTHROPIC_API_KEY` from a
+Console key, an `apiKeyHelper` in the `--settings` JSON, or a Bedrock, Google Cloud or Foundry
+provider's own credentials
 ([Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-10-01)).
 A rule enforced by a hook (option 8) does not run there either.
 

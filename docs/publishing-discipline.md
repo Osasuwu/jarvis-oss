@@ -254,8 +254,8 @@ code and "only 48%" always check it
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report URL goes in the ledger entry's `facts:`. Cost: a model run per
 review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
-copy it there first, and [`harnesses.md`](harnesses.md) lists each other harness's skills
-directory, most of it unverified.
+link it there on your machine (a copy falls out of date), and [`harnesses.md`](harnesses.md) lists
+each other harness's skills directory.
 
 #### Check
 
