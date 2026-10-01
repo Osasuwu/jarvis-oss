@@ -14,8 +14,9 @@ The setup skill lives in *this* repo but is meant to run in *yours*. From your o
 npx skills add Osasuwu/jarvis-oss --skill jarvis-setup
 ```
 
-Or copy `.agents/skills/jarvis-setup/` by hand into your harness's skills directory — see the
-Skills dir column of [`docs/harnesses.md`](docs/harnesses.md) for where that is on yours.
+Or copy `.agents/skills/jarvis-setup/` by hand into your harness's skills directory. The Skills
+dir column of [`docs/harnesses.md`](docs/harnesses.md) names it where it was checked; where it
+reads "unverified", look in your harness's own docs.
 
 ## Run the doc skills in this repo
 

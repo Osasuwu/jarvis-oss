@@ -311,8 +311,10 @@ First, in order:
 2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the
    `gh` login, the git credential helper, a loaded `ssh-agent` or `gpg-agent` — not only the token
    the agent was given. Yes → 1, 4 and 6 record intent only; for proof you need 3 (take the
-   credentials away), or 5 (require something the agent lacks) if that same token cannot administer
-   the repo and switch the check off. No → the merge click is the
+   credentials away), or 5 (require something the agent lacks) if the branch protection binds the account
+   the agent acts as (an admin account is exempt unless **Do not allow bypassing the above
+   settings** is on), that same token cannot change the protection, and the agent cannot, on its
+   own, change what the check runs (Hooks in [basics](basics.md)). No → the merge click is the
    person's, and 4 and 6 record who it was. If nobody is present when it merges (a scheduled
    job), the answer is Yes, and a draft (4) does not hold, since the job's own token clears it.
    Stop the job merging: 3 where a hosted agent or a branch rule can bar the account; otherwise
@@ -326,9 +328,9 @@ First, in order:
 |---|---|
 | 1 | no agent credential can approve or merge, and no one but the merger relies on the record |
 | 2 | a second account the agent cannot use exists, required approvals are available here, and bot approvals are off |
-| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging, so not on a private GitHub Free repo |
+| 3 | the agent runs where your token, SSH key and signing key are absent, and its account cannot merge: a hosted agent the forge bars from merging (Copilot cloud agent, paid Copilot plans) is proof anywhere; an app in CI or a separate OS user is proof only where a protected branch or ruleset stops that account merging — a required approval it cannot give, or push restrictions (organization repos only) — so not on a private GitHub Free repo |
 | 4 | drafts: any repo; a label and required check: required checks are available |
-| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer (GitHub public repo or Enterprise), and the agent's token cannot administer the repo; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
+| 5 | required checks are available, the approval is a hardware-key signature (any forge), re-authentication (GitLab Premium) or an environment reviewer who is not the account that starts the run (GitHub public repo or Enterprise), the protection binds the account the agent acts as (an admin account only with **Do not allow bypassing the above settings** on), and the agent's token cannot change the protection; for an npm package, a staged publish only a person can approve needs no required check (its plan is not stated) |
 | 6 | 2, 3 or 5 already proves who acted, or the record is stated to be intent only |
 | 7 | the review runs in a context that did not write the change, and its read-closely list is answered in writing |
 | 8 | a wrong change is recoverable, and the flag, preview or revert is in place before the merge |
