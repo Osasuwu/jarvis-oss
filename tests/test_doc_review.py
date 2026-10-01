@@ -710,6 +710,25 @@ def test_review_posts_nothing_and_cannot_run_gh():
     assert 'classify_inline_comments: "false"' in review
 
 
+def test_dispatch_checks_out_the_head_commit_only_and_pr_runs_full_history():
+    """#150: a calibration run must not reach main, where the corpus lives; a PR run needs the
+    base for its diff. The expression is evaluated with the short-circuit semantics GitHub
+    gives `&&` / `||`, so `cond && 0 || 1` (0 is falsy) is caught as well as a wrong value."""
+    depth = re.search(r"^          fetch-depth: \$\{\{ (.+) \}\}$", _steps()[0], re.M).group(1)
+
+    def evaluate(event: str) -> int:
+        expr = depth.replace("github.event_name", repr(event))
+        return eval(expr.replace("&&", " and ").replace("||", " or "), {"__builtins__": {}})
+
+    assert evaluate("workflow_dispatch") == 1
+    assert evaluate("pull_request") == 0
+    names = re.findall(r"^      - (?:name|uses): (.+)$", WORKFLOW, re.M)
+    assert names.index("Check the dispatch checkout") < names.index("Review")
+    guard = _step("Check the dispatch checkout")
+    assert "if: github.event_name == 'workflow_dispatch'" in guard
+    assert 'git rev-list --count --all)" = "1"' in guard
+
+
 def test_concurrency_is_per_pr_and_cancels_in_progress():
     assert "group: doc-review-${{ github.event.pull_request.number" in WORKFLOW
     assert "cancel-in-progress: true" in WORKFLOW
