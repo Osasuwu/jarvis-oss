@@ -1,6 +1,6 @@
 ---
 applies_when: you are setting up an agent to work in a git repository on GitHub and a practice doc here asks for a branch, a pull request, a CI check, a rules file, a skill or a hook that you have not used before
-applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which file names and directories a given harness uses is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
+applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which file or directory a harness reads is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
 kind: basics
 ---
 
@@ -50,10 +50,8 @@ A check only stops a merge if the branch is protected and lists it as required. 
 default the rule does not apply to repository admins, which on your own repository means you and
 an agent working with your token, until you turn on **Do not allow bypassing the above settings**. See
 [About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-10-01).
-Protection on a private repository needs a paid plan. The same page's **Who can use this
-feature?** box says protected branches are available "in public repositories with GitHub Free and
-GitHub Free for organizations", and "in public and private repositories with GitHub Pro, GitHub
-Team, GitHub Enterprise Cloud, and GitHub Enterprise Server".
+Protection on a private repository needs a paid plan: the plans page lists protected branches
+among GitHub Pro's and GitHub Team's tools for private repositories. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
 Without protection a failing check still shows in the pull request's **Checks** tab (see
 [Status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks) (checked 2026-10-01)),
 but nothing blocks the merge. The check then binds only someone who looks before merging; in an
@@ -87,8 +85,8 @@ check.
 You have it when you ask the agent what its project instructions say and it answers from the file
 (in Claude Code, `/context` also lists a loaded `CLAUDE.md` under **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
 `--bare` is set: that flag skips `CLAUDE.md`, hooks and skills, and the docs recommend it for
-scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode never reads a
-subscription login, so it needs `ANTHROPIC_API_KEY`, an `apiKeyHelper`, or a cloud provider's own credentials. To load the file as in a session, leave
+scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode also does not
+read a subscription login, and the page below lists the credentials it takes instead. To load the file as in a session, leave
 `--bare` off; see
 [Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-09-30).
 Either way that shows the file is loaded, not that the agent follows every line.
@@ -104,9 +102,10 @@ The format is an open standard that a growing number of agent products have adop
 vary between tools; see the
 [Agent Skills specification](https://agentskills.io/specification) (checked 2026-09-30).
 The specification does not say which directory a tool reads skills from; for that, the harness
-table has a skills directory column. Where it says unverified, look in your harness's own docs;
-if they name no skills directory, or your harness has no skills, a short procedure can go in the
-rules file, at the cost described next.
+table has a skills directory column.
+If your harness has no skills, a short procedure can go in the rules file, at the cost described next.
+A `claude -p` run with `--bare` skips both skills and `CLAUDE.md`; there, pass the procedure in
+with `--append-system-prompt-file`, as for the rules file above.
 
 Use a skill for a procedure and a rules file for a standing fact. A long procedure in the rules
 file is loaded every session whether or not it is needed.
@@ -120,8 +119,7 @@ A hook is a shell command your harness runs at a fixed point in the agent's work
 before a tool call or after a file edit. It runs whether or not the agent decides to follow an
 instruction. See
 [Automate actions with hooks](https://code.claude.com/docs/en/hooks-guide) (checked 2026-09-30).
-In an unattended `claude -p` run, `--bare` skips hooks and never reads a subscription login (see
-Rules file), so leave it off if you rely on them.
+In an unattended `claude -p` run, `--bare` skips hooks, so leave it off if you rely on them.
 
 That is the difference from a rules file: a rules-file line asks, a hook enforces. Practice docs
 here use hooks for rules that must not depend on the agent remembering them. The cost is a script

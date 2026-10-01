@@ -1,6 +1,6 @@
 ---
 name: jarvis-setup
-description: One-time setup skill. Asks trial vs full, reads the reader's existing rules file and the harness table, and emits only the delta needed to adopt Jarvis's persona, autonomy tier, and two invariants. The core path needs no Claude-only feature; @import and hooks are optional extras.
+description: One-time setup skill. Asks trial vs full, reads the reader's existing rules file and the harness table, and emits only the delta needed to adopt Jarvis's persona, autonomy tier, and two invariants. The core path needs no Claude-only feature; on Claude Code it writes the delta to its own file behind one @import line, and hooks are optional extras.
 ---
 
 # Jarvis setup
@@ -182,8 +182,9 @@ Extras exist on top of that core path:
   blocking a tool call that would persist a secret). Offer this only on Claude Code; on
   every other harness the invariants stay prose-only, enforced by the agent reading them.
 
-Skipping both extras must still leave a fully working rules file — they are conveniences, not
-requirements of this skill's core path.
+On Claude Code the owned-file import is §5's write step, not an extra, so only the hooks can be
+skipped there. On every other harness, skipping both extras must still leave a fully working rules
+file — they are conveniences, not requirements of this skill's core path.
 
 ## 7. Uninstall
 
@@ -198,7 +199,8 @@ Removes only what this skill wrote — never anything the reader authored.
 
 A `CLAUDE.md` that §2's case 3 created holds `@AGENTS.md` and the owned-file import. After the
 owned-file import line is removed, a `CLAUDE.md` left with only `@AGENTS.md` is this skill's too;
-tell the reader it can be deleted on Claude Code v2.1.277 or later, and leave the deletion to
+tell the reader it can be deleted only once every session they run reads `AGENTS.md` directly
+(§2 case 2's conditions) — until then it is what loads `AGENTS.md` — and leave the deletion to
 them.
 
 If neither an owned file/import nor a marker block is found, this skill has not written anything

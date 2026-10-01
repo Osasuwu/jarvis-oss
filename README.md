@@ -15,8 +15,8 @@ npx skills add Osasuwu/jarvis-oss --skill jarvis-setup
 ```
 
 Or copy `.agents/skills/jarvis-setup/` by hand into your harness's skills directory. The Skills
-dir column of [`docs/harnesses.md`](docs/harnesses.md) names it where it was checked; where it
-reads "unverified", look in your harness's own docs.
+dir column of [`docs/harnesses.md`](docs/harnesses.md) names it for each harness the table lists;
+for any other harness, look in its own docs.
 
 ## Run the doc skills in this repo
 

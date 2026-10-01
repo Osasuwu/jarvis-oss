@@ -255,8 +255,8 @@ code and "only 48%" always check it
 **Install (ours).** [`review-doc`](../.agents/skills/review-doc/SKILL.md), run in a context that
 did not write the doc; its report is a comment on the pull request. Cost: a model run per
 review-doc pass. Harness: the skill lives in `.agents/skills/`; Claude Code loads `.claude/skills/`, so
-copy it there first, and [`harnesses.md`](harnesses.md) has a skills directory column, which for
-most other harnesses reads "unverified".
+link it there on your machine (a copy falls out of date), and [`harnesses.md`](harnesses.md) lists
+each other harness's skills directory.
 
 #### Check
 
@@ -304,7 +304,8 @@ a cheaper read (7), and where nobody independent reads, a cap on the damage (8).
 First, in order:
 
 1. **Is there a second person with write access, and can required approvals be turned on here?**
-   They exist on public repos and on paid private plans; GitLab's approval rules are Premium. Both
+   On GitHub they exist on public repos and on paid private plans, and GitLab's approval rules are
+   Premium; on another forge, such as Gerrit or Azure DevOps above, check its own plans. Both
    yes → 2, with most-recent-push approval, stale approvals dismissed and no bypass — as long as no
    agent can use the approver's credentials. Two people each running an agent as themselves do not.
 2. **Can the agent reach the credentials of whoever merges?** Look at what is on the machine — the
