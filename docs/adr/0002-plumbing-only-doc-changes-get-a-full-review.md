@@ -1,6 +1,6 @@
 # ADR-0002: A plumbing-only change to a doc is reviewed in full
 
-Date: 2026-10-01. Status: accepted. Tracking: #194 (follow-up to #167). Supersedes nothing.
+Date: 2026-10-01. Status: accepted, scope amended 2026-10-01 (#213). Tracking: #194 (follow-up to #167). Supersedes nothing.
 
 ## Context
 
@@ -43,6 +43,19 @@ The question #194 asks: should a plumbing-only change be reviewed in full, or on
 - Fixes to review findings are new text and get reviewed on the next push as a delta; expect
   a second round.
 - A procedure change to the reviewer should be followed by a dispatch run on every doc in scope.
+
+## Amendment, 2026-10-01 (#213)
+
+Scope, not mechanics. The review gates now apply to document paths only: `waiting-human-review`
+holds a pull request only when it changes `docs/` (outside `docs/adr/`) or `examples/`, and
+doc-review reviews the reviewable docs a pull request changes plus the docs named in the
+`pairs_with` of each example it changes. Everything else in the repo supports the documents and
+merges on its own checks. Decisions 1–3 stand within that scope. Two consequences:
+
+- An example counts as a touch of the docs it pairs with: its first change on a pull request
+  reviews each paired doc in full, with the pre-existing findings that brings (decision 2).
+- A pull request that changes no document gets no doc-review and no hold, whatever else it
+  changes.
 
 ## References
 

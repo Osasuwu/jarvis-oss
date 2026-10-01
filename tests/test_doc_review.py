@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -98,6 +99,55 @@ def test_classify_dispatch_reviews_given_docs_and_fails_on_none():
     assert (ok.status, ok.docs) == ("review", ("docs/a.md",))
     none = dr.classify(event="workflow_dispatch", is_fork=False, is_draft=False, changed=[])
     assert none.status == "fail"
+
+
+def test_a_changed_example_reviews_the_reviewable_docs_it_pairs_with():
+    paired = {"examples/e.md": ["docs/a.md", "docs/adr/0001-x.md", "README.md"]}
+    result = dr.classify(event="pull_request", is_fork=False, is_draft=False,
+                         changed=["examples/e.md", "scripts/s.py"], paired=paired)
+    assert (result.status, result.docs) == ("review", ("docs/a.md",))
+    # Only an example brings its pairs in; the map is not read for any other changed file.
+    other = dr.classify(event="pull_request", is_fork=False, is_draft=False,
+                        changed=["scripts/s.py"], paired={"scripts/s.py": ["docs/a.md"]})
+    assert (other.status, other.docs) == ("pass", ())
+
+
+def test_pairs_with_targets_reads_only_the_frontmatter_value():
+    text = "---\nfit: x\npairs_with: docs/a.md, docs/b.md\n---\n\npairs_with: docs/z.md\n"
+    assert dr.pairs_with_targets(text) == ["docs/a.md", "docs/b.md"]
+    assert dr.pairs_with_targets("pairs_with: docs/a.md\n") == []
+    assert dr.pairs_with_targets("---\nfit: x\n---\n\npairs_with: docs/z.md\n") == []
+
+
+def test_pairs_with_is_read_as_the_structure_gate_reads_it():
+    sys.path.insert(0, str(ROOT / "tests"))
+    import structure_gate
+
+    examples = sorted((ROOT / "examples").rglob("*.md"))
+    assert examples
+    for path in examples:
+        text = path.read_text(encoding="utf-8")
+        gate = structure_gate._parse_frontmatter(text).get("pairs_with", "")
+        expected = [t.strip() for t in gate.split(",") if t.strip()]
+        assert dr.pairs_with_targets(text) == expected, path
+
+
+def test_paired_reads_each_changed_example_at_the_given_commit(tmp_path, monkeypatch):
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True, capture_output=True)
+
+    git("init", "-q")
+    (tmp_path / "examples").mkdir()
+    (tmp_path / "examples" / "e.md").write_text(
+        "---\npairs_with: docs/old.md\n---\n", encoding="utf-8")
+    git("add", ".")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "one")
+    (tmp_path / "examples" / "e.md").write_text(
+        "---\npairs_with: docs/new.md\n---\n", encoding="utf-8")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "two")
+    monkeypatch.chdir(tmp_path)
+    assert dr._paired("HEAD~1", ["examples/e.md", "docs/x.md"]) == {
+        "examples/e.md": ["docs/old.md"]}
 
 
 def test_parse_files_input_accepts_spaces_commas_and_newlines():
