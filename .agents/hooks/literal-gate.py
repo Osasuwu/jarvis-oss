@@ -16,8 +16,9 @@ pull request and issue titles and bodies, comments, reviews, release notes and `
 
 Literals come from `PERSONAL_LITERALS`, the source the CI scrub and the pre-push gate read,
 and match in any variant (case, separators, path forms). Exit 2 blocks the call and names
-where the hit is, never the value. With no usable list, a call that would send text is
-blocked and the message says nothing was checked; other calls pass. Input that is not valid
+where the hit is, never the value. With no usable list, every GitHub MCP call and each
+`gh` command that sends text is blocked and the message says nothing was checked; other shell
+calls pass. Input that is not valid
 JSON blocks.
 
 It is wired by `settings.snippet.json` (same directory), next to the other agent-safety hooks. Each command is chained with
