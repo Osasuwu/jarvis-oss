@@ -127,8 +127,8 @@ discovers", and "suggests improvements rather than overwriting" an existing one
 ([memory](https://code.claude.com/docs/en/memory) (checked 2026-10-01)). Other harnesses have a
 similar command.
 
-**Fits only if** you treat the output as a first draft and delete from it. As a final file, it is
-mostly directory layouts and dependency lists, which the 2602.11988 abstract found not helpful. Claude
+**Fits only if** you treat the output as a first draft and delete from it. As a final file, it tends to be
+a repository overview, which the 2602.11988 abstract found "not helpful". Claude
 Code's own `/doctor` check proposes cutting content "Claude can derive from the codebase" and keeps
 "pitfalls, rationale, and conventions that differ from tool defaults".
 
@@ -380,7 +380,11 @@ the file "is marked as read-only, and cached if prompt caching is enabled"
 ([conventions](https://aider.chat/docs/usage/conventions.html) (checked 2026-10-01)). In Claude Code,
 `--append-system-prompt` puts instructions at the system-prompt level, which suits scripts better
 than interactive use ([memory](https://code.claude.com/docs/en/memory) (checked 2026-10-01)). In an unattended `claude -p` run, `--bare`
-skips `CLAUDE.md`, so a rules file needs to be passed in this way.
+skips "hooks, skills, custom commands, subagents, installed plugins, MCP servers, auto memory, and
+CLAUDE.md" and "doesn't use your subscription login", so the rules file has to be passed in this way
+and the run needs an `ANTHROPIC_API_KEY` from a Console key
+([Run Claude Code programmatically](https://code.claude.com/docs/en/headless) (checked 2026-10-01)).
+A rule enforced by a hook (option 8) does not run there either.
 
 **Fits only if** the tool lacks a native file, or the run is scripted and you need the rules to
 load whatever the directory holds.
@@ -406,7 +410,9 @@ Ask these in order; each answer moves a rule to a different place.
 
 1. **What does a violation cost, and can it be undone?** If it becomes public or permanent before
    anyone reads it, do not write a rule: build the check (option 8). If it is a style preference,
-   a line is enough, or nothing.
+   a line is enough, or nothing. Where the harness has no hooks, a git hook or a required CI check
+   is the route (see [basics](basics.md#hooks)); Claude Code needs a paid plan or a Console
+   account, so a free setup has only the git hook and CI.
 2. **Can the agent learn it from the code?** Then it does not belong in a file (option 1, or
    the pruning in options 2 and 3).
 3. **Is it true of every task, or only of some?** Every task: always loaded (options 2 and 4).
@@ -417,7 +423,8 @@ Ask these in order; each answer moves a rule to a different place.
 5. **Is it the team's or yours?** Yours: option 9 or 10. The team's: in the repo, where it is
    reviewed.
 6. **Unattended?** Then confirm the file loads at all (option 11, and the `--bare` note in
-   [basics](basics.md#rules-file)).
+   [basics](basics.md#rules-file)). `--bare` also skips hooks, so in such a run
+   an option 8 rule needs a CI check behind it.
 
 A common result is two or three of these together: a short root file, a few path-scoped rules, one
 or two skills, and a check for the one rule whose violation costs most. If your answers point to
@@ -431,7 +438,9 @@ the result.
 ## Our own choice, as one example
 
 This repository has no root `AGENTS.md` or `CLAUDE.md`. What its agents are told lives in skills
-under `.agents/skills/`, loaded when the job comes up (option 7), and the rules that must hold are
+under `.agents/skills/`, loaded when the job comes up (option 7); Claude Code looks for project skills
+in `.claude/skills/`, which is not tracked, so each skill is linked there on each machine
+([README](../README.md)), and the rules that must hold are
 checks under `.agents/hooks/` and in CI (option 8), described in
 [the safety-hooks doc](agent-safety-hooks.md). The maintainer's personal rules are a user-level
 file that imports others (option 9), which is where the
@@ -445,9 +454,10 @@ would answer question 4 differently.
    repeats. Claude Code's docs give the same triggers.
 2. Delete a line when the agent follows it without being told. Re-run the with-and-without test
    when you change the model or harness.
-3. In Claude Code, `/doctor prompt-audit` reads your instruction files for contradictions,
+3. In Claude Code v2.1.283 or later, `/doctor prompt-audit` reads your instruction files for contradictions,
    references to files or commands that no longer exist, and instructions written for older
-   models; it proposes edits and changes nothing until you ask.
+   models; it proposes edits and changes nothing until you ask
+   ([memory](https://code.claude.com/docs/en/memory) (checked 2026-10-01)).
 4. Put notes for maintainers in an HTML comment: block-level comments are stripped before the
    file reaches the agent, so they cost no context.
 5. Review changes to a rules file like code, and look at the raw bytes of a file you did not

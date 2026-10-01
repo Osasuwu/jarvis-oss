@@ -1,6 +1,6 @@
 ---
 applies_when: you want an agent that works the way you do in your own repositories, and you are deciding which of its standing parts to set up (rules file, skills, hooks, a persona) and where to read about each
-applies_when_not: you want a ready-made agent installed for you, since nothing here is shipped or installed; you only need one harness's file names, which is docs/harnesses.md
+applies_when_not: you want a ready-made persona installed for you, since none is shipped or installed; you only need one harness's file names, which is docs/harnesses.md
 signed_off:
 kind: hub
 ---
@@ -9,9 +9,10 @@ kind: hub
 
 An agent that works your way is a few plain files you write yourself: a rules file it reads at the
 start of each session, skills for jobs you repeat, hooks for rules that must hold, and a persona
-if you want one. This page says what each part is and where to read about it. It ships nothing and
-installs nothing. Each part is yours to write, so the docs below help you decide what to put in it,
-not what to copy.
+if you want one. This page says what each part is and where to read about it. No persona is
+shipped or installed, and each part is yours to write, so the docs below help you decide what to
+put in it, not what to copy. The one thing this repo does ship is a few optional hook scripts,
+which the hooks doc below marks as ours.
 
 ## Children
 
@@ -21,7 +22,8 @@ not what to copy.
 ## The parts
 
 **Which harness, and what it reads.** Rules-file names, skills directories and include support
-differ per harness. [The harness table](harnesses.md) has them, dated per row.
+differ per harness. [The harness table](harnesses.md) has them, dated per row; its skills directory
+is checked only where the row says so.
 
 **The rules file.** The standing instructions the agent loads each session. The decision is not
 only what to write but where a rule lives: always loaded, loaded for some paths, loaded on demand,
@@ -31,7 +33,7 @@ choose. For what a rules file is, start with [the basics](basics.md#rules-file).
 **Skills.** One directory per repeatable job, loaded when the job comes up. What they are and how
 to tell you have them is in [the basics](basics.md#skills). Claude Code's page is
 [Extend Claude with skills](https://code.claude.com/docs/en/skills) (checked 2026-10-01), and the
-format is an open specification:
+format is a published specification:
 [Agent Skills](https://agentskills.io/specification) (checked 2026-10-01). When a skill is worth
 more than a rules-file line is covered in option 7 of
 [the rules-file doc](rules-file.md#option-7-a-thin-root-file-with-the-detail-in-on-demand-docs-or-skills).
@@ -39,14 +41,16 @@ more than a rules-file line is covered in option 7 of
 **Hooks.** A script the harness runs at a fixed point, whether or not the agent follows an
 instruction. [The basics](basics.md#hooks) say what one is. For which writes to stop, and what each
 hook catches and misses, see
-[stopping an agent's writes before they land](agent-safety-hooks.md). That topic is expected to
-become a child hub of its own.
+[stopping an agent's writes before they land](agent-safety-hooks.md).
 
 **A persona, built by hand.** A voice, a role, a way of answering. Nothing here ships one and
 nothing installs one: you write it, in your own words, and no doc in this repo can say what is
-right for you. It can sit in the rules file, or in a place your harness gives it. In Claude Code an
-output style changes the system prompt to set "role, tone, and response format", and the docs say
-the two ways of shaping behaviour combine, but neither is enforced
+right for you. It can sit in the rules file as plain text, whichever harness you use; tone is one
+of the things [the rules-file doc](rules-file.md) lists for the personal file. Claude Code also
+gives it a place of its own: an output style changes the instructions Claude Code gives Claude to
+set "role, tone, and response format", and a custom style leaves out Claude Code's built-in
+software engineering instructions unless `keep-coding-instructions` is `true`. The docs say the
+two ways of shaping behaviour combine, but neither is enforced
 ([Output styles](https://code.claude.com/docs/en/output-styles) (checked 2026-10-01);
 [Extend Claude Code](https://code.claude.com/docs/en/features-overview) (checked 2026-10-01)). For
 a scripted run, `--append-system-prompt` sets it at the system-prompt level
@@ -54,3 +58,12 @@ a scripted run, `--append-system-prompt` sets it at the system-prompt level
 Other harnesses have their own place for it; start from their rules-file page in
 [the harness table](harnesses.md). Keep a persona to a few lines. It is text the agent reads like
 any other, so the failure modes in [the rules-file doc](rules-file.md#the-problem) apply to it.
+
+## Unattended runs and plans
+
+A persona, like the rest of the rules file, can silently not load in an unattended `claude -p` run:
+`--bare` skips hooks, skills and `CLAUDE.md`, so a scripted agent needs its parts passed in
+explicitly. [The basics](basics.md#rules-file) have the details. Claude Code itself needs a paid
+plan or a Console account; the setup page says "Claude Code requires a Pro, Max, Team, Enterprise,
+or Console account. The free claude.ai plan does not include Claude Code access"
+([Advanced setup](https://code.claude.com/docs/en/setup) (checked 2026-10-01)).
