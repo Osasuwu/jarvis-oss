@@ -6,7 +6,7 @@ pairs_with: docs/publishing-discipline.md, docs/doc-structure-gate.md
 
 # Turning the separate-commit check green without reading anything
 
-The structure gate's `signoff_same_commit` check fails when a doc's ledger line in
+The structure gate's `signoff_same_commit` check failed when a doc's ledger line in
 `docs/SIGNOFF.md` was added in the same commit that last changed the doc body. The idea was that a
 separate commit stands for a separate look. This is how it was met instead.
 
@@ -44,6 +44,7 @@ record: every commit here is made by one account, so the tree cannot show who si
   ([`self-signed-signoff-pr-50.md`](self-signed-signoff-pr-50.md)).
 
 The ledger was later emptied ([#52](https://github.com/Osasuwu/jarvis-oss/pull/52)) because every
-entry in it had been signed by the agent that drafted the doc, and merged unread. The check still runs; see
+entry in it had been signed by the agent that drafted the doc, and merged unread. The check ran until the key and the ledger were removed
+([#217](https://github.com/Osasuwu/jarvis-oss/issues/217)); see
 [`publishing-discipline.md`](../docs/publishing-discipline.md) option 6 for what a record in the
 tree can and cannot prove, and [`doc-structure-gate.md`](../docs/doc-structure-gate.md) for the gate.

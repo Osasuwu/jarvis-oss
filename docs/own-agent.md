@@ -1,7 +1,6 @@
 ---
 applies_when: you want an agent that works the way you do in your own repositories, and you are deciding which of its standing parts to set up (rules file, skills, hooks, a persona) and where to read about each
 applies_when_not: you want a full ready-made persona installed for you, since `jarvis-setup` installs only a one-line persona, an autonomy tier and two invariants; you only need one harness's file names, which is docs/harnesses.md
-signed_off:
 kind: hub
 ---
 

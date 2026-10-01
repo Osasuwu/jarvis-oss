@@ -1,7 +1,6 @@
 ---
 applies_when: an agent in your repo can write files, run shell commands or call a service's API (GitHub, a tracker, a chat tool), and something it writes can become public or permanent — a secret in git history or an issue body, an edit to the file that configures your checks — before anyone reads it
 applies_when_not: the agent can only propose changes that a person applies by hand, or it holds no credentials and cannot reach anything outside a disposable copy of the repo, or you are a company with a security team and managed devices
-signed_off:
 ---
 
 # Stopping an agent's writes before they land
@@ -396,7 +395,7 @@ anyone can skip it with `--no-verify`; 10 is a judgement, not a rule.
 switch them off locally; only server-side checks apply to every contributor alike, and in a free
 organization's private repos GitHub gives only 8's CI scan (make the repo public or move to Team).
 A blocked edit goes to a reviewer other than its author, the shift
-[`publishing-discipline.md`](publishing-discipline.md) makes for its sign-off.
+[`publishing-discipline.md`](publishing-discipline.md) makes for who clears its hold.
 
 **Examples.** *Solo, GitHub Free, private repo, attended, git only:* 1 is out (no required
 review on a Free private repo), and so are 8's push protection and review; left are 2, 3 for

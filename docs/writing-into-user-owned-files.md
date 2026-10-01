@@ -1,7 +1,6 @@
 ---
 applies_when: a tool, script, installer, generator, skill or agent you are building has to put its own content into a file a person already owns and edits — an agent rules file, a shell profile, a config file, a manifest
 applies_when_not: the tool creates the file and nobody else ever edits it (regenerate it and stop reading), or it is a one-off manual edit with nothing to re-run
-signed_off:
 ---
 
 # Writing into files the user already owns

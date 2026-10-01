@@ -1,42 +1,16 @@
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from structure_gate import _SIGNOFF_ENTRY_RE, check_tree
+from structure_gate import check_tree
 
 FIXTURES = Path(__file__).parent / "fixtures" / "structure_gate"
 REPO_ROOT = Path(__file__).parent.parent
 
 
-def _git(root: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _init_repo(root: Path) -> None:
-    _git(root, "init", "-q")
-    _git(root, "config", "user.email", "test@example.com")
-    _git(root, "config", "user.name", "Test")
-
-
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
-
-
-_DOC_BODY = """---
-applies_when: fixture doc for signoff git-history tests
-applies_when_not: not applicable outside this fixture
-signed_off: 2026-09-16
----
-
-# Git-history fixture doc
-"""
 
 
 def test_doc_missing_frontmatter_key_fails():
@@ -97,102 +71,11 @@ def test_fully_valid_tree_passes():
     assert check_tree(FIXTURES / "valid") == []
 
 
-def test_signoff_missing_ledger_entry_fails():
-    violations = check_tree(FIXTURES / "signoff_missing_entry")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/undocumented.md", "signoff_missing_entry") in codes
-
-
-def test_signoff_entry_in_same_commit_as_doc_fails(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc and ledger entry together")
-
-    violations = check_tree(tmp_path)
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/guide.md", "signoff_same_commit") in codes
-
-
-def test_empty_signed_off_is_drafted_not_yet_signed_and_not_a_violation():
-    # #53: `signed_off:` present but empty is the intentional "drafted, not yet signed"
-    # state, not a violation and not the same as omitting the key. Pinned here so a future
-    # edit to `_check_signoff` can't turn this into a `signoff_missing_entry` regression
-    # without a test noticing.
-    assert check_tree(FIXTURES / "signoff_empty_value") == []
-
-
-def test_signoff_entry_in_separate_commit_passes(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    violations = check_tree(tmp_path)
-    assert violations == []
-
-
-def test_signoff_entry_without_facts_fails(tmp_path):
-    # #59: a signature must say who checked facts and completeness, so an entry that names
-    # only a date is a violation even when it is otherwise valid.
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
-    assert ("docs/guide.md", "signoff_missing_facts") in codes
-
-
-def test_signoff_entry_with_report_url_passes(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-    _write(
-        tmp_path / "docs" / "SIGNOFF.md",
-        "- `docs/guide.md`: 2026-09-16; facts: https://github.com/o/r/pull/1#issuecomment-1\n",
-    )
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    assert check_tree(tmp_path) == []
-
-
-def test_real_signoff_ledger_exists_with_documented_entry_format():
-    ledger_path = REPO_ROOT / "docs" / "SIGNOFF.md"
-    assert ledger_path.is_file(), "docs/SIGNOFF.md must exist"
-    text = ledger_path.read_text(encoding="utf-8")
-    assert (
-        "- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>; facts: <human | report URL>"
-        in text
-    ), "docs/SIGNOFF.md must document the `- `<path>`: <date>; facts: <who>` entry format"
-    # An empty Entries section is a valid state, not a broken ledger: nothing has been signed
-    # yet, or every signature was withdrawn (#41 — all three were agent self-signatures in
-    # unreviewed PRs). This test previously required at least one live entry, which made
-    # "no doc is signed" indistinguishable from "the ledger is malformed". What must hold is
-    # that whatever entries are listed use the documented format.
-    entries_body = text.split("## Entries", 1)[1]
-    for line in entries_body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            assert _SIGNOFF_ENTRY_RE.match(stripped), f"malformed ledger entry: {stripped}"
-
-
 def test_excluded_doc_dirs_skip_every_doc_check(tmp_path):
     # A decision record under docs/adr/ has no doc frontmatter and is not a reader-facing doc
     # (#144); the same file anywhere else under docs/ fails as a doc.
     _write(tmp_path / "docs" / "adr" / "0001-x.md", "# ADR-0001\n\nDecided.\n")
     _write(tmp_path / "docs" / "adr" / "nested" / "0002-y.md", "# ADR-0002\n")
-    _write(tmp_path / "docs" / "SIGNOFF.md", "# Sign-off ledger\n")
     assert check_tree(tmp_path) == []
     _write(tmp_path / "docs" / "other" / "0001-x.md", "# Not an ADR\n\nDecided.\n")
     codes = {(v.path, v.code) for v in check_tree(tmp_path)}
@@ -208,19 +91,9 @@ def test_real_tree_passes_structure_gate():
     assert check_tree(REPO_ROOT) == []
 
 
-def test_ci_workflow_fetches_enough_history_for_signoff_check():
-    workflow_path = REPO_ROOT / ".github" / "workflows" / "structure-gate.yml"
-    text = workflow_path.read_text(encoding="utf-8")
-    assert "fetch-depth: 0" in text, (
-        "structure-gate.yml must fetch full history (fetch-depth: 0) so the "
-        "signoff same-commit check can compare commits"
-    )
-
-
 _MIN_DOC = """---
 applies_when: fixture
 applies_when_not: fixture
-signed_off:
 ---
 
 # Fixture doc
@@ -325,7 +198,7 @@ def test_example_pairs_with_must_resolve(tmp_path):
 def _kind_doc(kind: str | None = "basics", extra: str = "", body: str = "# Doc\n") -> str:
     kind_line = "" if kind is None else f"kind: {kind}\n"
     return (
-        "---\napplies_when: fixture\napplies_when_not: fixture\nsigned_off:\n"
+        "---\napplies_when: fixture\napplies_when_not: fixture\n"
         f"{kind_line}{extra}---\n\n{body}"
     )
 
@@ -819,7 +692,7 @@ def test_option_relations_is_not_required_of_non_option_h3(tmp_path):
 def _plan_doc(applies_when: str = "fixture", applies_when_not: str = "fixture") -> str:
     return (
         f"---\napplies_when: {applies_when}\napplies_when_not: {applies_when_not}\n"
-        "signed_off:\nkind: basics\n---\n\n# Doc\n"
+        "kind: basics\n---\n\n# Doc\n"
     )
 
 

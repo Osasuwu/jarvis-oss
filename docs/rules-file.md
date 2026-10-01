@@ -1,7 +1,6 @@
 ---
 applies_when: you are deciding what goes in the standing-instructions file your coding agent loads at session start, where it lives, or whether to have one at all, and the agent has repeated a mistake that a line of text might have prevented
 applies_when_not: the rule must hold every time and a wrong write cannot be undone, which is docs/agent-safety-hooks.md; you only need to know which file name your harness reads, which is docs/harnesses.md; you want a persona or voice for the agent, which docs/own-agent.md covers
-signed_off:
 kind: practice
 hub: own-agent
 requires: basics#rules-file

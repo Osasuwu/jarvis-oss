@@ -1,7 +1,6 @@
 ---
 applies_when: you are setting up an agent to work in a git repository on GitHub and a practice doc here asks for a branch, a pull request, a CI check, a rules file, a skill or a hook that you have not used before
-applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which harness to pick or where its files live is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one
-signed_off:
+applies_when_not: you already work in pull requests with CI and have written a rules file, a skill and a hook; which harness to pick or where its files live is docs/harnesses.md; whether a given practice is worth adopting is the practice doc that requires this one; what can stop an agent when your plan and harness enforce nothing is docs/agent-safety-hooks.md
 kind: basics
 ---
 
@@ -16,7 +15,8 @@ that, such as which harness reads which file, is one hop away in [the harness ta
 
 In Git, a branch is a movable pointer to a commit, so a separate line of changes costs almost
 nothing to create. `git switch -c <name>` makes one and switches to it; `git push -u origin <name>`
-publishes it to GitHub. See
+publishes it to GitHub; see [Git - git-push Documentation](https://git-scm.com/docs/git-push) (checked 2026-10-01).
+For branches themselves see
 [Git - Branches in a Nutshell](https://git-scm.com/book/en/v2/Git-Branching-Branches-in-a-Nutshell) (checked 2026-09-30)
 and, for how GitHub treats branches, [Branches](https://docs.github.com/en/pull-requests/reference/branches) (checked 2026-09-30).
 
@@ -47,15 +47,21 @@ A workflow is a file in the `.github/workflows` directory; see
 [Workflow syntax for GitHub Actions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax) (checked 2026-09-30)
 for its events and steps.
 
-A check only stops a merge if the branch is protected and lists it as required. See
-[About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-09-30).
-Protection on a private repository needs a paid plan; on a free plan it covers public
-repositories only, so read that page for yours before you rely on it. Without it a failing check
-still shows on the pull request, but nothing blocks the merge: then merging only when the checks
-are green is a rule you and the agent keep by hand, not enforcement.
+A check only stops a merge if the branch is protected and lists it as required. Even then, by
+default the rule does not apply to repository admins, which on your own repository means you and
+an agent working with your token, until you turn on **Do not allow bypassing the above settings**. See
+[About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches) (checked 2026-10-01).
+Protection on a private repository needs a paid plan: the plans page lists it under GitHub Pro and
+GitHub Team, and on GitHub Free it covers public repositories only. See [GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans) (checked 2026-10-01).
+Without protection a failing check still shows in the pull request's **Checks** tab (see
+[Status checks](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/collaborating-on-repositories-with-code-quality-features/about-status-checks) (checked 2026-10-01)),
+but nothing blocks the merge. The check then binds only someone who looks before merging; in an
+unattended run nobody does, and nothing stops the agent from merging on red. What can stop it
+instead, such as a hook that blocks the merge command, is in
+[Stopping an agent's writes before they land](agent-safety-hooks.md).
 
 You have it when a failing check shows on a pull request. If the branch is protected, you also
-have it when the merge button is blocked until the check passes. From a terminal,
+have it when the merge stays blocked for you, an admin, until the check passes. From a terminal,
 `gh pr checks` lists a pull request's checks; see
 [gh pr checks](https://cli.github.com/manual/gh_pr_checks) (checked 2026-09-30).
 
@@ -77,8 +83,8 @@ The agent treats a rules file as context, not as enforcement. It can still ignor
 is why a rule that must hold is enforced by something outside the model: a hook or a required CI
 check.
 
-You have it when the harness lists the file as loaded (in Claude Code, `/context` lists it under
-**Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
+You have it when you ask the agent what its project instructions say and it answers from the file
+(in Claude Code, `/context` also lists a loaded `CLAUDE.md` under **Memory files**). In an unattended `claude -p` run the file loads as in a session, unless
 `--bare` is set: that flag skips `CLAUDE.md`, hooks and skills, and the docs recommend it for
 scripted calls. To keep `--bare`, pass the content in with `--append-system-prompt-file`; bare mode also does not
 read a subscription login, and the page below lists the credentials it takes instead. To load the file as in a session, leave
@@ -92,8 +98,9 @@ A skill is a directory with a `SKILL.md` file: instructions for one repeatable j
 agent loads when the job comes up instead of on every session. Claude Code lets the agent pick a
 skill when it looks relevant, or you invoke one by name. See
 [Extend Claude with skills](https://code.claude.com/docs/en/skills) (checked 2026-09-30).
-The file format is an open specification that several tools follow, and some optional fields vary
-between tools; see the
+The format is an open standard that a growing number of agent products have adopted; see the
+[Agent Skills Overview](https://agentskills.io/home) (checked 2026-10-01). Some optional fields
+vary between tools; see the
 [Agent Skills specification](https://agentskills.io/specification) (checked 2026-09-30).
 The specification does not say which directory a tool reads skills from; for that, the harness
 table has a skills directory column.
@@ -119,12 +126,22 @@ you have to write and keep working, and one that can block legitimate work.
 
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
-somewhere the agent does not decide. A CI check on a protected branch does (see CI). A git hook
+somewhere the agent does not decide. A required CI check on a protected branch does, if the
+protection binds the account the agent acts as and the agent's token can change neither the
+protection nor the workflow files (see CI and below). A git hook
 needs no account or paid plan. It stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
 directory, so it holds against slips, not against an agent that decides to skip it; see
 [Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30). Permission
-rules and sandboxing, where your harness has them, are further options that this doc does not cover.
+rules and an OS sandbox, where your harness has them, are options in
+[Stopping an agent's writes before they land](agent-safety-hooks.md). One option there does not
+depend on the harness: not giving the agent a token that can do the forbidden thing. Without any of
+these, nothing stops the agent, and a step that must not happen unattended has to stay with a person.
 
 You have it when a hook blocks or changes an action in a session without the agent being asked.
-Where your harness has no hooks, you have a substitute when a required CI check or a git hook stops
-the same action.
+Where your harness has no hooks, you have a substitute when something the agent cannot switch off
+stops the same action: a token without that permission, or a required CI check whose protection
+binds the account the agent acts as, while the agent's token can change neither the protection nor
+the workflow files. An admin account is exempt unless the protection binds admins (see CI). A token
+that can administer the repository can switch the protection off. A token that can write workflow
+files can make the check pass from its own branch, because a pull request runs the workflow as
+that branch edited it.
