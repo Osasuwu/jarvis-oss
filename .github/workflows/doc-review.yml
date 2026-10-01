@@ -72,13 +72,38 @@ jobs:
         run: |
           mkdir -p "$HOME/.claude/skills"
           ln -s "$GITHUB_WORKSPACE/.agents/skills/review-doc" "$HOME/.claude/skills/review-doc"
-      - name: Install bubblewrap
+      - name: Install the Bash sandbox
         if: steps.classify.outputs.status == 'review'
-        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step needs it; without it Claude Code
-        # refuses to start.
+        # CLAUDE_CODE_SUBPROCESS_ENV_SCRUB on the review step runs every Bash command in Claude
+        # Code's sandbox, which on Linux needs bubblewrap and socat. Without bubblewrap Claude
+        # Code refuses to start; without socat it starts, but Bash fails and the reviewer cannot
+        # run git (#214). On Ubuntu 24.04 AppArmor can stop bwrap creating user namespaces; the
+        # profile is the one the sandboxing docs give for that case.
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q --no-install-recommends bubblewrap
+          sudo apt-get install -y -q --no-install-recommends bubblewrap socat
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+          abi <abi/4.0>,
+          include <tunables/global>
+
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+            include if exists <local/bwrap>
+          }
+          EOF
+            sudo systemctl reload apparmor
+          fi
+      - name: Check the Bash sandbox
+        if: steps.classify.outputs.status == 'review'
+        # Fail here rather than start the model without a working Bash: a delta review that
+        # cannot run git diff is partly blind, and its verdict still reads as a full one (#214).
+        run: |
+          command -v bwrap > /dev/null || { echo "::error::bubblewrap is not installed"; exit 1; }
+          command -v socat > /dev/null || { echo "::error::socat is not installed"; exit 1; }
+          bwrap --ro-bind / / --dev /dev --proc /proc --unshare-all --die-with-parent true ||
+            { echo "::error::bwrap cannot start a sandbox (user namespaces blocked?)"; exit 1; }
+          echo "Bash sandbox: bubblewrap, socat and user namespaces available"
       - name: Review
         id: review
         if: steps.classify.outputs.status == 'review'
