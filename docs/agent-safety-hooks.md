@@ -135,7 +135,7 @@ body) at the moment of the call, including calls to remote APIs that never touch
   chaining `|| exit 2` onto the command makes it deny there too. The cost is an interpreter
   that is on PATH but does not run: on Windows `python3` can be the Microsoft Store stub, which
   exited 9009 for us ([#181](https://github.com/Osasuwu/jarvis-oss/issues/181)), denying every
-  call the matcher covers. Ours try `python3`, fall back to `python`, and deny only when neither starts.
+  call the matcher covers. Ours use `python3` if it starts, else `python`, and deny on any non-zero exit, a crash included.
 - The agent can edit the hook or its settings unless something else stops it, and a hook in
   project settings can be turned off locally with `disableAllHooks`; only managed settings cannot.
 - Codex: "Treat tool hooks as a useful guardrail, not a complete
@@ -171,7 +171,7 @@ calls.
 
 Both hooks are silent when they do not fire, so a session never shows whether they were wired.
 
-1. Trip one on purpose: ask the agent to write a `sk-ant-` string of 20+ characters to a scratch
+1. Trip one on purpose: ask the agent to write `sk-ant-` plus 20+ letters or digits to a scratch
    file, or to edit a `PROTECTED_CANONICAL` path. A wired hook denies with a `BLOCKED:` reason in
    the transcript; one that fails to launch blocks with the shell's error text instead.
 2. `claude --debug` logs every hook invocation and exit code, silent exit-0 runs included, to
@@ -347,21 +347,21 @@ First, in order:
    that does not ask) → 2 is out: build on the options that block with nobody present (3 to 9),
    with 10 as a weaker stand-in for 2.
 2. **Does every part of option 1's line hold?** Yes → **option 1**, with 8's required review
-   behind it; still do 3 and 4 for the files that can weaken that review (option 1's Best pick). If one fails (the table below), read on.
+   behind it; still guard the files that can weaken that review (option 1's Best pick). If one fails (the table below), read on.
 3. **Can the agent post text outside git — issues, comments, chat?** 4, 9 and 6's gateway
    read that text before it lands; 6's tokens limit where it can post. Where its row fits, 8's
    push protection also covers GitHub MCP calls; no GitHub check sees a tracker or a chat tool.
-   If none of the three fits, look for what your tooling can put between the agent and the
-   service — a pre-call hook or plugin API in the harness, a proxy or gateway in front of the
-   MCP server. If there is none, keep the posting token where the agent cannot read it (6), have
+   If none of the three fits and your tooling has no hook, plugin API or proxy in front of the
+   service, keep the posting token where the agent cannot read it (6), have
    the agent write each post to a file, and have the script that starts it run `gitleaks dir` on
    those files and post the ones that pass ([gitleaks](https://github.com/gitleaks/gitleaks));
    a person present can post them instead.
 4. **Is there a file whose edit disables your checks?** A `pull_request` check runs the
    workflow, and the scripts and tests it calls, from the branch. 3 and 4 deny the edit before it runs, 5 for commands, 6 and 8 on the server; each Cost says
    what it misses. If none fits, only an identity the agent does not hold may write
-   the file. On GitHub, 6's token covers workflows on any plan, code owners (8) the rest; a
-   `pull_request_target` check that never checks out the branch can fail a PR that edits them.
+   the file. On GitHub, 6's token covers workflows on any plan, code owners the rest where 8's
+   row fits; a `pull_request_target` check that never checks out the branch can fail a PR that
+   edits them. A GitHub Free private repo requires no check: give the agent no push (6).
 
 These facts rule options out:
 
@@ -384,7 +384,7 @@ These facts rule options out:
 Among what is left: 4 and 9 read content on the surfaces they name, and 4 runs only in the
 harnesses you configured; 6 cannot be talked out of its limit, nor can 5 (with unsandboxed
 retries off) unless a file-edit tool can rewrite the sandbox's settings, as in Claude Code's
-`bypassPermissions` mode; only 6's gateway filters read content; 8 applies to everyone who pushes, agent or
+`bypassPermissions` mode; 8 applies to everyone who pushes, agent or
 human — push protection blocks the push, though anyone with write access can bypass it with a
 reason, and a CI scan fires after the push; 7 covers only the clones where it is installed, and
 anyone can skip it with `--no-verify`; 10 is a judgement, not a rule.
