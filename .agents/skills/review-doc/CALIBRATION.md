@@ -213,7 +213,8 @@ absent if it did not exist there. There are three exceptions:
   overlay ref's `drift-key:` line, which the verdict step reads. The full file quotes corpus
   entries, so it is kept out.
 - **Removed.** `.agents/skills/review-doc/calibration/corpus.md` is the answer key. It is absent
-  from every snapshot.
+  from every snapshot. So is `calibration/shadow.md`: it records the human findings on doc PRs,
+  which a reviewer must not find by grepping the repo.
 
 **Build and check.** [`scripts/calib_snapshot.py`](../../../scripts/calib_snapshot.py) holds
 the lists above. The build writes the snapshot commit without touching the working tree, and
