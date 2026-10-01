@@ -49,9 +49,9 @@ required reviewers and protected branches for private repositories,
 [plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)), and the
 account the agent pushes from is not a repo admin.
 
-**Best pick when** no file the agent can change on a branch weakens that review. A workflow
-edited on a branch changes the check run on it; close that with code owners (option 8) or a token
-that cannot write workflow files (option 6).
+**Best pick when** no file the agent can change on a branch weakens that review. A workflow, or a
+script or test it runs, edited on a branch changes the check run on it; close that with code
+owners (option 8). A token barred from workflow files (option 6) covers only the workflow.
 
 **Cost.** Every failure mode above; nothing fires if the agent forgets or is steered off course.
 
@@ -347,9 +347,7 @@ First, in order:
    that does not ask) → 2 is out: build on the options that block with nobody present (3 to 9),
    with 10 as a weaker stand-in for 2.
 2. **Does every part of option 1's line hold?** Yes → **option 1**, with 8's required review
-   behind it; still do 3 and 4, since 1 holds only while no file the agent can change weakens
-   that review (option 1's Best pick). If one fails — a public repo, a private repo on GitHub Free, an agent pushing from a
-   repo admin's account — read on.
+   behind it; still do 3 and 4 for the files that can weaken that review (option 1's Best pick). If one fails (the table below), read on.
 3. **Can the agent post text outside git — issues, comments, chat?** 4, 9 and 6's gateway
    read that text before it lands; 6's tokens limit where it can post. Where its row fits, 8's
    push protection also covers GitHub MCP calls; no GitHub check sees a tracker or a chat tool.
@@ -359,11 +357,11 @@ First, in order:
    the agent write each post to a file, and have the script that starts it run `gitleaks dir` on
    those files and post the ones that pass ([gitleaks](https://github.com/gitleaks/gitleaks));
    a person present can post them instead.
-4. **Is there a file whose edit disables your checks?** 3 and 4 deny the edit before it runs, 5
-   for commands, 6 and 8 on the server; each option's Cost says what it misses. If none fits,
-   the principle still applies: the file must be writable only by an identity the agent does not
-   hold. On GitHub, a token that cannot write workflow files (6, one exception) does
-   that for them on any plan.
+4. **Is there a file whose edit disables your checks?** A `pull_request` check runs the
+   workflow, and the scripts and tests it calls, from the branch. 3 and 4 deny the edit before it runs, 5 for commands, 6 and 8 on the server; each Cost says
+   what it misses. If none fits, only an identity the agent does not hold may write
+   the file. On GitHub, 6's token covers workflows on any plan, code owners (8) the rest; a
+   `pull_request_target` check that never checks out the branch can fail a PR that edits them.
 
 These facts rule options out:
 
@@ -402,7 +400,7 @@ review on a Free private repo), and so are 8's push protection and review; left 
 `.env`, 4 or 5 where the harness has them, 6 (a token barred from workflow files), 7 and
 8's CI scan.
 *Solo, GitHub Pro, private repo, unattended, git only:* with a second account for the agent, 1
-with 8's required review fits, plus 7, 3, and code owners or 6's token as above so a
+with 8's required review fits, plus 7, 3, and code owners as above so a
 branch cannot change its own checks. With one shared account, the repo owner's and so an admin, 1 and 8's review are out, and
 the walk is the Free one without 2. *Team of three, free organization, public repos, different
 harnesses:* 1 is out (a pushed branch is public before review); 8 first

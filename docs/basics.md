@@ -128,8 +128,8 @@ you have to write and keep working, and one that can block legitimate work.
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
 somewhere the agent does not decide. A required CI check on a protected branch does, if the
-protection binds the account the agent acts as and the agent's token can change neither the
-protection nor the workflow files (see CI and below). A git hook
+protection binds the account the agent acts as, the agent's token cannot change the protection,
+and the agent cannot, on its own, change what the check runs (see CI and below). A git hook
 needs no account or paid plan. It stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
 directory, so it holds against slips, not against an agent that decides to skip it; see
 [Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30). Permission
@@ -141,8 +141,14 @@ these, nothing stops the agent, and a step that must not happen unattended has t
 You have it when a hook blocks or changes an action in a session without the agent being asked.
 Where your harness has no hooks, you have a substitute when something the agent cannot switch off
 stops the same action: a token without that permission, or a required CI check whose protection
-binds the account the agent acts as, while the agent's token can change neither the protection nor
-the workflow files. An admin account is exempt unless the protection binds admins (see CI). A token
-that can administer the repository can switch the protection off. A token that can write workflow
-files can make the check pass from its own branch, because a pull request runs the workflow as
-that branch edited it.
+binds the account the agent acts as and which the agent's branch cannot change. An admin account
+is exempt unless the protection binds admins (see CI). A token that can administer the repository
+can switch the protection off. A check triggered by `pull_request` takes the workflow file, and
+the scripts and tests it calls, from the branch, so a token that can push to that branch can make
+the check pass. It holds if the agent cannot merge an edit to those files without someone else's
+approval. A `pull_request_target` workflow that never checks out the pull request reads nothing
+from the branch, so the branch cannot fake its result, but an edit to its files that the agent
+merges changes every later run, unless the check fails any pull request that edits them; see
+[Events that trigger workflows](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows) (checked 2026-10-01)
+and step 4 of [How to choose](agent-safety-hooks.md#how-to-choose) in Stopping an agent's writes
+before they land.
