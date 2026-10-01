@@ -223,11 +223,19 @@ A candidate's snapshots are built with its branch as the overlay ref, so they ca
 its workflow and its drift key. The branch name carries the overlay commit, so no rebuild moves
 a branch that earlier runs were dispatched on.
 
-**Residual channel.** The workflow checks out with full history and allows `git show` and
-`git log`, so a run can still read `main`, `corpus.md` included. Closing that channel changes
-the workflow and with it the drift key, so it is left open until a PR that changes the key
-anyway closes it (#150). Until then, every scoring of a snapshot run checks each catch for a
-citation of a file, line or commit that is not in the snapshot.
+**Residual channel.** The workflow used to check out with full history and allow `git show` and
+`git log`, so a run could read `main`, `corpus.md` included. It was closed in practice only by
+accident: until #214, every Bash call in the review run failed (`socat not installed`).
+Commit 0a8be72 closes it for dispatch runs (#150). A `workflow_dispatch` run now checks out the
+head commit alone, and a step before Review fails the run if any other commit or `origin/main`
+is reachable. [Run 36848112930](https://github.com/Osasuwu/jarvis-oss/actions/runs/36848112930)
+is the first to show it. A snapshot carries the workflow of its overlay ref, so the channel is
+closed only on a snapshot whose overlay ref contains 0a8be72. Branches built before that keep
+the old checkout.
+
+One channel stays open: the repository is public, and the reviewer has WebFetch, so a run can
+still fetch `corpus.md` from github.com. Every scoring of a snapshot run therefore still checks
+each catch for a citation of a file, line or commit that is not in the snapshot.
 
 ## Calibration 2 — plan (#143)
 
