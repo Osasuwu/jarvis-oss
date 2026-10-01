@@ -129,7 +129,8 @@ you have to write and keep working, and one that can block legitimate work.
 This section describes Claude Code hooks. Whether another harness has hooks is in that harness's
 own docs; the harness table has no hooks column. Where you have none, the check has to run
 somewhere the agent does not decide. A required CI check on a protected branch does, if the
-protection binds admins and the agent's token cannot change it (see CI). A git hook
+protection binds the account the agent acts as and the agent's token cannot change the protection
+(see CI). A git hook
 needs no account or paid plan. It stops an ordinary commit, but `--no-verify` skips it and it sits in each clone's own hooks
 directory, so it holds against slips, not against an agent that decides to skip it; see
 [Git - githooks Documentation](https://git-scm.com/docs/githooks) (checked 2026-09-30). Permission
@@ -140,7 +141,7 @@ these, nothing stops the agent, and a step that must not happen unattended has t
 
 You have it when a hook blocks or changes an action in a session without the agent being asked.
 Where your harness has no hooks, you have a substitute when something the agent cannot switch off
-stops the same action: a token without that permission, or a required CI check that binds admins
-while the agent's token cannot change the branch protection. Both conditions are needed: without
-the first, an agent acting as you, an admin, can merge past the check; with a token that can administer the
-repository, it can switch the protection off.
+stops the same action: a token without that permission, or a required CI check whose protection
+binds the account the agent acts as, while the agent's token cannot change the branch protection.
+An admin account is exempt unless the protection binds admins (see CI), and a token that can
+administer the repository can switch the protection off.
