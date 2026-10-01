@@ -2,14 +2,13 @@
 """Structure gate: validates the docs/examples bucket frontmatter contract.
 
 Schema source: Osasuwu/jarvis docs/decisions/2026-Q3.md (D18, D21, D24, D26, D32, D34;
-AC — jarvis-oss shape, locked 2026-09-15). D26's "floor and expiry" behavior (a body change
-after signed_off clears sign-off) is out of scope here — tracked separately.
+AC — jarvis-oss shape, locked 2026-09-15). The sign-off key and ledger were removed (#217):
+the merge into main, behind a human-cleared hold and a passing doc-review, is the acceptance.
 """
 
 from __future__ import annotations
 
 import re
-import subprocess
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -17,24 +16,15 @@ from urllib.parse import unquote
 
 STALE_AFTER_DAYS = 180
 
-SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"
 # Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
 # Mirrored byte for byte in scripts/doc_review.py; tests/test_doc_review.py pins the two equal.
 EXCLUDED_DOC_DIRS = ("docs/adr/",)
 
 
 def is_excluded_doc(path: str) -> bool:
-    """The sign-off ledger and every file under an excluded directory: one rule, shared with
-    scripts/doc_review.py."""
-    return path == SIGNOFF_LEDGER_PATH or path.startswith(EXCLUDED_DOC_DIRS)
+    """Every file under an excluded directory: one rule, shared with scripts/doc_review.py."""
+    return path.startswith(EXCLUDED_DOC_DIRS)
 
-
-# Ledger entry line: "- `<repo-relative doc path>`: <signed_off date>; facts: <human | report URL>"
-# The facts part says who checked facts and completeness (#59): the signer, or a review-doc
-# report. A line without it still parses, so it is reported as missing facts, not as absent.
-_SIGNOFF_ENTRY_RE = re.compile(
-    r"^-\s*`([^`]+)`:\s*(\d{4}-\d{2}-\d{2})\s*(?:;\s*facts:\s*(human|https://\S+))?\s*$"
-)
 
 # D24 describes the cap qualitatively ("the two-hour unit") with no numeric value recorded
 # anywhere in the decision record. Raised from the 20_000-byte placeholder to 30_000
@@ -43,7 +33,7 @@ _SIGNOFF_ENTRY_RE = re.compile(
 # pass caught, so the grill on #74 (2026-09-17) decided to raise the cap instead of cutting.
 DOC_SIZE_CAP_BYTES = 30_000
 
-DOC_REQUIRED_KEYS = ("applies_when", "applies_when_not", "signed_off")
+DOC_REQUIRED_KEYS = ("applies_when", "applies_when_not")
 # #160: a doc that declares `kind:` opts in to the contract checks below; a doc without it keeps
 # exactly the checks above until every doc is migrated (#178).
 DOC_KINDS = ("practice", "hub", "basics")
@@ -593,106 +583,6 @@ def _check_kind_docs(root: Path) -> list[Violation]:
     return violations
 
 
-def _git(root: Path, *args: str) -> str | None:
-    try:
-        result = subprocess.run(
-            ["git", "-C", str(root), *args],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return None
-    return result.stdout
-
-
-def _last_commit_for(root: Path, rel_path: str) -> str | None:
-    output = _git(root, "log", "-n", "1", "--format=%H", "--", rel_path)
-    if not output:
-        return None
-    return output.strip() or None
-
-
-def _commit_for_ledger_entry(root: Path, doc_rel: str) -> str | None:
-    needle = f"`{doc_rel}`:"
-    output = _git(root, "log", f"-S{needle}", "--format=%H", "--", SIGNOFF_LEDGER_PATH)
-    if not output:
-        return None
-    hashes = [line for line in output.splitlines() if line.strip()]
-    if not hashes:
-        return None
-    return hashes[0]
-
-
-def _parse_signoff_ledger(text: str) -> dict[str, tuple[str, str | None]]:
-    entries: dict[str, tuple[str, str | None]] = {}
-    for line in text.splitlines():
-        match = _SIGNOFF_ENTRY_RE.match(line.strip())
-        if match:
-            entries[match.group(1)] = (match.group(2), match.group(3))
-    return entries
-
-
-def _check_signoff(root: Path) -> list[Violation]:
-    docs_dir = root / "docs"
-    if not docs_dir.is_dir():
-        return []
-    ledger_path = root / SIGNOFF_LEDGER_PATH
-    ledger_entries = (
-        _parse_signoff_ledger(ledger_path.read_text(encoding="utf-8"))
-        if ledger_path.is_file()
-        else {}
-    )
-    violations: list[Violation] = []
-    for doc_path in sorted(docs_dir.rglob("*.md")):
-        rel = _rel(doc_path, root)
-        if is_excluded_doc(rel):
-            continue
-        fields = _parse_frontmatter(doc_path.read_text(encoding="utf-8"))
-        signed_off = fields.get("signed_off")
-        if not signed_off:
-            continue
-        entry_date, facts = ledger_entries.get(rel, (None, None))
-        if entry_date != signed_off:
-            violations.append(
-                Violation(
-                    path=rel,
-                    code="signoff_missing_entry",
-                    message=(
-                        f"{rel} has signed_off '{signed_off}' with no matching "
-                        f"{SIGNOFF_LEDGER_PATH} entry"
-                    ),
-                )
-            )
-            continue
-        if facts is None:
-            violations.append(
-                Violation(
-                    path=rel,
-                    code="signoff_missing_facts",
-                    message=(
-                        f"{rel}'s {SIGNOFF_LEDGER_PATH} entry does not say who checked facts: "
-                        "end it with '; facts: human' or '; facts: <review-doc report URL>'"
-                    ),
-                )
-            )
-        doc_commit = _last_commit_for(root, rel)
-        ledger_commit = _commit_for_ledger_entry(root, rel)
-        if doc_commit is not None and doc_commit == ledger_commit:
-            violations.append(
-                Violation(
-                    path=rel,
-                    code="signoff_same_commit",
-                    message=(
-                        f"{rel}'s {SIGNOFF_LEDGER_PATH} entry was added in the same "
-                        f"commit ({doc_commit[:8]}) as the doc body; it must be a "
-                        "separate commit"
-                    ),
-                )
-            )
-    return violations
-
-
 def _check_examples(root: Path) -> list[Violation]:
     examples_dir = root / "examples"
     if not examples_dir.is_dir():
@@ -777,6 +667,5 @@ def check_tree(root: Path) -> list[Violation]:
     violations: list[Violation] = []
     violations.extend(_check_docs(root))
     violations.extend(_check_kind_docs(root))
-    violations.extend(_check_signoff(root))
     violations.extend(_check_examples(root))
     return violations

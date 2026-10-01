@@ -1,7 +1,6 @@
 ---
 applies_when: an agent or a person writes to a public repository while able to see private material — client or employer names, people's names, internal hostnames, paths or project names from a private repo — and those exact strings must never appear in the public tree, commits or pull request text
 applies_when_not: credentials and tokens with a known shape (a secret scanner's built-in rules cover those; see docs/agent-safety-hooks.md); a private repository nobody outside can read; whether a person reviewed a change before it merged is docs/publishing-discipline.md
-signed_off:
 ---
 
 # Keeping a list of private strings out of a public repository

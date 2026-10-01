@@ -40,7 +40,6 @@ from pathlib import Path
 WORKFLOW_PATH = ".github/workflows/doc-review.yml"
 SKILL_PATH = ".agents/skills/review-doc/SKILL.md"
 CALIBRATION_PATH = ".agents/skills/review-doc/CALIBRATION.md"
-SIGNOFF_LEDGER_PATH = "docs/SIGNOFF.md"  # same exclusion as tests/structure_gate.py
 # Directories under docs/ that hold records, not reader-facing docs: decision records (#144).
 # Mirrored byte for byte in tests/structure_gate.py; tests/test_doc_review.py pins the two equal.
 EXCLUDED_DOC_DIRS = ("docs/adr/",)
@@ -95,9 +94,8 @@ class Unreviewable(Exception):
 
 
 def is_excluded_doc(path: str) -> bool:
-    """The sign-off ledger and every file under an excluded directory: one rule, shared with the
-    structure gate."""
-    return path == SIGNOFF_LEDGER_PATH or path.startswith(EXCLUDED_DOC_DIRS)
+    """Every file under an excluded directory: one rule, shared with the structure gate."""
+    return path.startswith(EXCLUDED_DOC_DIRS)
 
 
 def is_reviewable_doc(path: str) -> bool:

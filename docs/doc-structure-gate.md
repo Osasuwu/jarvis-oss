@@ -1,7 +1,6 @@
 ---
 applies_when: docs in your repo follow a required shape — frontmatter keys, sections, a size limit, links to companion files — agents or several people write them, and you want a pull request that breaks the shape to fail instead of relying on someone to notice
 applies_when_not: a handful of free-form docs written by one person who reviews them by eye; a site that only needs its links to work (a link checker alone covers that); whether a person actually read a doc is docs/publishing-discipline.md, not a shape check
-signed_off:
 ---
 
 # Making a pull request fail when a doc breaks its required shape
@@ -182,21 +181,21 @@ changes and its companion file does not. [conftest](https://www.conftest.dev/opt
 `--combine` hands all parsed files to one Rego policy: a cross-file rule without a parser of your
 own, once frontmatter is extracted to YAML. Ours is [`structure_gate.py`](../tests/structure_gate.py): required
 frontmatter keys, a 30000-byte cap, relative links that must resolve, `pairs_with` targets that
-must exist, example provenance and staleness, the sign-off ledger rules, and for a doc that
+must exist, example provenance and staleness, and for a doc that
 declares `kind:` its contract (the kind itself, requires, anchors, plan names, hub links and children, option sections, link dates).
 
 **Best pick when** you need a rule across files — pairings, directory-dependent rules — or a
 rule no tool above has.
 
 **Cost.** You write, test and maintain a parser. Ours reads only flat `key: value` frontmatter.
-One Actions job per pull request (checkout with full history, Python 3.12, pytest), a few
+One Actions job per pull request (checkout, Python 3.12, pytest), a few
 seconds of local pytest, and the parser and its tests to update when the doc contract changes.
 
 **Lifecycle.** Code with its own tests. Status: tried — this repo, required on `main`.
 
 **Install.** Rules: [`tests/structure_gate.py`](../tests/structure_gate.py), where
 `check_tree(root)` returns violations, each a path and a code. Docs: `doc_missing_key:<key>` for
-`applies_when`, `applies_when_not`, `signed_off`; `doc_over_size_cap` past 30000 bytes;
+`applies_when`, `applies_when_not`; `doc_over_size_cap` past 30000 bytes;
 `boundary_evidence_unresolvable` for a relative link that resolves to no file. Examples:
 `example_missing_key:fit` / `:pairs_with`, `example_missing_provenance` (needs `last_seen`, or
 `source` + `verified`), `example_last_seen_stale` after 180 days, `pairs_with_unresolvable` for any
@@ -205,13 +204,11 @@ that declares `kind:` also gets the contract codes of `_check_kind_docs`: `doc_k
 `requires_unresolvable`, `anchor_unresolvable`, `plan_name_in_frontmatter` and
 `external_link_date_*` fire today for `docs/basics.md` (`kind: basics`); `option_*` and
 `options_*` fire only for `kind: practice`, and `hub_*` only for a `hub:` key or `kind: hub`, and
-no doc is either yet. Sign-off: `signoff_missing_entry`, `signoff_missing_facts`, `signoff_same_commit`
-against [`SIGNOFF.md`](SIGNOFF.md). Tests:
+no doc is either yet. Tests:
 [`tests/test_structure_gate.py`](../tests/test_structure_gate.py), fixtures per code plus a run
 against the real tree that must return nothing. CI:
-[`structure-gate.yml`](../.github/workflows/structure-gate.yml) on every pull request with
-`fetch-depth: 0`, because the sign-off rules read git history; `structure-gate` is a required
-check on `main`. To adopt: copy the script and its tests, change the key tuples and the size cap
+[`structure-gate.yml`](../.github/workflows/structure-gate.yml) on every pull request;
+`structure-gate` is a required check on `main`. To adopt: copy the script and its tests, change the key tuples and the size cap
 to your contract, and make the job required.
 
 The parser reads flat `key: value` lines only: a YAML list is recorded as the key with an empty
@@ -383,13 +380,12 @@ records to a fixed template: 4 (the Structured MADR action or mdschema) plus 7. 
 where only frontmatter matters: 2 or 3, plus 7. A repo that stopped running its check:
 [`doc-check-in-no-workflow.md`](../examples/doc-check-in-no-workflow.md).
 
-**Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, the
-sign-off ledger), so 8, with 1 for everything the script does not check. It costs a script of
-about 780 lines and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
+**Our own choice.** Plain markdown, no site build, and rules that span files (`pairs_with`, hub
+children), so 8, with 1 for everything the script does not check. It costs a script of
+about 670 lines and its tests. Not taken yet: 4 or MD043 for headings, which would close the first gap
 below; 9, since a person reviews substance; 10 for the gate files, which would close the last gap. Gaps: nothing checks "How to choose", and the option checks run only for `kind: practice`,
 which no doc declares yet, so a doc can drop "How to choose" and pass; nothing checks that every doc has an example — `pairs_with`
-points from example to doc, not back; the ledger rule was met by splitting commits with nothing
-read ([`signoff-same-commit-violation.md`](../examples/signoff-same-commit-violation.md)); the
+points from example to doc, not back; the
 scan is whole-tree, which is how one squash merge turned `main` red; and a pull request can edit
 the gate, which only the review hold catches
 ([`publishing-discipline.md`](publishing-discipline.md)). The gate and how to run it: option 8's
