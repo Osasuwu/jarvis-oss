@@ -1,12 +1,12 @@
 ---
 name: review-doc
-description: Reviews an agent-written practice doc for facts and completeness in contexts that did not write it, and produces a short report so a human reads only the flagged places closely and skims the rest. Run it on a doc PR before a person signs the doc.
+description: Reviews an agent-written practice doc for facts and completeness in contexts that did not write it, and produces a short report so a human reads only the flagged places closely and skims the rest. Run it on a doc PR before a person merges the doc.
 ---
 
 # Review a doc
 
-An agent drafts a doc. A person signs it, and a sign-off should mean something. Reading every
-line against every source is slow, and people do it badly. An independent agent does it well.
+An agent drafts a doc. A person accepts it by merging it, and that should mean something.
+Reading every line against every source is slow, and people do it badly. An independent agent does it well.
 Judging whether the doc reads well and helps is a person's job.
 
 This skill does the agent's part and hands the person a report. The report says which few places
@@ -41,7 +41,7 @@ Give the reviewer the doc and the files in scope.
    - a number (depth, exit code, version, count)
    - a named behaviour of a tool ("removes it with `--reverse`")
    - a link and what the doc says is behind it
-   - a `tried` or `sourced` status, and every frontmatter `claim`, `source` and `verified`
+   - a claim that we ran something, and every frontmatter `claim`, `source` and `verified`
 2. Check each claim against its source and give one verdict:
    - `confirmed` — quote the fetched excerpt that matches.
    - `mismatch` — quote the fetched excerpt, and say what differs.
@@ -49,9 +49,9 @@ Give the reviewer the doc and the files in scope.
      `follow-up` by the rules file's [`unverifiable`](calibration/RULES.md#unverifiable) section.
 3. A quote passes only if it is **verbatim**. Whitespace and markdown are ignored. A paraphrase
    inside quotation marks is a `mismatch`.
-4. **`tried` needs a trace.** Something must show we ran it: a recorded example in this repo, a
-   commit, an issue, or a test. No trace, so the verdict is `mismatch`, even if the behaviour is
-   right.
+4. **A claim that we ran something cites its trace.** Its source is a trace in this repo: a
+   recorded example, a commit, an issue, or a test. With no trace the claim names no source, so
+   the verdict is `unverifiable`, labelled by the rules file.
 5. A claim marked *code-derived* is checked against the code it names. It is `confirmed` only if
    the reviewer points at the lines.
 
@@ -204,9 +204,9 @@ The writer fixes every mismatch and every `blocking` finding, or answers each on
 `follow-up` is fixed or filed as an issue, and the PR says which. The fix then gets the delta
 pass, and that report is the earlier report for the next fix. The loop ends when no mismatch or
 `blocking` finding is left that is not fixed or answered, and every `follow-up` is fixed or
-filed. The person signs only after reading the report, the "read these closely" places, and a
-skim of the rest. What that signature covers is set out in
-[`docs/SIGNOFF.md`](../../../docs/SIGNOFF.md).
+filed. The person merges only after reading the report, the "read these closely" places, and a
+skim of the rest. During slice 1 the person reads the whole doc instead, and records each finding
+in the [shadow record](calibration/RULES.md#shadow-record).
 
 The shape a practice doc is expected to have, and why, is in
 [`write-doc`](../write-doc/SKILL.md). A doc that departs from it is not wrong for that alone;
@@ -222,3 +222,5 @@ review what it says, not which headings it has.
 - The skill only counts once calibrated. [`CALIBRATION.md`](CALIBRATION.md) records what earlier
   versions caught on planted errors and what they flagged on a clean doc. It is stale since #102
   changed this file; #106 calibrates the current skill. Re-calibrate after changing a pass.
+  During slice 1 a `drift` verdict is accepted and the report is still produced
+  ([ADR-0003](../../../docs/adr/0003-doc-contract-delivery-reviewer.md)).

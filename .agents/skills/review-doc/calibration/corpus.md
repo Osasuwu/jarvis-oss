@@ -37,7 +37,7 @@ counts.
   that at every dev commit. An `excluded` entry stays in this list and in the calibration-1 counts;
   it is not a candidate from the Excluded section below, which never entered the corpus. After
   #138 rebuilds the snapshots, an entry its re-measurement shows contaminated moves to `excluded`;
-  nothing else moves. Counts: dev 15, test 16 (10 `blocking`), held-out 1, excluded 3.
+  nothing else moves. Counts: dev 15, test 16 (10 `blocking`), held-out 1, excluded 2.
 
 Scope of PR #75: several lines were new at round N (`3d896f9`), not carried from an earlier round.
 They were in scope there because that round's reports are headed `@3d896f9`, it re-checked every
@@ -200,19 +200,6 @@ open finding at that commit, and its pass 4 ran at that commit.
 - split: dev
 - escape: round N `f677a54` → [round N+1 finding at `a6d0c01`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713336602)
 - defect: The cost line claims "a yes/no confirmation before the full write"; the skill asks one trial-or-full question at the start and has no confirmation before the write. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/f677a5447aeef021cb6c3258cf38888cb0d1cdad/resources/jarvis-setup-skill.md#L4))
-
-### 62-tried
-
-- source_pr: [#62](https://github.com/Osasuwu/jarvis-oss/pull/62)
-- commit: `a6d0c01`
-- location: `docs/writing-into-user-owned-files.md:157`
-- class: status
-- label: blocking
-- held_out: no
-- selection_source: model
-- split: excluded(not measurable: the snapshot has `examples/git-include-missing-target-silent.md` from `9803c6c`, the trace the claim lacks)
-- escape: round N `a6d0c01` → [round N+1 finding at `9dbed9e`](https://github.com/Osasuwu/jarvis-oss/pull/62#issuecomment-5713920022)
-- defect: A `tried:` run of `git config -f main.cfg --includes --get` against a missing include target has no trace in the repo; the behaviour is right, the status is not. ([text at round N](https://github.com/Osasuwu/jarvis-oss/blob/a6d0c01a2aa06a0ec1d69fff42c6af6511e048aa/docs/writing-into-user-owned-files.md#L157))
 
 ### 62-rustup
 
@@ -493,7 +480,6 @@ Held-out entries are not counted here.
 
 | class | n |
 |---|---|
-| status | 1 |
 | quote | 5 |
 | plan | 2 |
 | fact | 20 |
@@ -501,10 +487,11 @@ Held-out entries are not counted here.
 | missing-option | 0 |
 | how-to-choose | 6 |
 | other | 0 |
-| total | 34 |
+| total | 33 |
 
-By label: 28 `blocking`, 6 `follow-up`. By source PR: #62 17, #75 9, #81 8. Every entry has
-selection source `model`. No human-found defect (`click-audit` or `reader`) exists yet.
+By label: 27 `blocking`, 6 `follow-up`. By source PR: #62 16, #75 9, #81 8. Every entry has
+selection source `model`. No human-found defect (`click-audit`, `author-read` or `reader`)
+exists yet.
 
 ## Held-out entries (n = 1)
 
@@ -541,6 +528,10 @@ PR #62:
 - The four defects that `562fc30` names from round seven: "How to choose" was rewritten in
   `8bc6712`, so each was found in the first round that saw its text. They were caught, not missed,
   so `562fc30` holds nothing out.
+- The `tried` run of `git config -f main.cfg --includes --get` at `a6d0c01`, line 157: an entry
+  (`62-tried`, class `status`) until #159 removed the `status` class. The behaviour was right
+  and the claim cited no trace, so under [`unverifiable`](RULES.md#unverifiable) it named no
+  source and was not wrong. An `unverifiable` claim that is not shown wrong is not an entry.
 
 PR #75:
 
@@ -578,8 +569,8 @@ Other PRs:
 
 - #63, #70, #71: no earlier round of the doc.
 - #66, #90: pass-3-only runs, which are not full rounds.
-- #68: its items were changed after the earlier round, or are 62-tried found again. The earliest
-  find wins.
+- #68: its items were changed after the earlier round, or are the `tried` run above found again. The
+  earliest find wins.
 - #72, #74: checks run after merge, not review rounds.
 - #73, #77: the text was never reviewed.
 - #76: missing options only.
@@ -596,4 +587,3 @@ Other PRs:
 - **how-to-choose entries are follow-ups.** Each names a setup, but none shows the reader led
   into (i), (ii) or (iii). They were screened only where the partner lines were also unchanged.
 - **62-rustup** is `fact` because a link target is named in that class.
-- **62-tried** was found again in PR #68. The earliest find, in PR #62, sets the source.

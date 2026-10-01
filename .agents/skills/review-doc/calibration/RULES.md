@@ -10,7 +10,7 @@ calibration window. That is why it is guarded as machinery (#97) and changed onl
 the last section.
 
 Where this file and `SKILL.md` disagree on `blocking` or `unverifiable`, this file wins for corpus
-labels. `SKILL.md` will point here once #102 lands.
+labels. `SKILL.md` points here for both.
 
 ## Escaped
 
@@ -30,8 +30,6 @@ A defect escaped round N when it is found in round N+1 in text unchanged since r
 
 Each entry gets exactly one class. If two fit, take the first in this list.
 
-- `status` — a wrong `tried` or `sourced` status: `tried` with no trace of the run, `sourced` with
-  no source that says it, or the reverse.
 - `quote` — a quotation that is not verbatim in its source, or is credited to the wrong source.
 - `plan` — the doc leads a reader type to an option that is not available on that reader's plan:
   a paid feature for a reader without money, a team feature for a solo reader, an attended step in
@@ -52,14 +50,13 @@ round had caught it.
 
 `blocking` means the doc leads an in-scope reader type to an option that (i) is unavailable on
 that reader's plan, (ii) contradicts a quoted source, or (iii) leaves the reader with no next
-step; plus every claim-check `mismatch`; plus every wrong `tried` / `sourced` status.
+step; plus every claim-check `mismatch`.
 
 A `missing` option is a follow-up unless it triggers (iii).
 
 So:
 
-- `status`, `quote` and `fact` entries are always `blocking`: each is a claim-check `mismatch`
-  or a wrong status.
+- `quote` and `fact` entries are always `blocking`: each is a claim-check `mismatch`.
 - `plan` is clause (i) and `dead-end` is clause (iii); both are `blocking`.
 - `missing-option` is `follow-up`, unless the missing option was the only next step for some
   reader type. Then it is (iii) and `blocking`.
@@ -85,8 +82,9 @@ It does not satisfy (iii) when:
 ## `unverifiable`
 
 At review time, a claim is `unverifiable` when its source cannot be checked: the page is
-unreachable, it is paywalled, or the doc names no source. A `tried` status with no trace is not
-`unverifiable`; it is a `mismatch`.
+unreachable, it is paywalled, or the doc names no source. A claim that we ran something cites its
+trace in this repo as its source: an example, a commit, an issue or a test. With no trace it names
+no source, so it is `unverifiable`.
 
 - An `unverifiable` claim is `blocking` when it is load-bearing: it is the stated reason an option
   is ruled in or out for a reader type. The writer then links a source that can be fetched, marks
@@ -118,7 +116,9 @@ Each entry records how the defect was found, as exactly one of:
 
 - `model` — a review round found it: a full review or a delta pass, on any later commit.
 - `click-audit` — the human found it while checking a drawn claim (next section).
-- `reader` — a reader's `doc-error` report, or any human find outside the draw. It enters the
+- `author-read` — the operator found it while reading the whole doc on its PR, before clearing the
+  hold (slice-1 shadow mode, [ADR-0003](../../../../docs/adr/0003-doc-contract-delivery-reviewer.md)).
+- `reader` — a reader's `doc-error` report, or a human find after the doc merged. It enters the
   corpus only after the human opens the source and confirms it.
 
 A defect found twice keeps the source of the earliest find.
@@ -149,8 +149,7 @@ same-model reviewer can miss the same way the writer did.
    python .agents/skills/review-doc/calibration/draw_click_audit.py docs/<doc>.md --sha <head SHA>
    ```
 
-   The candidates are every quotation, every `tried` / `sourced` status, and every other paragraph
-   that links a source. Each is ranked by SHA-256 of the SHA, the doc path and the claim; the k
+   The candidates are every quotation and every other paragraph that links a source. Each is ranked by SHA-256 of the SHA, the doc path and the claim; the k
    lowest are drawn and the next k are reserves. Anyone can rerun it and get the same list. The
    agent may run the command and post its output, but does not choose, drop or reorder claims. If
    the head SHA moves before merge, the draw is redone on the new SHA.
@@ -165,7 +164,7 @@ same-model reviewer can miss the same way the writer did.
 
 Limits of the draw:
 
-- A claim with no quotation, no status and no link is not a candidate. Pass 2 of the review still
+- A claim with no quotation and no link is not a candidate. Pass 2 of the review still
   checks it.
 - The draw covers the doc file only, not the examples it links to.
 - A new commit changes the draw. The audit that counts is the one on the head SHA that is merged.
@@ -185,6 +184,28 @@ of a wrong fact, quote or link. It is not a review round; filing one does not mo
    human opens the report's source link and confirms the claim — the same click-check the
    click-audit uses on a drawn claim. Until that check happens, the doc may already be fixed, but
    the report is not yet counted.
+
+## Shadow record
+
+During slice 1 the operator reads every new doc in full, and a ranker (#164) picks the claims a
+human would read closely, its top k. The shadow record measures whether reading only the top k
+would have caught what the full reading caught. The switch rule it feeds is in
+[ADR-0003](../../../../docs/adr/0003-doc-contract-delivery-reviewer.md), registered before the
+first row.
+
+1. **What gets a row.** Every finding a human makes on a doc PR: selection source `author-read` or
+   `click-audit`. A model finding gets no row.
+2. **Where.** [`shadow.md`](shadow.md) in this directory, one table row per finding, appended on
+   the PR where it was found.
+3. **Fields.** The PR; the doc path; the head SHA the finding was made on; the finding, as the line
+   at that SHA plus one line saying what is wrong; `blocking`: `y` or `n`, by the rules above; the
+   selection source; `in_top_k`: `y` or `n`.
+4. **`in_top_k`.** Filled from the ranker's output on the same head SHA. It stays blank until the
+   ranker has run on that SHA; a row is not counted while it is blank. If the head SHA moves, the
+   row keeps the SHA the finding was made on, and the ranker runs on that one.
+5. **Corpus.** A row is not a corpus entry. A finding in text that a review round had in scope and
+   did not report is a miss of that round. It also gets a corpus entry, the same as a click-audit
+   miss.
 
 ## Changing this file
 

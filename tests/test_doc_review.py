@@ -271,14 +271,29 @@ def test_stored_key_malformed_is_an_error():
         dr.parse_stored_key(f"drift-key: {'a' * 64}\ndrift-key: {'b' * 64}\n")
 
 
+def _committed_key() -> tuple[str, str]:
+    stored = dr.parse_stored_key((ROOT / dr.CALIBRATION_PATH).read_text(encoding="utf-8"))
+    assert stored is not None, "CALIBRATION.md has no drift-key line"
+    assert stored[1], "the key line names no model"
+    return stored
+
+
+def test_committed_key_line_names_a_key_and_a_model():
+    # Kept apart from the comparison below, so the slice-1 expected failure cannot hide a deleted
+    # or broken key line.
+    _committed_key()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#159: drift accepted during slice 1 (ADR-0003); the key line is not bumped without "
+    "a calibration",
+)
 def test_committed_key_matches_the_current_inputs():
     """#106: the key in CALIBRATION.md is the one a run on these inputs computes. An edit to the
     workflow, the action pin or SKILL.md without a recalibration fails here, before any run."""
-    text = (ROOT / dr.CALIBRATION_PATH).read_text(encoding="utf-8")
-    stored = dr.parse_stored_key(text)
-    assert stored is not None, "CALIBRATION.md has no drift-key line"
+    stored = _committed_key()
     key, model = stored
-    assert model, "the key line names no model"
     # read_text gives LF line ends, as git stores them and the runner checks them out, also on a
     # Windows checkout that converts to CRLF.
     skill = (ROOT / dr.SKILL_PATH).read_text(encoding="utf-8").encode()

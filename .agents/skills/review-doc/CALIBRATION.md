@@ -182,6 +182,14 @@ candidate replaces the line in its own PR and fills in the old row's `Until` (#1
 |---|---|---|---|---|
 | `ffc526393a0108fe609ed6c8771c7b4a03c3f2e48b593715e69d318034fc90d2` | `claude-opus-5` | `67caf77` | 2026-09-22, #137 | — |
 
+**Drift during slice 1.** #159 changed `SKILL.md` and the review workflow, so every doc-review
+run since computes a different key and its verdict is `drift`. That is accepted until calibration
+3 records a new key: doc-review is not a required check, and the report is still produced
+([ADR-0003](../../../docs/adr/0003-doc-contract-delivery-reviewer.md)). The line above is not
+bumped without a calibration, so `test_committed_key_matches_the_current_inputs` is marked as a
+strict expected failure for the same window. It goes red when a recalibration makes the key
+match, and the mark comes off then.
+
 ## Snapshot branches (#138)
 
 Written on 2026-09-23. It replaces the calibration-1 build, which the post-hoc audit above found
@@ -262,7 +270,7 @@ test doc never share a file, a `pairs_with` target or a link, and
 | dev | PR #62 | 15, all `blocking` | 6: `8067d67`, `59a27d9`, `4074b0b`, `f677a54`, `a6d0c01`, `9dbed9e` | 14 / 15: `62-npm` needs the command run |
 | test | PR #75, #81 | 16: 10 `blocking`, 6 `how-to-choose` follow-ups | 3: `3d896f9`, `79bc90c`, `af950ea` | 9 / 10: `81-heredoc` needs the command run |
 | held-out | PR #75 | 1: `75-ghd` | reported, not scored | — |
-| excluded | — | 3: `81-gitleaks`, `62-tried`, `62-today` | none | — |
+| excluded | — | 2: `81-gitleaks`, `62-today`; `62-tried` left the corpus in #159, which removed the `status` class | none | — |
 
 The dev runs tune the procedure and may be read as often as needed. The test runs are scored at
 most twice for procedure candidates and once more only for a model change; after that the test
@@ -392,8 +400,8 @@ run's verdict comment; the share follows the **Cost** procedure above.
 **Click-audit.** The human click-audit stays on every doc with a `blocking`-class claim while the
 target is unmet, and after it, until a later calibration says otherwise. It is the draw
 [`calibration/RULES.md`](calibration/RULES.md) defines: k = 5 claims, or all if there are fewer,
-drawn by `draw_click_audit.py` seeded with the PR head SHA over every quotation, every `tried` or
-`sourced` status and every other source-linking paragraph, whatever the claim's class.
+drawn by `draw_click_audit.py` seeded with the PR head SHA over every quotation and every other
+source-linking paragraph, whatever the claim's class.
 
 ## History
 

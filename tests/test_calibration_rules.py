@@ -20,7 +20,7 @@ RULES = CALIBRATION_DIR / "RULES.md"
 CORPUS = CALIBRATION_DIR / "corpus.md"
 DRAW_SCRIPT = CALIBRATION_DIR / "draw_click_audit.py"
 
-CLASSES = ("status", "quote", "plan", "fact", "dead-end", "missing-option", "how-to-choose", "other")
+CLASSES = ("quote", "plan", "fact", "dead-end", "missing-option", "how-to-choose", "other")
 
 
 def _section(title: str) -> str:
@@ -81,7 +81,6 @@ def test_blocking_is_defined_exactly():
         "next step" in section
     )
     assert "every claim-check `mismatch`" in section
-    assert "every wrong `tried` / `sourced` status" in section
     assert "A `missing` option is a follow-up unless it triggers (iii)." in section
 
 
@@ -110,9 +109,9 @@ def test_escaped_is_defined():
     assert "found in round N+1 in text unchanged since round N" in _section("Escaped")
 
 
-def test_selection_source_has_three_values():
+def test_selection_source_has_four_values():
     section = _section("Selection source")
-    for value in ("`model`", "`click-audit`", "`reader`"):
+    for value in ("`model`", "`click-audit`", "`author-read`", "`reader`"):
         assert value in section, value
 
 

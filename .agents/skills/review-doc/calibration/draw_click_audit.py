@@ -10,7 +10,6 @@ runs it does not choose.
 Candidate claims, each at its line:
 
 - ``quote``  — a passage in quotation marks (the quote checker's own list), with its sources.
-- ``status`` — a ``Status: tried`` or ``Status: sourced`` marker.
 - ``linked`` — any other paragraph that links a source: a number, a tool's behaviour, a plan's
   limits, or what a link leads to.
 
@@ -39,7 +38,6 @@ from check_quotes import extract_quotes, paragraphs  # noqa: E402
 
 DEFAULT_K = 5
 _SHA_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
-_STATUS_RE = re.compile(r"\bStatus:\s*\**\s*(tried|sourced)\b", re.IGNORECASE)
 _SHOWN_CHARS = 240
 
 
@@ -57,31 +55,16 @@ class Draw:
     reserves: tuple[Claim, ...]
 
 
-def _status_line(lines: list[str], start: int) -> int:
-    """The paragraph's line holding the status marker."""
-    for i in range(start - 1, len(lines)):
-        if _STATUS_RE.search(lines[i]):
-            return i + 1
-        if not lines[i].strip():
-            break
-    return start
-
-
 def candidates(text: str) -> list[Claim]:
     """Every claim in the doc that a human can check by opening a source, in line order."""
     paras = paragraphs(text)
     starts = [line for line, _, _ in paras]
     quotes = extract_quotes(text)
     quoted_paras = {max(i for i, s in enumerate(starts) if s <= q.line) for q in quotes}
-    lines = text.splitlines()
 
     claims = [Claim(q.line, "quote", q.text, q.urls) for q in quotes]
     for i, (start, para, urls) in enumerate(paras):
-        status = _STATUS_RE.search(para)
-        if status:
-            line = _status_line(lines, start)
-            claims.append(Claim(line, "status", lines[line - 1].strip(), urls))
-        elif urls and i not in quoted_paras:
+        if urls and i not in quoted_paras:
             claims.append(Claim(start, "linked", para, urls))
     return sorted(claims, key=lambda c: (c.line, c.kind, c.text))
 

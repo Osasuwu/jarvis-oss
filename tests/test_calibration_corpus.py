@@ -19,10 +19,10 @@ SKILL_DIR = ROOT / ".agents" / "skills" / "review-doc"
 CALIBRATION_DIR = SKILL_DIR / "calibration"
 CORPUS = CALIBRATION_DIR / "corpus.md"
 
-CLASSES = ("status", "quote", "plan", "fact", "dead-end", "missing-option", "how-to-choose", "other")
-ALWAYS_BLOCKING = {"status", "quote", "fact", "plan", "dead-end"}
+CLASSES = ("quote", "plan", "fact", "dead-end", "missing-option", "how-to-choose", "other")
+ALWAYS_BLOCKING = {"quote", "fact", "plan", "dead-end"}
 LABELS = {"blocking", "follow-up"}
-SOURCES = {"model", "click-audit", "reader"}
+SOURCES = {"model", "click-audit", "author-read", "reader"}
 REQUIRED = (
     "source_pr",
     "commit",
@@ -52,7 +52,7 @@ BLOB = re.compile(
 LOCATION = re.compile(r"^`[^`:]+\.md:\d+(-\d+)?`$")
 SPLIT = re.compile(r"^(dev|test|held-out|excluded\(.+\))$")
 # The calibration-2 split (#144): by PR lineage, so a dev run can never see a test file.
-SPLIT_COUNTS = {"dev": 15, "test": 16, "held-out": 1, "excluded": 3}
+SPLIT_COUNTS = {"dev": 15, "test": 16, "held-out": 1, "excluded": 2}
 TEST_BLOCKING = 10
 SPLIT_PRS = {"dev": {"62"}, "test": {"75", "81"}}
 LINK = re.compile(r"\]\(([^)\s]+)\)")
@@ -273,7 +273,11 @@ def test_split_counts_are_the_registered_ones():
 
 def test_corpus_states_the_split_counts():
     text = " ".join(_text().split())
-    assert "Counts: dev 15, test 16 (10 `blocking`), held-out 1, excluded 3." in text
+    n = SPLIT_COUNTS
+    assert (
+        f"Counts: dev {n['dev']}, test {n['test']} ({TEST_BLOCKING} `blocking`), "
+        f"held-out {n['held-out']}, excluded {n['excluded']}." in text
+    )
 
 
 # --- the split cannot leak ----------------------------------------------------------------------
