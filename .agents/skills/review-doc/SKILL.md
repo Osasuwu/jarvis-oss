@@ -12,8 +12,9 @@ Judging whether the doc reads well and helps is a person's job.
 This skill does the agent's part and hands the person a report. The report says which few places
 need close reading. Everything else can be skimmed.
 
-**Input:** one doc path under `docs/`. **Scope:** that doc, plus every example and resource it
-links to or that names it in `pairs_with`.
+**Input:** one doc path under `docs/`. **Scope:** that doc, the examples and resources that name
+it in `pairs_with`, and the repo `.md` files any of those link to, as
+[Chunks and manifests](#chunks-and-manifests) lists them.
 
 ## Rule 0 — who reviews
 
@@ -34,7 +35,9 @@ links to or that names it in `pairs_with`.
 
 ## Pass 1 — claims
 
-Give the reviewer the doc and the files in scope.
+Give the reviewer the doc and the files in scope, split into chunks as
+[Chunks and manifests](#chunks-and-manifests) says. Each chunk's reviewer runs the steps below on
+the lines of its chunk and writes what it finds into the chunk's manifest.
 
 1. List every checkable claim, with its file and line:
    - a quoted text
@@ -42,11 +45,39 @@ Give the reviewer the doc and the files in scope.
    - a named behaviour of a tool ("removes it with `--reverse`")
    - a link and what the doc says is behind it
    - a `tried` or `sourced` status, and every frontmatter `claim`, `source` and `verified`
-2. Check each claim against its source and give one verdict:
-   - `confirmed` — quote the fetched excerpt that matches.
-   - `mismatch` — quote the fetched excerpt, and say what differs.
+
+   **Premises are claims.** A sentence that argues from a fact ("because the hook runs first,
+   ...") rests on that fact; list the fact as its own claim and give it its own verdict. So is a
+   fact the reviewer relies on to judge another claim.
+2. Record each claim in this order, one field after another. The order is the point: a verdict
+   written first gets argued for.
+   - **Restatement.** The claim in the reviewer's own words, as one sentence a reader could
+     check. A restatement that cannot be written without a guess shows an ambiguous claim.
+   - **Excerpt.** The words of the doc the claim rests on, quoted verbatim.
+   - **Evidence.** The fetched text that bears on it, quoted verbatim, with where it was
+     fetched from; empty only when nothing could be fetched.
+   - **Reasoning.** Whether the restatement and the evidence say the same thing, and where they
+     differ: a narrower scope, another version, a flag with another name, a paraphrase.
+   - **Verdict.** One of the closed list below, and nothing else.
+
+   **Claim verdicts:** `confirmed`, `mismatch`, `unverifiable`, `out-of-scope`.
+   - `confirmed` — the evidence says what the restatement says.
+   - `mismatch` — the evidence says something else; the reasoning says what differs.
    - `unverifiable` — as the rules file defines it. Say why, and label it `blocking` or
      `follow-up` by the rules file's [`unverifiable`](calibration/RULES.md#unverifiable) section.
+   - `out-of-scope` — the line states nothing a source could confirm, for one of the reasons
+     below, and the reason is recorded with it.
+
+   **Out-of-scope reasons:** `call`, `placeholder`, `definition`.
+   - `call` — a judgement or recommendation; pass 3 and pass 4 review it. Its premises are
+     still claims.
+   - `placeholder` — an example value the doc does not assert, such as `<your-repo>`.
+   - `definition` — the doc names or defines its own term.
+
+   A free-text reason is not a verdict. A claim is never dismissed with a reason off these
+   lists, such as "harmless" or "copy-edit": if it is wrong but small, it is a `mismatch`, and
+   the rules file decides what that costs. Every `mismatch` and `unverifiable` becomes a
+   finding in the report.
 3. A quote passes only if it is **verbatim**. Whitespace and markdown are ignored. A paraphrase
    inside quotation marks is a `mismatch`.
 4. **`tried` needs a trace.** Something must show we ran it: a recorded example in this repo, a
@@ -54,6 +85,32 @@ Give the reviewer the doc and the files in scope.
    right.
 5. A claim marked *code-derived* is checked against the code it names. It is `confirmed` only if
    the reviewer points at the lines.
+
+## Chunks and manifests
+
+One reviewer reading a whole doc skims its long middle. Pass 1 therefore runs in chunks, and
+each chunk leaves a manifest that shows which lines it covered.
+
+- **In-scope files.** The doc itself; every example or resource that names it in `pairs_with`;
+  and every `.md` file a repo-internal link in any of those points to, one hop out. In CI the list is
+  computed before the review and handed to the reviewer; use it as given.
+- **Chunks.** Split each in-scope file into contiguous ranges of at most 150 countable lines, as
+  `scripts/doc_review.py` counts them (`countable_lines`: every line, blank ones included). End a
+  chunk at a heading or a blank line where one is near. Each chunk gets a fresh subagent, in the
+  foreground, with the whole doc as context, and reviews only its own range.
+- **Boundaries.** A claim that crosses a chunk boundary belongs to the chunk that holds its first
+  line. The next chunk does not record it again.
+- **Manifest.** Each report lists the in-scope files first, then one manifest per chunk: the file,
+  the first and last line of the range, and every claim recorded in it as pass 1 step 2 says.
+  A `mismatch` or `unverifiable` claim names the ID of its finding.
+- **Tiling.** For each in-scope file, the ranges cover its lines 1 to the last with no overlap and
+  no gap. If they do not tile every in-scope file, or a file is left out, the run is
+  `unreviewable`, not a verdict: a report that never looked at a paired example must not read as
+  a pass.
+- **Delta.** In a delta pass the chunks tile the new side of every hunk the diff makes in an
+  in-scope file, and nothing else. A deletion adds no lines to tile.
+- **Where manifests go.** Write each manifest into the output the run hands over, never in the
+  directory pass 2 reads: pass 2 is blind, and a manifest lists the doc's claims.
 
 ## Pass 2 — completeness, blind
 
@@ -148,7 +205,8 @@ fresh": the fix is small, and the reviewer sees the earlier passes only through 
    - `answered` — the PR links an issue the finding was filed as, or, for any finding but a
      `follow-up`, replies to it with a reason.
    - `not fixed` — neither.
-2. **Each added or changed claim** gets pass 1's checks and verdicts, from a source fetched now.
+2. **Each added or changed claim** gets pass 1's checks and verdicts, from a source fetched now,
+   in chunks that tile the hunks as [Chunks and manifests](#chunks-and-manifests) says.
 3. **Each added or changed filter, trade-off, example or choice** gets pass 3's checks and
    severity, against the option sections as they stand after the fix. If the diff changes our
    own choice, run the value test again.

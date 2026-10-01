@@ -30,9 +30,12 @@ decision clusters, all accepted with the recommendations recorded in the plan se
    verdict, with chunked subagents whose manifests must tile every in-scope file; (2) an
    adversarial per-row pass, only if candidate 1 misses the gain rule and the A–E miss diagnostic
    points at judgement rather than coverage.
-5. **Cost is part of the record**: per run, as an estimated share of the 5-hour limit of the
-   subscription (Claude Max ×20 as of 2026-09-23), with a 10 % cap per doc review and one limit
-   per dev iteration.
+5. **Cost is part of the record**: per run, in USD, API-equivalent, from the run's own
+   `total_cost_usd` (Claude Max ×20 as of 2026-09-23), with a 47 USD cap on a doc review's median
+   run and 700 USD per dev iteration. Amended on 2026-09-25 (#146): the plan first recorded an
+   estimated share of the 5-hour limit, with a 10 % cap per doc and one limit per iteration; the
+   hand readings its denominator needed proved unworkable, and the caps were converted with the
+   dry run's 470 USD per 100 %, the iteration cap raised after dev batch 1.
 6. **Precondition**: #138 rebuilds every snapshot branch from the full tree of its commit before
    any calibration-2 run.
 7. **This directory** (`docs/adr/`) is excluded from doc-review and the structure gate through one

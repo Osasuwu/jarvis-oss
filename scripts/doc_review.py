@@ -28,6 +28,7 @@ import difflib
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -72,11 +73,20 @@ KINDS = ("full", "delta")
 FINDING_ID_RE = re.compile(r"[MOHUV][1-9]\d*")
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 
+# Per-claim verdicts and the only reasons a claim may be out of scope (#146). Mirrored in
+# SKILL.md; tests/test_review_doc_skill.py pins the two equal. No free-text reason exists.
+CLAIM_VERDICTS = ("confirmed", "mismatch", "unverifiable", "out-of-scope")
+OUT_OF_SCOPE_REASONS = ("call", "placeholder", "definition")
+# A chunk covers at most this many countable lines of one file (#146).
+CHUNK_LINES = 150
+
 BLOCK_RE = re.compile(r"<!-- doc-review: (\{.*?\}) -->\s*\Z", re.S)
 _DRIFT_LINE_RE = re.compile(r"^drift-key:.*$", re.M)
 _DRIFT_VALUE_RE = re.compile(r"drift-key: ([0-9a-f]{64})(?: \(model: ([^\s()]+)\))?")
 _HEADING_RE = re.compile(r"^#{1,6}\s")
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
+_LINK_RE = re.compile(r"\]\(([^)\s]+)\)")
+_HUNK_RE = re.compile(r"^@@ -\S+ \+(\d+)(?:,(\d+))? @@", re.M)
 _SECTION_RE = re.compile(r"^## review-doc(?: delta)?: `?([^\s`]+)`?", re.M)
 # A finding line: its ID at the start, after an optional list marker and bold list header.
 _REPORT_ID_RE = re.compile(
@@ -107,6 +117,65 @@ def is_reviewable_doc(path: str) -> bool:
 
 def reviewable_docs(paths: list[str]) -> list[str]:
     return sorted({p for p in paths if is_reviewable_doc(p)})
+
+
+def countable_lines(text: str) -> int:
+    """The line count chunks and manifests are measured in: every line of the file, blank ones
+    and a last line without a newline included."""
+    return len(text.splitlines())
+
+
+# --- scope: the files a review covers and the lines it must tile (#146, #139) ---
+
+
+def pairs_with_targets(text: str) -> set[str]:
+    """The docs a file names in its frontmatter `pairs_with`, comma-separated."""
+    head = text.split("---", 2)
+    if len(head) < 3 or head[0].strip():
+        return set()
+    m = re.search(r"^pairs_with:\s*(.+)$", head[1], re.M)
+    return {p.strip() for p in m.group(1).split(",") if p.strip()} if m else set()
+
+
+def internal_links(path: str, text: str) -> set[str]:
+    """The repo `.md` files `path` links to, resolved against its directory."""
+    out = set()
+    for target in _LINK_RE.findall(text):
+        target = target.partition("#")[0]
+        if not target or "://" in target or target.startswith("mailto:"):
+            continue
+        resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), target))
+        if resolved.endswith(".md") and not resolved.startswith(".."):
+            out.add(resolved)
+    return out
+
+
+def in_scope_files(doc: str, head: str, read_blob, listing: list[str]) -> list[str]:
+    """The files a review of `doc` covers: the doc, every file of `listing` (the examples and
+    resources at `head`) that names it in `pairs_with`, and the files all of those link to, one
+    hop out. A dangling link names no file. The doc comes first, the rest sorted."""
+    base = {doc} | {p for p in listing
+                    if p.endswith(".md") and doc in pairs_with_targets(read_blob(head, p) or "")}
+    scope = set(base)
+    for path in base:
+        links = internal_links(path, read_blob(head, path) or "")
+        scope |= {p for p in links if read_blob(head, p) is not None}
+    return [doc] + sorted(scope - {doc})
+
+
+def full_ranges(text: str) -> list[list[int]]:
+    n = countable_lines(text)
+    return [[1, n]] if n else []
+
+
+def new_side_hunks(diff: str) -> list[list[int]]:
+    """The new-side line ranges of a `git diff -U0`. A pure deletion has none."""
+    out = []
+    for m in _HUNK_RE.finditer(diff):
+        start, count = int(m.group(1)), int(m.group(2) or 1)
+        if count:
+            out.append([start, start + count - 1])
+    return out
 
 
 @dataclass(frozen=True)
@@ -319,6 +388,70 @@ def render_stats_section(stats: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+# Per-model split of a run's cost and what its subagents did, for the calibration record (#146):
+# the action's log shows `modelUsage` without tokens or cost, so the verdict step reads them here.
+USAGE_FIELDS = ("inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens")
+SUBAGENT_TOOLS = ("Agent", "Task")
+
+
+def _number(value) -> float | int | None:
+    return value if isinstance(value, (int, float)) and not isinstance(value, bool) \
+        and value >= 0 else None
+
+
+def _counted(counts: dict[str, int]) -> str:
+    total = sum(counts.values())
+    if not total:
+        return "0"
+    return f"{total} (" + ", ".join(f"{name} {n}" for name, n in sorted(counts.items())) + ")"
+
+
+def render_usage_section(messages: list) -> str:
+    """The usage section appended to report.md: cost and tokens per model from the last result
+    message, the subagents the main session launched, and the tool calls made inside them."""
+    results = [m for m in messages if isinstance(m, dict) and m.get("type") == "result"]
+    if not results:
+        return "## Usage\n\nNo result message in the execution file.\n"
+    usage = results[-1].get("modelUsage")
+    usage = usage if isinstance(usage, dict) else {}
+    lines = ["## Usage", "", "| Model | Cost (USD) | Input | Output | Cache read | Cache write |",
+             "|---|---|---|---|---|---|"]
+    costs = []
+    for model, fields in sorted(usage.items()):
+        fields = fields if isinstance(fields, dict) else {}
+        cost = _number(fields.get("costUSD"))
+        costs.append(cost)
+        tokens = [_number(fields.get(k)) for k in USAGE_FIELDS]
+        if cost is None and all(t is None for t in tokens):
+            cells = ["unknown"] * 5
+        else:
+            cells = ["unknown" if cost is None else f"{cost:.4f}"] + \
+                [str(int(t or 0)) for t in tokens]
+        lines.append(f"| `{model}` | " + " | ".join(cells) + " |")
+    total = _number(results[-1].get("total_cost_usd"))
+    summed = "unknown" if not costs or None in costs else f"{sum(costs):.4f} USD"
+    lines += ["", f"Sum of model costs: {summed}; `total_cost_usd`: "
+              + ("unknown" if total is None else f"{total:.4f} USD") + "."]
+    launched: dict[str, int] = {}
+    inside: dict[str, int] = {}
+    for m in messages:
+        if not isinstance(m, dict) or m.get("type") != "assistant":
+            continue
+        message = m.get("message") if isinstance(m.get("message"), dict) else {}
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            name = str(block.get("name"))
+            if m.get("parent_tool_use_id"):
+                inside[name] = inside.get(name, 0) + 1
+            elif name in SUBAGENT_TOOLS:
+                launched[name] = launched.get(name, 0) + 1
+    lines += ["", f"Subagents launched: {_counted(launched)}.",
+              f"Subagent tool calls: {_counted(inside)}."]
+    return "\n".join(lines) + "\n"
+
+
 def session_notes(messages: list, *, text_limit: int = 2000) -> list[str]:
     """What the log needs when a review produced nothing usable.
 
@@ -379,8 +512,96 @@ def _finding(raw: object, where: str) -> Finding:
     return Finding(fid, file, line, cls, label)
 
 
-def validate_findings(data: object, plan: dict[str, str]) -> dict[str, list[Finding]]:
-    """findings.json → {doc: findings}. One report per planned doc, of the planned kind."""
+def _spans(lines: set[int]) -> str:
+    spans: list[list[int]] = []
+    for n in sorted(lines):
+        if spans and n == spans[-1][1] + 1:
+            spans[-1][1] = n
+        else:
+            spans.append([n, n])
+    return ", ".join(str(a) if a == b else f"{a}-{b}" for a, b in spans)
+
+
+def _check_claim(raw: object, where: str, start: int, end: int, ids: set[str]) -> None:
+    if not isinstance(raw, dict):
+        raise Unreviewable(f"{where}: claim is not an object")
+    line = raw.get("line")
+    if isinstance(line, bool) or not isinstance(line, int) or not start <= line <= end:
+        raise Unreviewable(f"{where}: claim line {line!r} outside {start}-{end}")
+    for key in ("restatement", "excerpt", "evidence", "reasoning"):
+        value = raw.get(key)
+        # Evidence is empty when nothing could be fetched; the other fields never are.
+        if not isinstance(value, str) or (key != "evidence" and not value.strip()):
+            raise Unreviewable(f"{where}:{line}: claim has no {key}")
+    verdict, reason = raw.get("verdict"), raw.get("reason")
+    if verdict not in CLAIM_VERDICTS:
+        raise Unreviewable(f"{where}:{line}: verdict {verdict!r} is not one of "
+                           f"{', '.join(CLAIM_VERDICTS)}")
+    keys = list(raw)
+    if keys.index("reasoning") > keys.index("verdict"):
+        raise Unreviewable(f"{where}:{line}: reasoning after the verdict")
+    if verdict == "out-of-scope":
+        if reason not in OUT_OF_SCOPE_REASONS:
+            raise Unreviewable(f"{where}:{line}: out-of-scope reason {reason!r} is not one of "
+                               f"{', '.join(OUT_OF_SCOPE_REASONS)}")
+    elif reason is not None:
+        raise Unreviewable(f"{where}:{line}: reason {reason!r} on a {verdict} claim")
+    if verdict in ("mismatch", "unverifiable") and raw.get("finding") not in ids:
+        raise Unreviewable(f"{where}:{line}: {verdict} claim names no finding of this report")
+
+
+def _check_manifests(rep: dict, doc: str, scope: dict[str, list[list[int]]],
+                     ids: set[str]) -> None:
+    """The report lists the in-scope files, and its manifests tile the lines to review of each,
+    with no overlap and no gap. A file with lines to review and no manifest is named (#139)."""
+    where = f"findings.json: {doc}"
+    listed = rep.get("scope")
+    if not isinstance(listed, list) or sorted(map(str, listed)) != sorted(scope):
+        raise Unreviewable(f"{where} scope lists {listed!r}, not the in-scope files "
+                           f"{', '.join(scope)}")
+    manifests = rep.get("manifests")
+    if not isinstance(manifests, list):
+        raise Unreviewable(f"{where} manifests is not a list")
+    chunks: dict[str, list[tuple[int, int]]] = {f: [] for f in scope}
+    for m in manifests:
+        if not isinstance(m, dict):
+            raise Unreviewable(f"{where}: manifest is not an object")
+        file, start, end, claims = m.get("file"), m.get("start"), m.get("end"), m.get("claims")
+        if file not in scope:
+            raise Unreviewable(f"{where} has a manifest for {file!r}, which is not in scope")
+        if (not all(isinstance(v, int) and not isinstance(v, bool) for v in (start, end))
+                or not 1 <= start <= end):
+            raise Unreviewable(f"{where} manifest for {file}: bad range {start!r}-{end!r}")
+        if end - start + 1 > CHUNK_LINES:
+            raise Unreviewable(f"{where} manifest {file}:{start}-{end} covers more than "
+                               f"{CHUNK_LINES} lines")
+        if not isinstance(claims, list):
+            raise Unreviewable(f"{where} manifest {file}:{start}-{end}: claims is not a list")
+        for claim in claims:
+            _check_claim(claim, f"{where} manifest {file}:{start}-{end}", start, end, ids)
+        chunks[file].append((start, end))
+    for file, required in scope.items():
+        ranges = sorted(chunks[file])
+        if required and not ranges:
+            raise Unreviewable(f"{where} has no manifest for {file}")
+        for (s1, e1), (s2, e2) in zip(ranges, ranges[1:]):
+            if s2 <= e1:
+                raise Unreviewable(f"{where} manifests {file}:{s1}-{e1} and {s2}-{e2} overlap")
+        covered = {n for s, e in ranges for n in range(s, e + 1)}
+        wanted = {n for s, e in required for n in range(s, e + 1)}
+        if covered - wanted:
+            raise Unreviewable(f"{where} manifests of {file} reach outside the lines to review: "
+                               f"lines {_spans(covered - wanted)}")
+        if wanted - covered:
+            raise Unreviewable(f"{where} manifests of {file} leave lines not tiled: "
+                               f"lines {_spans(wanted - covered)}")
+
+
+def validate_findings(
+    data: object, plan: dict[str, str], scope: dict[str, dict[str, list[list[int]]]]
+) -> dict[str, list[Finding]]:
+    """findings.json → {doc: findings}. One report per planned doc, of the planned kind, whose
+    manifests tile its scope."""
     if not isinstance(data, dict) or not isinstance(data.get("reports"), list):
         raise Unreviewable("findings.json: expected {\"reports\": [...]}")
     out: dict[str, list[Finding]] = {}
@@ -400,6 +621,7 @@ def validate_findings(data: object, plan: dict[str, str]) -> dict[str, list[Find
         ids = [f.id for f in parsed]
         if len(ids) != len(set(ids)):
             raise Unreviewable(f"findings.json: {doc} repeats a finding id")
+        _check_manifests(rep, doc, scope[doc], set(ids))
         out[doc] = parsed
     missing = sorted(set(plan) - set(out))
     if missing:
@@ -554,6 +776,19 @@ def plan_doc(
     )
 
 
+def plan_scope(plan: DocPlan, head: str, read_blob, listing: list[str],
+               diff) -> dict[str, list[list[int]]]:
+    """{in-scope file: the line ranges its manifests must tile}: every line for a full review,
+    the new side of each hunk since the reviewed commit for a delta."""
+    out = {}
+    for path in in_scope_files(plan.doc, head, read_blob, listing):
+        if plan.kind == "delta":
+            out[path] = new_side_hunks(diff(plan.reviewed_commit, head, path))
+        else:
+            out[path] = full_ranges(read_blob(head, path) or "")
+    return out
+
+
 def report_sections_lenient(text: str) -> dict[str, str]:
     try:
         return report_sections(text)
@@ -701,7 +936,8 @@ def _slug(doc: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", doc)
 
 
-def _task_text(plans: list[DocPlan], head: str, work: Path, event: str) -> str:
+def _task_text(plans: list[DocPlan], head: str, work: Path, event: str,
+               scope: dict[str, dict[str, list[list[int]]]]) -> str:
     out_dir = work / "out"
     lines = [
         "# doc-review task",
@@ -736,6 +972,10 @@ def _task_text(plans: list[DocPlan], head: str, work: Path, event: str) -> str:
                          f"`{p.first_reviewed_commit}`")
         if p.earlier:
             lines.append(f"  - earlier reports: `{work / 'earlier' / (_slug(p.doc) + '.md')}`")
+        lines.append("  - in-scope files and the lines their manifests tile:")
+        for path, ranges in scope[p.doc].items():
+            spans = ", ".join(f"{a}-{b}" for a, b in ranges) or "none (no manifest)"
+            lines.append(f"    - `{path}`: {spans}")
     lines += [
         "",
         f"PR replies (people with write access): `{work / 'replies.md'}`" if event != "workflow_dispatch" else "",
@@ -752,11 +992,21 @@ def _task_text(plans: list[DocPlan], head: str, work: Path, event: str) -> str:
         f"2. `{out_dir / 'findings.json'}`: exactly the findings the report lists, as",
         "",
         "```json",
-        '{"reports": [{"doc": "docs/x.md", "kind": "full", "findings": [',
+        '{"reports": [{"doc": "docs/x.md", "kind": "full", "scope": ["docs/x.md"],',
+        '  "manifests": [{"file": "docs/x.md", "start": 1, "end": 150, "claims": [',
+        '    {"line": 12, "restatement": "...", "excerpt": "...", "evidence": "...",',
+        '     "reasoning": "...", "verdict": "mismatch", "finding": "M1"}]}],',
+        '  "findings": [',
         '  {"id": "M1", "file": "docs/x.md", "line": 12, "class": "quote", "label": "blocking"}',
         "]}]}",
         "```",
         "",
+        "   `scope` is the in-scope files listed above for the doc. `manifests` is every chunk",
+        "   manifest, as the skill's Chunks and manifests section defines it: together they tile",
+        "   the listed lines of every in-scope file, with no overlap and no gap, each chunk at most",
+        f"   {CHUNK_LINES} lines. A claim's keys come in the order shown; `verdict` is one of",
+        f"   {', '.join(CLAIM_VERDICTS)}; `reason` is given only for out-of-scope, one of",
+        f"   {', '.join(OUT_OF_SCOPE_REASONS)}; a mismatch or unverifiable claim names its `finding`.",
         "   `kind` is the kind given above. `file` is repo-relative; `line` is a 1-based line at the",
         "   reviewed commit, or null for a finding with no line (a missing option). `class` is one of",
         f"   {', '.join(CLASSES)} (the classes in calibration/RULES.md, plus unverifiable).",
@@ -797,6 +1047,7 @@ def cmd_classify(args: argparse.Namespace) -> int:
             comments = _fetch_comments(repo, pr)
 
     plans: list[DocPlan] = []
+    scope: dict[str, dict[str, list[list[int]]]] = {}
     if result.status == "review":
         blocks = parse_blocks(comments)
         if event == "workflow_dispatch":
@@ -818,7 +1069,14 @@ def cmd_classify(args: argparse.Namespace) -> int:
             and c.get("author_association") in TRUSTED_ASSOCIATIONS
         ]
         (work / "replies.md").write_text("\n\n".join(replies) or "(none)\n", encoding="utf-8")
-        (work / "task.md").write_text(_task_text(plans, head, work, event), encoding="utf-8")
+        listing = (_git("ls-tree", "-r", "--name-only", head, "--", "examples", "resources")
+                   or "").splitlines()
+        scope = {p.doc: plan_scope(
+            p, head, _read_blob, listing,
+            lambda old, new, path: _git("diff", "-U0", f"{old}..{new}", "--", path) or "",
+        ) for p in plans}
+        (work / "task.md").write_text(_task_text(plans, head, work, event, scope),
+                                      encoding="utf-8")
         # What verdict needs, read before the model runs, where the model cannot write.
         for rel, name in ((WORKFLOW_PATH, "workflow.yml"), (SKILL_PATH, "SKILL.md"),
                           (CALIBRATION_PATH, "CALIBRATION.md")):
@@ -834,6 +1092,7 @@ def cmd_classify(args: argparse.Namespace) -> int:
         "status": result.status,
         "message": result.message,
         "docs": {p.doc: p.kind for p in plans},
+        "scope": scope,
     }, indent=2), encoding="utf-8")
     print(f"doc-review: {result.message}")
     for p in plans:
@@ -858,7 +1117,7 @@ def run_verdict(
     so a failed or unreviewable run still records what it cost (#145).
     """
     plan = json.loads((state / "plan.json").read_text(encoding="utf-8"))
-    head, kinds = plan["commit"], plan["docs"]
+    head, kinds, scope = plan["commit"], plan["docs"], plan["scope"]
     workflow = (state / "workflow.yml").read_bytes()
     skill = (state / "SKILL.md").read_bytes()
     calibration = (state / "CALIBRATION.md").read_text(encoding="utf-8")
@@ -894,7 +1153,7 @@ def run_verdict(
             data = json.loads(findings_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             raise Unreviewable(f"findings.json is not JSON: {exc}") from exc
-        findings = validate_findings(data, kinds)
+        findings = validate_findings(data, kinds, scope)
         check_report_matches(report, findings)
     except Unreviewable as exc:
         unreviewable = str(exc)
@@ -932,6 +1191,7 @@ def cmd_verdict(args: argparse.Namespace) -> int:
         comments = []
     else:
         comments = _fetch_comments(env["REPO"], env["PR_NUMBER"])
+    messages = load_messages(env.get("EXECUTION_FILE"))
     verdict, _block, body, rounds, stats = run_verdict(
         state=state,
         work=work,
@@ -944,14 +1204,14 @@ def cmd_verdict(args: argparse.Namespace) -> int:
     out.mkdir(parents=True, exist_ok=True)
     (out / "comment.md").write_text(body, encoding="utf-8")
     with open(out / "report.md", "a", encoding="utf-8") as fh:  # the artifact is the raw record
-        fh.write("\n" + render_stats_section(stats))
+        fh.write("\n" + render_stats_section(stats) + "\n" + render_usage_section(messages))
     if not dispatch and not args.no_post:
         _api("POST", f"/repos/{env['REPO']}/issues/{env['PR_NUMBER']}/comments", {"body": body})
     _summary(body)
     _set_output("rounds", str(rounds))
     print(f"doc-review: {verdict.message} (rounds: {rounds})")
     if verdict.status == "unreviewable":
-        for note in session_notes(load_messages(env.get("EXECUTION_FILE"))):
+        for note in session_notes(messages):
             print(f"doc-review session: {note}")
     return 0 if verdict.passed else 1
 
