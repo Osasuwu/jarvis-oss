@@ -428,6 +428,29 @@ def test_report_ids_are_line_starting_ids_outside_details():
     assert dr.report_ids(dr.report_sections(REPORT)["docs/a.md"]) == {"M1", "O1"}
 
 
+def test_report_ids_take_bare_entries_under_a_header_but_not_wrapped_prose():
+    # #228: a bare ID line is an entry under its bold header, as the skill's template lays them
+    # out; anywhere else it is prose, e.g. a paragraph that wraps onto an earlier round's ID.
+    text = f"""## review-doc delta: docs/a.md @ {PREV[:7]}..{HEAD[:7]}
+
+**Mismatches (2):**
+M1 docs/a.md:3 — first
+M2 docs/a.md:5 — second
+**How to choose (1 blocking, 0 follow-up):** H1 docs/a.md:7 — third
+H2 docs/a.md:8 — fourth
+
+Input gap: the earlier report for this doc is missing; its set was blocking
+`M3` at `:282`, non-blocking `H3 :415`, as earlier.
+**Input gap:** a paragraph led by bold text that wraps onto
+U4 as well.
+- O5 an approach — https://example.com — why — follow-up
+  O6 named in the item's wrapped text.
+
+M7 starts a paragraph after a blank line.
+"""
+    assert dr.report_ids(dr.report_sections(text)["docs/a.md"]) == {"M1", "M2", "H1", "H2", "O5"}
+
+
 def test_report_and_findings_agree():
     findings = dr.validate_findings(
         {"reports": [{"doc": "docs/a.md", "kind": "full", "findings": [

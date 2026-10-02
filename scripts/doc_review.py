@@ -78,11 +78,13 @@ _DRIFT_VALUE_RE = re.compile(r"drift-key: ([0-9a-f]{64})(?: \(model: ([^\s()]+)\
 _HEADING_RE = re.compile(r"^#{1,6}\s")
 _FENCE_RE = re.compile(r"^\s*(```|~~~)")
 _SECTION_RE = re.compile(r"^## review-doc(?: delta)?: `?([^\s`]+)`?", re.M)
-# A finding line: its ID at the start, after an optional list marker and bold list header.
+# A line that starts with a finding ID, after an optional list marker and bold list header (`lead`).
 _REPORT_ID_RE = re.compile(
-    r"^[ \t]*(?:[-*+][ \t]+|\d+\.[ \t]+)?(?:\*\*[^*\n]*\*\*[ \t]*)?`?([MOHUV][1-9]\d*)`?(?=[\s:.,;)—-]|$)",
-    re.M,
+    r"^(?P<lead>[ \t]*(?:[-*+][ \t]+|\d+\.[ \t]+)?(?:\*\*[^*\n]*\*\*[ \t]*)?)"
+    r"`?(?P<id>[MOHUV][1-9]\d*)`?(?=[\s:.,;)—-]|$)"
 )
+# A bold list header alone on its line, e.g. `**Mismatches (2):**`.
+_BOLD_HEADER_LINE_RE = re.compile(r"^[ \t]*\*\*[^*\n]*\*\*[ \t]*$")
 
 MAX_COMMENT_CHARS = 60_000
 
@@ -462,9 +464,24 @@ def report_sections(report: str) -> dict[str, str]:
 
 
 def report_ids(section: str) -> set[str]:
-    """Finding IDs that start a line of a report section. Collapsed <details> parts excluded."""
+    """Finding IDs of a report section's entries. Collapsed <details> parts excluded.
+
+    An entry starts a line with its ID after a list marker or a bold list header. A bare ID line
+    is an entry only directly under a bold list header or another such entry, as the skill's
+    template lays them out; elsewhere it is prose that wrapped onto an earlier ID (#228).
+    """
     visible = re.sub(r"<details>.*?</details>", "", section, flags=re.S)
-    return set(_REPORT_ID_RE.findall(visible))
+    ids: set[str] = set()
+    under_header = False  # the line above is a bold list header, or an entry that continues it
+    for line in visible.splitlines():
+        m = _REPORT_ID_RE.match(line)
+        lead = m["lead"].strip() if m else ""
+        if m and (lead or under_header):
+            ids.add(m["id"])
+            under_header = not lead or lead.endswith("**")
+        else:
+            under_header = _BOLD_HEADER_LINE_RE.match(line) is not None
+    return ids
 
 
 def check_report_matches(report: str, findings: dict[str, list[Finding]]) -> None:
@@ -792,8 +809,10 @@ def _task_text(plans: list[DocPlan], head: str, work: Path, event: str) -> str:
         "   `## review-doc: <doc path> @ <commit>` or",
         "   `## review-doc delta: <doc path> @ <reviewed commit>..<commit>`.",
         "   Every finding starts its own line with its ID (`M1`, `O2`, `H1`, `U1`, and `V1` for a",
-        "   failed value test), e.g. `- M1 docs/x.md:12 — ...`. An ID that starts a line outside a",
-        "   `<details>` block is a finding. A delta report lists each finding that is `not fixed`",
+        "   failed value test): as a list item, e.g. `- M1 docs/x.md:12 — ...`, or right after its",
+        "   list's bold header (`**Mismatches (1):** M1 ...`) and on the lines directly under it.",
+        "   Outside a `<details>` block, such a line is a finding. Never start any other line with",
+        "   an ID: rewrap prose that would. A delta report lists each finding that is `not fixed`",
         "   again under its old ID.",
         f"2. `{out_dir / 'findings.json'}`: exactly the findings the report lists, as",
         "",
