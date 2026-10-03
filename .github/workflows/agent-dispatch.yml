@@ -23,9 +23,16 @@ on:
 
 # One worker per issue; re-labeling (remove + add, to retry) cancels an
 # in-flight run for the same issue instead of racing it.
+#
+# Only `agent:dispatch` events join the per-issue group. Concurrency is
+# applied before the job's `if:`, so with a plain per-issue key ANY label
+# added to the issue mid-run would join the group, cancel the worker, then
+# skip its own job: a silent kill, since a cancelled job never reaches the
+# owner-queue step. Every other label event gets a unique noop group per run
+# and cancels nothing (#234; the same fix as Osasuwu/jarvis#1936).
 concurrency:
-  group: agent-dispatch-issue-${{ github.event.issue.number }}
-  cancel-in-progress: true
+  group: ${{ github.event.label.name == 'agent:dispatch' && format('agent-dispatch-issue-{0}', github.event.issue.number) || format('agent-dispatch-noop-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event.label.name == 'agent:dispatch' }}
 
 jobs:
   worker:
