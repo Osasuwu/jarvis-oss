@@ -1,8 +1,8 @@
 # ADR-0003: The doc contract, delivery by a persistent clone, and a shadow-mode reviewer
 
-Date: 2026-10-01. Status: accepted. Tracking: #159. Decided in the 2026-09-29 grill that locked
-the slice-1 acceptance criteria (#158–#179). Issue bodies from that grill call this record
-"ADR 0002 from #159"; the number moved because ADR-0002 (#194) was written first.
+Date: 2026-10-01. Status: superseded by [ADR-0004](0004-knowledge-base-of-failure-classes.md). Tracking: #159. Decided in the 2026-09-29 grill that locked
+the slice-1 acceptance criteria (#158–#179). Issue bodies from that grill refer to this record
+as ADR 0002; the number moved because ADR-0002 (#194) was written first.
 
 ## Context
 

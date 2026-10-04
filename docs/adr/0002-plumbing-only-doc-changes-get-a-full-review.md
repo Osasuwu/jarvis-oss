@@ -1,6 +1,6 @@
 # ADR-0002: A plumbing-only change to a doc is reviewed in full
 
-Date: 2026-10-01. Status: accepted, scope amended 2026-10-01 (#213). Tracking: #194 (follow-up to #167). Supersedes nothing.
+Date: 2026-10-01. Status: accepted, scope amended 2026-10-01 (#213), amended by [ADR-0004](0004-knowledge-base-of-failure-classes.md) (decision 9). Tracking: #194 (follow-up to #167). Supersedes nothing.
 
 ## Context
 
