@@ -2,6 +2,7 @@
 
 Date: 2026-10-04. Status: accepted for the transition; the class-doc contract details listed
 under *Open* are locked before the first class doc and recorded as an amendment here.
+Revised before merge on 2026-10-04 after a prior-art check (see *Prior art* and *Revision*).
 Tracking: milestone "Knowledge base — first release". Supersedes ADR-0003 and ADR-0001.
 Amends ADR-0002.
 
@@ -15,16 +16,12 @@ check dates. An LLM reviewer (`review-doc`) read every doc PR. A calibration pro
 
 The goal of the repo has changed. It is now an open knowledge base about developing software
 with agents. It covers the development cycle only, from task to code to review to merge, and
-answers three questions:
-
-1. What do agents give at each stage?
-2. Where is a human still needed?
-3. How do agents break, by mechanism?
+answers one question: how do agents break there, by mechanism, and what protects against each
+way of breaking?
 
 Readers decide for themselves. The reader's own coding agent reads the base and compares it
-with the reader's repo. The primary audience is newcomers. The foundation is that the human
-sets the task and handles exceptions, and the aim is fewer escalations. Reliability is
-described per stage, with no single headline number.
+with the reader's repo. The primary audience is newcomers. The foundation is one line: the
+human sets the task and handles the exceptions.
 
 The content comes from one method: primary-source incidents, grouped into failure classes by
 mechanism, with protections researched per class. A research pass covered 232 incidents from
@@ -39,24 +36,67 @@ The design was pressure-tested in a grill session on 2026-10-03/04. It produced 
 findings: 4 fact corrections, 22 decision clusters and 7 follow-ups (#236). The clusters were
 split into two locks. This record covers the transition lock.
 
+## Prior art
+
+A search before merge looked for a project that already does this. None combines the three
+things this base does: the development cycle as the only scope, classes grouped by mechanism
+and backed by public incidents, and protections that each carry a source and a cost. The
+closest projects:
+
+- [agentic-anti-patterns](https://github.com/xizhuomengcontin/agentic-anti-patterns) catalogs
+  how agents fail in production. Each entry has TL;DR, symptom, example, root cause,
+  mitigations and detection. Examples may be constructed, mitigations carry no source of
+  their own, and detection is framed for runtime operations. This base adopts the skeleton
+  and adds what it lacks (decision 3).
+- [awesome-agent-failures](https://github.com/vectara/awesome-agent-failures) collects
+  failures of general agents, not of the development cycle.
+- [agent-failure-modes](https://github.com/jeffma8888/agent-failure-modes) groups one
+  author's post-mortems of multi-agent build loops into classes and ships them as prompt
+  rules.
+- Academic incident studies and public incident lists, such as
+  [ai-coding-agents-incidents](https://github.com/paolodm/ai-coding-agents-incidents), are
+  inputs to the dataset rather than competitors.
+
+What none of them catalogs is the quiet failure inside the pipeline: weakened tests, gamed
+review, scope drift and false reports of done. That is where this base starts.
+
+Two questions from the first design are dropped, because nothing in the search answers them
+and the base would have to make claims it cannot source: what agents give at each stage, and
+where a human is needed as a standalone question. The second survives as one cross-cutting
+doc (decision 10).
+
 ## Decision
 
 1. **Delivery.** There is no entry skill, and `jarvis-setup` is deleted. The README is the
-   hub. It carries the foundation, a ready prompt for the reader's agent ("read this, compare
+   hub. It carries the one-line foundation, a ready prompt for the reader's agent ("read this, compare
    with my repo, report") and a map of classes against where each surfaces. A reader-facing
    skill is added only if the prompt proves insufficient.
 
-2. **Unit of content.** The unit is a class doc, one per class. Each class doc has an incident
-   catalog, `incidents/<class>.md`, a table with one row per incident. An incident enters the
-   catalog only if a class doc cites it. The maintainer's own repos are treated like any other
-   public project. Studies and measurements are not incidents; they go into a class doc's
-   Evidence section.
+2. **Unit of content.** The unit is a class doc, one per class. Incidents live in one flat
+   dataset under `incidents/`, one row per incident, with the columns ID, class, stage, source
+   type, evidence strength, and a link or the label "private, not verifiable". #241 fixes the
+   file format.
+   - A class doc cites 2–5 rows by ID as its examples. A row does not have to be cited; the
+     dataset is also what the counts are made from.
+   - The README publishes the number of incidents per class, labelled with the share that
+     comes from the maintainer's own repos.
+   - The maintainer's own repos are treated like any other public project. A private source
+     enters only with the label "private, not verifiable".
+   - Studies and measurements are not incidents; they go into a class doc's Evidence
+     section.
 
-3. **What the structure gate enforces.**
+3. **What the structure gate enforces.** The class doc follows the agentic-anti-patterns
+   skeleton, with three changes: examples are dataset IDs, every protection has its own source
+   and cost, and detection is the stage of the development cycle where the class is caught
+   (task, CI, review, after merge), not runtime monitoring. The gate checks:
    - Frontmatter `class`, `surfaces_at` (a list), `applies_when` and `applies_when_not`.
-   - Four sections: Mechanism, Where it surfaces, Evidence, Protections.
-   - Every incident link resolves to a row of the catalog, not only to the file.
-   - A catalog row that no class doc cites fails.
+   - Sections TL;DR, Symptom, Examples, Mechanism, Where it surfaces, Protections, Evidence.
+   - Examples cite 2–5 IDs, and every cited ID exists in the dataset.
+   - Protections are a ladder, ordered from the cheapest rung to the strongest. Every rung
+     names its source, its cost and when it breaks. A prompt rule is a valid first rung; its
+     "breaks when" line says under what conditions it stops holding.
+   - Every dataset row has all columns, a unique ID, and a stage and evidence strength from a
+     fixed vocabulary.
    - A scanned directory that is missing fails rather than passing with nothing checked.
    - A size cap, held as one configurable value. It starts at 30 KB and is re-set after the
      pilot.
@@ -95,8 +135,9 @@ split into two locks. This record covers the transition lock.
 
 6. **Writing.** Before writing Protections, the writing agent searches external practice
    blind, that is, before reading the maintainer's own fixes. Each protection carries an
-   external source or the label "one operator's practice". The reviewer's claim ↔ evidence pass
-   checks this.
+   external source or the label "one operator's practice". Its cost is a figure only when a
+   source gives one; otherwise it names the resource consumed, such as CI minutes, tokens or
+   review time, without a number. The reviewer's claim ↔ evidence pass checks this.
 
 7. **The hold label.** Agents are told not to remove `waiting-human-review`, and
    `github-authority-guard` blocks the direct ways of removing it. The guard's known bypasses
@@ -108,7 +149,7 @@ split into two locks. This record covers the transition lock.
 8. **Teardown.** All nine docs under `docs/` (ADRs excepted) and all thirteen files under
    `examples/` are deleted, together with `jarvis-setup` and the old reviewer. Git history is
    the backup. Install and check instructions for the hooks and scripts that stay move into
-   their own docstrings. The examples are not migrated, because the catalog is written from
+   their own docstrings. The examples are not migrated, because the dataset is built from
    their primary sources, which remain linkable.
 
 9. **Earlier records.**
@@ -123,6 +164,13 @@ split into two locks. This record covers the transition lock.
      - Its 2026-10-01 scope amendment (`docs/` or `examples/`) is replaced by the path
        definition in decision 4.
    - `docs/adr/` stays outside review and the gate, as ADR-0001 set it.
+
+10. **Irreversible effects.** Where a human is needed is answered once, in one cross-cutting
+    doc, not in every class doc. The rule it states: an agent stops and asks only before an
+    irreversible effect, and what counts is judged by the targets the agent's identity can
+    reach, not by the command's verb. Protections there are ordered: limit the reach first,
+    then make the effect reversible, and only then require a human to approve at the point of
+    the effect. Class docs link to this doc rather than restating the rule.
 
 ## Considered options
 
@@ -139,6 +187,19 @@ split into two locks. This record covers the transition lock.
   low to block on.
 - **A third, blind reviewer pass for completeness.** Rejected on cost. The blind search moved
   to the writer instead (decision 6).
+- **A per-class incident catalog in which every row must be cited.** Rejected in the revision:
+  the orphan-row rule only kept the catalog in step with the docs, and it cut the rows that
+  give per-class counts.
+- **Only 2–5 example cases per class, with no dataset.** Rejected: it drops the counts a
+  reader needs to rank classes, and the uncatalogued quiet failures are the one asset no
+  other project has.
+- **Cost as qualitative tiers only.** Rejected: practitioner guides already say cheap or
+  expensive. A figure is given whenever a source has one.
+- **Human approval as a protection type inside each class doc.** Rejected: it spreads the
+  escalation rule across fifteen docs. Decision 10 keeps it in one.
+- **Contribute the classes to agentic-anti-patterns, or fork it.** Rejected: it has one
+  author and does not require a source per mitigation, which this base depends on.
+  Cross-links are kept.
 
 ## Open — locked before the first class doc
 
@@ -146,12 +207,30 @@ These are recorded here when decided:
 
 - How it is checked that a reader's agent gets what it needs from the README prompt, and
   where a reader reports that the base was not enough.
-- How catalog rows from private sources are labelled.
 - What may change after the pilot, and on how many docs the contract is calibrated.
 - Whether costs and outcomes carry an as-of date.
 - Whether the hub map and the vocabularies are generated or checked.
-- The contract for the cross-cutting docs.
-- How the source mix is disclosed.
-- What detects that the escalation rule has become smeared across class docs.
+- The contract for the cross-cutting docs, starting with the irreversible-effects doc
+  (decision 10).
+- What detects that a class doc restates the escalation rule instead of linking to
+  decision 10's doc.
 - What README shows while the base is incomplete.
 - How quoted injection content is handled.
+
+Answered by the revision: rows from private sources carry the label "private, not
+verifiable", and the source mix is disclosed as the maintainer's share of the per-class
+counts (decision 2).
+
+## Revision
+
+A prior-art check on 2026-10-04 found the projects listed under *Prior art*. A short grill on
+the same day, one round of three questions with a sampling critic, revised this record before
+merge:
+
+- Context now asks one question; the foundation is one line.
+- Decision 2 replaces the per-class catalog with one flat dataset and per-class counts.
+- Decision 3 adopts the agentic-anti-patterns skeleton and adds the protection ladder.
+- Decision 6 gives cost as a figure when a source has one.
+- Decision 10 adds the irreversible-effects doc.
+
+The critic's raw output is kept privately with the other research artefacts.
