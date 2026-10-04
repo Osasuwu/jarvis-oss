@@ -1,6 +1,6 @@
 # ADR-0001: Review-doc calibration 2 — pre-registered plan, lineage split, procedure candidates
 
-Date: 2026-09-23. Status: accepted. Tracking: #143 (slices #144, #145, #146, #147; design notes
+Date: 2026-09-23. Status: superseded by [ADR-0004](0004-knowledge-base-of-failure-classes.md) (the calibration programme is removed). Tracking: #143 (slices #144, #145, #146, #147; design notes
 #142). Supersedes nothing.
 
 ## Context
