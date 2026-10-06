@@ -1,12 +1,13 @@
 """Behaviour checks for .github/workflows/waiting-human-review.yml (#213).
 
-The hold applies to pull requests that change a document: a file under docs/ (decision
-records under docs/adr/ excepted). The checks extract the embedded
+The hold applies to pull requests that change a document: a path the definition in
+.github/hold-paths.json names (docs/ without docs/adr/, incidents/, README.md; ADR-0004
+decision 4). The structure gate reads the same file (#241). The checks extract the embedded
 github-script body and run it under node against a mocked `github`, `context` and `core`,
-as tests/test_machinery_guard.py does, so they test the script that actually ships.
+as tests/test_machinery_guard.py does, so they test the script that actually ships. The
+script reads the definition from its working directory, as the checkout step provides it.
 """
 
-import importlib.util
 import json
 import os
 import re
@@ -16,6 +17,8 @@ import textwrap
 from pathlib import Path
 
 import pytest
+
+from structure_gate import is_hold_path
 
 ROOT = Path(__file__).parent.parent
 WORKFLOW = (ROOT / ".github" / "workflows" / "waiting-human-review.yml").read_text(
@@ -88,7 +91,7 @@ process.env.RUN_ATTEMPT = input.attempt;
 """
 
 
-def _run(action, files, *, pushed=(), labels=(), reviewers=(), attempt="1"):
+def _run(action, files, *, pushed=(), labels=(), reviewers=(), attempt="1", cwd=ROOT):
     if NODE is None:
         if os.environ.get("CI"):
             pytest.fail("node is required in CI to test the hold script")
@@ -109,17 +112,15 @@ def _run(action, files, *, pushed=(), labels=(), reviewers=(), attempt="1"):
         text=True,
         encoding="utf-8",
         check=True,
+        cwd=cwd,
     )
     return json.loads(proc.stdout)
 
 
-def _excluded_doc_dirs() -> tuple[str, ...]:
-    spec = importlib.util.spec_from_file_location(
-        "structure_gate", ROOT / "tests" / "structure_gate.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.EXCLUDED_DOC_DIRS
+def _definition_in(directory: Path, definition: dict) -> None:
+    target = directory / ".github" / "hold-paths.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(definition), encoding="utf-8")
 
 
 # --- which pull requests are held ------------------------------------------
@@ -132,7 +133,13 @@ def _excluded_doc_dirs() -> tuple[str, ...]:
         ("docs/sub/guide.md", True),
         ("docs/diagram.png", True),
         ("docs/adr/0002-plumbing-only-doc-changes-get-a-full-review.md", False),
-        ("README.md", False),
+        ("README.md", True),
+        ("incidents/incidents.csv", True),
+        ("incidents/notes/a.md", True),
+        ("docs/classes/alpha.md", True),
+        ("docs/vocabularies.json", True),
+        ("docs/adr-notes/a.md", True),
+        ("scripts/README.md", False),
         ("scripts/check_quotes.py", False),
         (".agents/skills/write-doc/SKILL.md", False),
         (".github/workflows/waiting-human-review.yml", False),
@@ -150,12 +157,80 @@ def test_a_fresh_pull_request_is_held_only_when_it_changes_a_document(path, held
         assert out["failed"] is None
 
 
-def test_every_directory_the_structure_gate_excludes_is_excluded_from_the_hold_too():
-    dirs = _excluded_doc_dirs()
-    assert "docs/adr/" in dirs
-    for d in dirs:
-        out = _run("opened", [f"{d}x.md"])
-        assert (out["added"], out["failed"]) == ([], None), d
+@pytest.mark.parametrize("path", ["README.md", "incidents/incidents.csv"])
+def test_a_pull_request_that_changes_only_that_path_is_held(path):
+    out = _run("opened", [path])
+    assert out["added"] == [LABEL]
+    assert f"  {path}" in out["failed"]
+
+
+# --- one path definition, read by the hold and by the structure gate ---------
+
+CORPUS = [
+    "README.md",
+    "scripts/README.md",
+    "docs/guide.md",
+    "docs/classes/alpha.md",
+    "docs/adr/0004-x.md",
+    "docs/adr/sub/y.md",
+    "docs/adr-notes/z.md",
+    "incidents/incidents.csv",
+    "incidents/sub/n.md",
+    "scripts/s.py",
+    "tests/test_x.py",
+    ".github/hold-paths.json",
+    "notes/a.md",
+    "private/keep.md",
+    "private/open/a.md",
+    "Makefile",
+]
+CHANGED_DEFINITION = {
+    "prefixes": ["notes/", "private/"],
+    "excluded_prefixes": ["private/open/"],
+    "files": ["Makefile", "docs/adr/0004-x.md"],
+}
+
+
+def _held_by_the_script(cwd) -> set[str]:
+    out = _run("opened", CORPUS, cwd=cwd)
+    if out["failed"] is None:
+        return set()
+    return {
+        line.strip()
+        for line in out["failed"].split("Documents changed:\n", 1)[1].splitlines()
+    }
+
+
+def _held_by_the_gate(definition) -> set[str]:
+    return {p for p in CORPUS if is_hold_path(p, definition)}
+
+
+def test_the_script_and_the_gate_hold_the_same_paths_under_the_shipped_definition():
+    definition = json.loads((ROOT / ".github" / "hold-paths.json").read_text(encoding="utf-8"))
+    held = _held_by_the_script(ROOT)
+    assert held == _held_by_the_gate(definition)
+    assert {"README.md", "docs/guide.md", "incidents/incidents.csv"} <= held
+    assert not held & {"docs/adr/0004-x.md", "scripts/README.md", "scripts/s.py"}
+
+
+def test_the_script_and_the_gate_follow_a_changed_definition_together(tmp_path):
+    _definition_in(tmp_path, CHANGED_DEFINITION)
+    held = _held_by_the_script(tmp_path)
+    assert held == _held_by_the_gate(CHANGED_DEFINITION)
+    assert held == {"notes/a.md", "private/keep.md", "Makefile", "docs/adr/0004-x.md"}
+
+
+def test_a_definition_the_script_cannot_read_fails_the_check(tmp_path):
+    out = _run("opened", ["docs/a.md"], cwd=tmp_path)
+    assert out["added"] == []
+    assert ".github/hold-paths.json" in out["failed"]
+
+
+def test_a_definition_that_is_not_valid_fails_the_check(tmp_path):
+    _definition_in(tmp_path, {"prefixes": ["docs/"]})
+    out = _run("opened", ["docs/a.md"], cwd=tmp_path)
+    assert out["added"] == []
+    assert ".github/hold-paths.json" in out["failed"]
 
 
 def test_ready_for_review_applies_the_hold_like_an_open():

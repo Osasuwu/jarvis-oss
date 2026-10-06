@@ -1,0 +1,5 @@
+{
+  "prefixes": ["docs/", "incidents/"],
+  "excluded_prefixes": ["docs/adr/"],
+  "files": ["README.md"]
+}
