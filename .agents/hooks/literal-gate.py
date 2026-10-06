@@ -1,4 +1,3 @@
-# Install and check: docs/private-literal-scrub.md#3-a-local-check-before-the-commit-or-the-write
 """PreToolUse hook: block text bound for GitHub that holds a personal literal (#100).
 
 Covers the text the pre-push gate cannot see, because it never passes through git:
@@ -23,6 +22,29 @@ JSON blocks.
 
 It is wired by `settings.snippet.json` (same directory), next to the other agent-safety hooks. Each command is chained with
 `|| exit 2`, so an interpreter that fails to launch blocks instead of passing.
+
+Not covered: `git push --no-verify`; a device without the hook or the list; text sent by
+`curl`, the browser, another harness or a session with `disableAllHooks`; author names
+and emails; typos, split literals, encoded forms.
+
+Install (once per device that writes pull requests on a public repository):
+1. List: keep it outside every repository, one literal per line, and export it as
+   `PERSONAL_LITERALS` (the same list as the CI secret, so update both). PowerShell:
+   `[Environment]::SetEnvironmentVariable("PERSONAL_LITERALS", (Get-Content -Raw "$HOME/.config/personal-literals.txt"), "User")`.
+   Linux/macOS: `export PERSONAL_LITERALS="$(cat "$HOME/.config/personal-literals.txt")"`.
+2. Merge the entries of `settings.snippet.json` into `.claude/settings.local.json` under
+   `hooks.PreToolUse`. The untracked `.claude/settings.local.json` is not in a fresh
+   checkout; `.worktreeinclude` lists it so Claude Code copies it into the worktrees it
+   makes, while one made by `git worktree add` needs a hand copy. Claude Code only as
+   shipped.
+Cost per device: the variable, the merge, and a Python start per Bash or GitHub MCP call.
+
+Check (after installing and after any change to the list or hook; `canary-7f3c9a` is
+made up, use your own): add it to the list and export again, then from the repository
+root this must print `2`:
+`echo '{"tool_name":"Bash","tool_input":{"command":"gh pr comment 1 --body canary-7f3c9a"}}' | python .agents/hooks/literal-gate.py; echo $?`
+Remove the canary from the list and export again. `tests/test_literal_gate_hook.py` runs
+the hook on constructed calls.
 """
 
 from __future__ import annotations

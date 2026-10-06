@@ -1,4 +1,3 @@
-# Install and check: docs/agent-safety-hooks.md#4-a-program-that-inspects-each-call-before-it-runs
 """PreToolUse hook: keep the agent off the human's three GitHub authorities.
 
 The agent works under the human's account and token, so GitHub itself cannot
@@ -18,6 +17,24 @@ file) is not parsed. `.github/workflows/authority-detector.yml` is the other
 half: it reports every label removal and protection change after the fact.
 
 Reads the PreToolUse payload from stdin. Exits 2 with a deny decision to block.
+
+Install: the matchers `Bash|PowerShell` and `^mcp__.*github` in `settings.snippet.json`
+(same directory) run it; the MCP matcher takes the whole server under any prefix. Merge
+those entries into `.claude/settings.local.json` under `hooks.PreToolUse`. Each command runs `python3` if it starts, else `python`, and is chained with
+`|| exit 2`, so an interpreter that fails to launch blocks instead of passing. The
+untracked `.claude/settings.local.json` is not in a fresh checkout; `.worktreeinclude`
+lists it so Claude Code copies it into the worktrees it makes, while one made by
+`git worktree add` needs a hand copy. Claude Code only as shipped; other harnesses
+need their own wiring and parsing.
+
+Check: the hook is silent when it does not fire. Ask the agent to merge a pull request;
+a wired hook denies with a reason in the transcript, and one that fails to launch blocks
+with the shell's error text instead. From the repository root, feeding it a payload by
+hand must exit `2`:
+`echo '{"tool_name":"Bash","tool_input":{"command":"gh pr merge 1"}}' | python .agents/hooks/github-authority-guard.py; echo $?`
+`claude --debug` logs every hook invocation and exit code to
+`~/.claude/debug/<session-id>.txt`. `tests/test_github_authority_guard.py` runs it on
+constructed calls.
 """
 
 import json
@@ -222,7 +239,7 @@ def _strings(value):
 
 def check_mcp(tool_name: str, tool_input: dict) -> str | None:
     """Rules by tool-name class, not a tool-name list: names drift
-    (examples/mcp-matcher-tool-name-drift.md)."""
+    and a matcher that lists tool names goes quiet when the server renames one."""
     name = tool_name.rsplit("__", 1)[-1].lower()
     if name.startswith(_READ_PREFIXES) or name.endswith("_read"):
         return None
