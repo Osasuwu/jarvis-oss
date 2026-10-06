@@ -1,1 +1,7 @@
 id,class,stage,source_type,evidence_strength,link
+INC-001,destructive-local-delete,code,issue,primary,https://github.com/anthropics/claude-code/issues/75859
+INC-002,unconfirmed-history-rewrite,code,issue,primary,https://github.com/anthropics/claude-code/issues/85450
+INC-003,approval-after-effect,code,issue,primary,https://github.com/openai/codex/issues/4969
+INC-004,production-data-loss,code,vendor statement,primary,https://x.com/amasad/status/1946986468586721478
+INC-005,ci-identity-publication,ci,post-mortem,primary,https://nx.dev/blog/s1ngularity-postmortem
+INC-006,production-data-loss,code,news report of the operator's account,secondary,https://letsdatascience.com/news/pocketos-founder-reports-ai-agent-deleted-production-databas-8f0213e2
