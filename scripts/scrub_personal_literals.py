@@ -1,4 +1,3 @@
-# Install and check: docs/private-literal-scrub.md#5-a-ci-scan-with-the-list-held-as-a-secret
 """Personal-literal scrub — CI step for #23.
 
 Reads a newline-separated list of private literals from the ``PERSONAL_LITERALS``
@@ -13,7 +12,37 @@ Run standalone in CI:
     python scripts/scrub_personal_literals.py
 
 Reads the literal list from the ``PERSONAL_LITERALS`` env var and scans
-``GITHUB_WORKSPACE`` (falling back to the current directory).
+``GITHUB_WORKSPACE`` (falling back to the current directory). It walks the checkout including
+``.git``. A hit prints the path with "values withheld"; an empty list, or one with no letter or
+digit, fails.
+
+Not covered: packed history, commit messages and PR or issue text (the pre-push gate and the
+literal-gate hook cover those before they leave the machine), typos and literals split across
+lines, and fork pull requests (GitHub withholds secrets from them). Keep each literal specific
+enough not to occur by chance, or every pull request goes red.
+
+Install (a step in a CI job, Python 3.12):
+
+1. Copy this script and its step. Pass the secret only to that step, after the secret scanner::
+
+       - name: Scrub personal literals
+         env:
+           PERSONAL_LITERALS: ${{ secrets.PERSONAL_LITERALS }}
+         run: python scripts/scrub_personal_literals.py
+
+2. Set the secret from a file outside the repo: ``gh secret set PERSONAL_LITERALS < list.txt``.
+3. Make the job a required check, or a red run blocks nothing.
+
+Check:
+
+- A run that checked something ends ``Scrub clean — checked N literal(s); none found in the
+  tree.`` (N = non-blank secret lines). An older line without a count proves nothing: it
+  printed with no list at all.
+- With no list the step fails with "No personal literals configured…"; expected on an unedited
+  fork pull request.
+- Never plant a real entry: the branch is public once pushed. Add a random canary
+  (``canary-7f3c9a``) to the secret, put it in a file on a throwaway branch and open a pull
+  request. The step must fail and name the file. If it passes, the secret is not what you think.
 """
 
 from __future__ import annotations
