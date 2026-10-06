@@ -1,0 +1,21 @@
+{
+  "planned_classes": 18,
+  "maintainer_owners": ["Osasuwu"],
+  "candidates": [
+    {
+      "id": "N2",
+      "name": "Non-progressive iteration",
+      "description": "repeated edits without new information, undetected"
+    },
+    {
+      "id": "N5",
+      "name": "Review saturation",
+      "description": "review stops catching problems as the volume or the number of rounds grows, undetected"
+    },
+    {
+      "id": "N6",
+      "name": "Global quality drift",
+      "description": "each change passes on its own while the whole degrades, undetected"
+    }
+  ]
+}

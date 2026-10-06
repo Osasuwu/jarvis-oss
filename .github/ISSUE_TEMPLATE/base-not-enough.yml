@@ -1,0 +1,32 @@
+name: The base was not enough
+description: Your agent read the base and it did not help enough. Tell us what was missing.
+title: "base-not-enough: "
+labels: ["base-not-enough"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is public on GitHub. Do not paste code, file paths, names or anything else from a
+        private repo, and do not paste your agent's report: describe in your own words. There is no
+        turnaround promise; see the README's Support section.
+  - type: textarea
+    id: named
+    attributes:
+      label: Which classes the agent named
+      description: The class names from the map that the agent said apply to your repo.
+    validations:
+      required: true
+  - type: textarea
+    id: skipped
+    attributes:
+      label: Which classes the agent skipped
+      description: The class names it passed over, and the reason it gave for each, if you have it.
+    validations:
+      required: false
+  - type: textarea
+    id: missing
+    attributes:
+      label: What was missing
+      description: A failure class you hit that the map does not have, or a class that is there but did not fit your case. Say what happened, without private details.
+    validations:
+      required: true
