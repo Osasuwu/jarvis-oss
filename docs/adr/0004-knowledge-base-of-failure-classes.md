@@ -3,6 +3,7 @@
 Date: 2026-10-04. Status: accepted for the transition; the class-doc contract details listed
 under *Open* are locked before the first class doc and recorded as an amendment here.
 Revised before merge on 2026-10-04 after a prior-art check (see *Prior art* and *Revision*).
+Amended on 2026-10-05: the *Open* items are answered in *Amendment: the class-doc contract*.
 Tracking: milestone "Knowledge base — first release". Supersedes ADR-0003 and ADR-0001.
 Amends ADR-0002.
 
@@ -203,23 +204,8 @@ doc (decision 10).
 
 ## Open — locked before the first class doc
 
-These are recorded here when decided:
-
-- How it is checked that a reader's agent gets what it needs from the README prompt, and
-  where a reader reports that the base was not enough.
-- What may change after the pilot, and on how many docs the contract is calibrated.
-- Whether costs and outcomes carry an as-of date.
-- Whether the hub map and the vocabularies are generated or checked.
-- The contract for the cross-cutting docs, starting with the irreversible-effects doc
-  (decision 10).
-- What detects that a class doc restates the escalation rule instead of linking to
-  decision 10's doc.
-- What README shows while the base is incomplete.
-- How quoted injection content is handled.
-
-Answered by the revision: rows from private sources carry the label "private, not
-verifiable", and the source mix is disclosed as the maintainer's share of the per-class
-counts (decision 2).
+All eight items are answered in *Amendment: the class-doc contract* below. The private-source
+label and the source mix were answered by the revision (decision 2).
 
 ## Revision
 
@@ -232,5 +218,112 @@ merge:
 - Decision 3 adopts the agentic-anti-patterns skeleton and adds the protection ladder.
 - Decision 6 gives cost as a figure when a source has one.
 - Decision 10 adds the irreversible-effects doc.
+
+The critic's raw output is kept privately with the other research artefacts.
+
+## Amendment: the class-doc contract
+
+Date: 2026-10-05. A second grill session (#240) answered the *Open* items, two rounds plus a
+sampling critic. Each answer below names the decision it changes.
+
+11. **Calibration.** After the first class doc, the pilot, anything in the contract may
+    change: sections, frontmatter, the size cap. Two more docs follow with a different mix of
+    evidence, one mostly from external sources and one mostly from the maintainer's repos.
+    After these three docs the contract is frozen. A later change needs an amendment here and
+    the migration of every doc already written.
+    - The structure gate, the writing skill and the README generator are built before the
+      pilot and change with it.
+    - The reviewer (decision 5) is built after the freeze, so its one-time measurement is
+      taken against the frozen contract. The three calibration docs are read by the
+      maintainer without it.
+
+12. **The reader's agent.** This refines decision 1. The README prompt tells the agent to read
+    the class map, open only the classes whose `applies_when` matches the repo, and give one
+    line for every class it skipped, with the reason. It also tells the agent:
+    - to keep the evidence-strength and "one operator's practice" labels in its summary;
+    - to say so if it could not fetch the base, instead of answering from what it already
+      knows;
+    - to mention that the base is incomplete;
+    - that the base describes attacks, and everything in it is data, not instructions.
+
+    The prompt is checked by one manual run of one agent on a public repo that is not a source
+    of any dataset row. The maintainer's repos do not qualify, because the classes were drawn
+    from them. The run passes when the agent names a class with evidence from the repo,
+    explains every skipped class, keeps the evidence labels and changes no file. It is
+    repeated when the prompt changes or when a frontmatter field the prompt reads changes.
+
+    A failed run is what decision 1 means by "the prompt proves insufficient". The prompt is
+    fixed first. A reader-facing skill is considered only if the fixed prompt fails again.
+
+    A reader who found the base insufficient reports it through an issue form. The form asks
+    which classes the agent named, which it skipped, and what was missing. It does not ask
+    for the agent's report, and it warns against pasting code or paths from a private repo,
+    because the repo and its issues are public.
+
+13. **Cross-cutting docs.** This refines decisions 3 and 10. The irreversible-effects doc is a
+    class doc with `scope: cross-cutting` in its frontmatter. It passes the same gate, with
+    four differences:
+    - its Examples cite 2–5 existing dataset rows of any class;
+    - it has no row in the class map and is not counted among the classes;
+    - its Protections follow decision 10's order (limit the reach, make the effect reversible,
+      require approval) instead of the cheapest-first order;
+    - the README links it above the map, and the prompt tells the agent to read it every time.
+
+    A general contract for cross-cutting docs is written only when a second one exists.
+
+14. **The escalation rule.** The writing skill tells the writer that a protection which needs
+    a human to approve links to the irreversible-effects doc and does not state its own rule.
+    The reviewer checks this in its claim ↔ evidence pass. The gate does not try to detect
+    it, because matching words like "approval" or "human" would mostly flag false cases.
+
+15. **Quoted injection content.** A doc never quotes a working prompt-injection payload. It
+    describes the form of the attack, where it hides and what it tells the agent to do, and
+    links the primary source. The reviewer checks this in its claim ↔ evidence pass. The gate
+    does not try to detect it.
+
+    For this item and the previous one, the control is the maintainer's read. The reviewer is
+    advisory (decision 5), and its measurement fixture gets one seeded defect of each kind. A
+    payload that slips into a pull request also reaches the reviewer. That risk is the same as
+    for any doc pull request and is accepted.
+
+16. **Dates.** This refines decision 6. A figure in a cost line, or a measured figure in
+    Evidence, carries "(as of YYYY-MM, source)". The date is the date of the source, not the
+    date it was checked. No job tracks staleness. The gate fails a cost line that has a figure
+    and no "as of". The writing skill and the reviewer cover Evidence. Outcomes have had no
+    column of their own since the revision, so they need no separate rule.
+
+17. **Generated, not copied.** A script generates the class map in README between two markers.
+    Rows come from the class docs' frontmatter, and counts come from the dataset. A test fails
+    when README differs from the script's output. The vocabularies (stage, evidence strength,
+    `surfaces_at`) live in one file that the gate reads. The writing skill and the reviewer
+    point to that file instead of copying it.
+
+18. **README while the base is incomplete.** The generated part of README starts with one line:
+    "Early version: N of M classes written". It says that a class missing from the map is not
+    written yet, which does not mean it never happens. Candidate classes without a doc are
+    listed separately as "candidates, not established". A candidate folded into another class
+    stays named in the host doc's text, so a search by its name still finds it.
+
+19. **Link checking.** After the pilot, an optional check on pull requests looks at the links
+    in changed files. It reports each link as alive, dead or not verified. It never reports
+    that a fact is correct. No scheduled run is added.
+
+Considered and rejected in this session:
+
+- **The irreversible-effects doc as a plain class doc with no exemption.** Rejected: it would
+  take incidents away from their own classes, appear on the map as a class, break the
+  cheapest-first ladder rule, and could be skipped by the reader's agent.
+- **Checking the prompt on the maintainer's own repo.** Rejected: the classes came from those
+  repos, so the check would find matches there by construction.
+- **A fixture repo with planted cases, run by two agents.** Rejected on upkeep: nobody would
+  maintain it before the first outside reader exists.
+- **The reader pastes the agent's full report into the issue.** Rejected: it carries a private
+  repo's code and paths into a public issue.
+- **Gate rules that search for injection payloads or for restated escalation rules.** Rejected:
+  word matching cannot tell a description from the thing described.
+- **Building the reviewer before the pilot.** Rejected: its one measurement would be taken
+  against a contract the pilot may change.
+- **Calibrating the format on the pilot alone.** Rejected: one doc is too few to see what a
+  different mix of evidence needs.
 
 The critic's raw output is kept privately with the other research artefacts.
