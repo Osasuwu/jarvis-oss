@@ -1,4 +1,3 @@
-# Install and check: docs/agent-safety-hooks.md#4-a-program-that-inspects-each-call-before-it-runs
 """PreToolUse hook: scan tool inputs for secret patterns before execution.
 
 Handles three tool types:
@@ -9,7 +8,28 @@ Handles three tool types:
 Reads tool_input from stdin (JSON). Exits 2 to block if secrets detected.
 Does NOT scan for personal data — only credentials that grant access.
 
-Wire it up via the matchers in `settings.snippet.json` (same directory).
+Install: the matchers in `settings.snippet.json` (same directory) run it: `Bash`,
+`Edit|Write|NotebookEdit` and `^mcp__github__` (the whole server, since a list of write
+tools fails open when the server renames one; change the prefix if your server has
+another name). Merge those entries into `.claude/settings.local.json` under
+`hooks.PreToolUse`. Each command runs `python3` if it starts, else `python`, and is chained with
+`|| exit 2`, so an interpreter that fails to launch blocks instead of passing. The
+untracked `.claude/settings.local.json` is not in a fresh checkout; `.worktreeinclude`
+lists it so Claude Code copies it into the worktrees it makes, while one made by
+`git worktree add` needs a hand copy. Claude Code only as shipped; other harnesses
+need their own wiring and parsing.
+
+Check: the hook is silent when it does not fire, so a session never shows whether it
+was wired. Ask the agent to write `sk-ant-` plus 20 or more letters or digits to a
+scratch file; a wired hook denies with a `BLOCKED:` reason in the transcript, and one
+that fails to launch blocks with the shell's error text instead. `claude --debug` logs
+every hook invocation and exit code, silent exit-0 runs included, to
+`~/.claude/debug/<session-id>.txt`. The hook keeps no log of its own.
+`tests/test_agent_safety_hooks.py` runs it on constructed calls.
+
+Limit: it sees only what its matchers name. A file write made with `echo >` in the
+shell is scanned as a `Bash` command, not as a file write.
+
 CUSTOMIZE: SECRET_PATTERNS and _SECRET_VARS below name a specific set of
 providers. Add or remove entries for whatever your own project's stack uses.
 """
