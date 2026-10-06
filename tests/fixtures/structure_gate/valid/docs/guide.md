@@ -5,4 +5,4 @@ applies_when_not: not applicable outside this fixture
 
 # Valid doc
 
-See [companion example](../examples/setup.md) for a worked case.
+See [companion doc](companion.md) for a linked case.

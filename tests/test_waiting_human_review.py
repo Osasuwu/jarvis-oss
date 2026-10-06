@@ -1,7 +1,7 @@
 """Behaviour checks for .github/workflows/waiting-human-review.yml (#213).
 
 The hold applies to pull requests that change a document: a file under docs/ (decision
-records under docs/adr/ excepted) or examples/. The checks extract the embedded
+records under docs/adr/ excepted). The checks extract the embedded
 github-script body and run it under node against a mocked `github`, `context` and `core`,
 as tests/test_machinery_guard.py does, so they test the script that actually ships.
 """
@@ -114,7 +114,9 @@ def _run(action, files, *, pushed=(), labels=(), reviewers=(), attempt="1"):
 
 
 def _excluded_doc_dirs() -> tuple[str, ...]:
-    spec = importlib.util.spec_from_file_location("doc_review", ROOT / "scripts" / "doc_review.py")
+    spec = importlib.util.spec_from_file_location(
+        "structure_gate", ROOT / "tests" / "structure_gate.py"
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module.EXCLUDED_DOC_DIRS
@@ -126,20 +128,19 @@ def _excluded_doc_dirs() -> tuple[str, ...]:
 @pytest.mark.parametrize(
     "path, held",
     [
-        ("docs/publishing-discipline.md", True),
+        ("docs/guide.md", True),
         ("docs/sub/guide.md", True),
         ("docs/diagram.png", True),
-        ("examples/review-hold-cleared-by-same-account.md", True),
         ("docs/adr/0002-plumbing-only-doc-changes-get-a-full-review.md", False),
         ("README.md", False),
-        ("scripts/doc_review.py", False),
-        (".agents/skills/jarvis-setup/SKILL.md", False),
+        ("scripts/check_quotes.py", False),
+        (".agents/skills/write-doc/SKILL.md", False),
         (".github/workflows/waiting-human-review.yml", False),
-        ("tests/test_doc_review.py", False),
+        ("tests/test_check_quotes.py", False),
     ],
 )
 def test_a_fresh_pull_request_is_held_only_when_it_changes_a_document(path, held):
-    out = _run("opened", [path, "tests/test_doc_review.py"])
+    out = _run("opened", [path, "tests/test_check_quotes.py"])
     if held:
         assert out["added"] == [LABEL]
         assert out["failed"].startswith("Human review is owed")
@@ -149,7 +150,7 @@ def test_a_fresh_pull_request_is_held_only_when_it_changes_a_document(path, held
         assert out["failed"] is None
 
 
-def test_every_directory_doc_review_excludes_is_excluded_from_the_hold_too():
+def test_every_directory_the_structure_gate_excludes_is_excluded_from_the_hold_too():
     dirs = _excluded_doc_dirs()
     assert "docs/adr/" in dirs
     for d in dirs:

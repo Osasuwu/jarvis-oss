@@ -1,4 +1,4 @@
-"""Quote check — a writer's step before review-doc (#86).
+"""Quote check — a writer's step before review (#86).
 
 Lists every passage in quotation marks in a markdown doc and checks that it appears, verbatim, in
 a source linked from the same paragraph. When a paragraph has no link, the links of the paragraph
@@ -25,7 +25,7 @@ Exits 1 if any quote is ``NOT FOUND``, and only then: an unfetchable source neve
 The last line counts the ``NOT FOUND`` quotes and the sources that could not be fetched; in
 GitHub Actions it is also added to the job summary (``$GITHUB_STEP_SUMMARY``). This checks
 wording only, not whether the doc's claim around the quote matches the source; that stays
-review-doc's job.
+the reviewer's job.
 
 ``--json PATH`` also writes the run as JSON: the counts, and every quote not marked ``found`` with
 its doc, line, verdict, candidate sources and the ones that could not be fetched. The weekly run
