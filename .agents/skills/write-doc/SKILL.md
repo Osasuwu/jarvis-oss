@@ -45,13 +45,12 @@ Then say how claims are marked: which options we **tried** (and where the trace 
 The whole space a reader could pick from, not only what we used. Search outside our projects:
 tool docs, source code, well-known projects that solve the same problem.
 
-Search before you write this section, and search blind. Have review-doc's
-[pass 2](../review-doc/SKILL.md#pass-2--completeness-blind) run in a fresh context (a subagent,
-or a new session), never in the session that writes the doc, and give it only your frontmatter
-and "The problem". It lists every approach it finds, with one primary source each, and the
-queries it ran. Each approach becomes an option, goes under one, or is excluded by
-`applies_when_not`. Put the queries in the PR. The reviewer runs pass 2 again; this is so that
-it finds nothing new.
+Search before you write this section, and search blind. Run the search in a fresh context (a
+subagent, or a new session), never in the session that writes the doc, and give it only your
+frontmatter and "The problem". It lists every approach it finds, with one primary source each,
+and the queries it ran. Each approach becomes an option, goes under one, or is excluded by
+`applies_when_not`. Put the queries in the PR. The reviewer runs them again; this is so that
+they find nothing new.
 
 Each option gets:
 
@@ -92,21 +91,17 @@ of the doc.
 
 ## Where the rest goes
 
-- A recorded run or a third-party case that shows an option at work → `examples/`, with `fit`
-  and either `last_seen` (ours) or `source` + `verified` (theirs), and `pairs_with` pointing at
-  the doc.
 - Something a reader can install or copy → the option's own section: an **Install** paragraph
   (what it does, what it costs, which harness) and a `#### Check` (how to tell it ran). Put the
   code file in the repo and give its header a one-line comment pointing at the option's anchor.
 
-Link examples from the option they illustrate. Keep the doc itself under the size cap by moving
-detail there, not by dropping options.
+Keep the doc itself under the size cap by moving detail into linked files, not by dropping
+options.
 
 ## Before review
 
 The reviewer should find nothing you could have found yourself. Check these before you open the
-PR for review, on the doc and on the examples and resources it links to or that name it in
-`pairs_with` (review-doc's scope):
+PR for review, on the doc and on the files it links to:
 
 1. **Quotes.** Run `python scripts/check_quotes.py <doc> <each of those files>`. For each quote it
    fetches the pages linked from the quote's paragraph, or from the paragraph right before it if
@@ -122,8 +117,8 @@ PR for review, on the doc and on the examples and resources it links to or that 
 3. **`tried` needs a trace**: a recorded example in this repo, a commit, an issue or a test,
    linked from the claim. Without one, the option is *sourced*, and its "How it works" needs the
    tool's docs or code quoted.
-4. **Each fact in one version.** For every claim you wrote or changed, search the doc and those
-   files for the same fact (a tool, a flag, a number) and make every mention agree.
+4. **Each fact in one version.** For every claim you wrote or changed, search the doc and the
+   files it links to for the same fact (a tool, a flag, a number) and make every mention agree.
 
 ## When review finds something
 
@@ -136,6 +131,5 @@ A fix is new text, and new text is unreviewed. For each finding:
 
 ## Before a person merges
 
-Run [`review-doc`](../review-doc/SKILL.md) on the PR, in contexts that did not write the doc. Fix
-or answer what it finds, and run its delta pass on each fix, until the loop its report section
-describes ends. You wrote the doc, so you do not review it.
+Have the PR reviewed in a context that did not write the doc, and fix or answer what it finds
+until a round finds nothing new. You wrote the doc, so you do not review it.

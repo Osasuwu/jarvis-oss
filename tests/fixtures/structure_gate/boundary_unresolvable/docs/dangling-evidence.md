@@ -5,4 +5,4 @@ applies_when_not: not applicable outside this fixture
 
 # Doc with dangling evidence pointer
 
-See [evidence](../examples/does-not-exist.md) for the case this applies to.
+See [evidence](does-not-exist.md) for the case this applies to.
