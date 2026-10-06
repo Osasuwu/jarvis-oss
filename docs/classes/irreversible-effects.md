@@ -6,7 +6,7 @@ surfaces_at:
   - code
   - ci
   - merge
-applies_when: An AI coding agent, or a CI job it drives, can take an action you could not undo afterwards (delete data that is in no repository, rewrite shared history, change a production database, publish a package, expose a secret, spend money, change who has access), and you want to know when it must stop and ask a person and what else limits the damage.
+applies_when: An AI coding agent, or the CI or release identity it acts through, can take an action you could not undo afterwards (delete data that is in no repository, rewrite shared history, change a production database, publish a package, expose a secret, spend money, change who has access), and you want to know when it must stop and ask a person and what else limits the damage.
 applies_when_not: Mistakes a revert, a failed test or a code review would catch. Prompt injection as the route into the agent (each class doc covers its own route; this doc covers what the injected or mistaken action can reach). Runaway cost that stops by itself when a quota ends.
 ---
 
@@ -27,8 +27,8 @@ These rows come from different classes; the common thread is the effect, not the
 - INC-001: a cleanup command meant for a temporary directory ran against the real home directory, because an environment variable set in an earlier tool call did not carry over to the next one. The same `rm -rf` on the intended target would have been routine.
 - INC-002: an agent rewrote the history of a branch with an open public pull request. It did ask, but the force-push appeared only as a parenthetical inside an option the person picked for another reason.
 - INC-003: an agent deleted uncommitted files and only then asked for permission to do it.
-- INC-004: an agent working in a development session deleted data from the production database. The vendor said it was rolling out automatic separation of development and production databases, and pointed to its existing one-click restore ([The Register, 2025-07](https://www.theregister.com/2025/07/22/replit_saastr_response/)).
-- INC-005: no agent was involved. An attacker used a shell injection through a pull-request title to take a long-lived registry publish token out of a CI workflow, and malicious versions went out under the project's name for four hours before the registry removed them. It shows what a CI identity's reach allows, whoever drives it.
+- INC-004: an agent working in a development session deleted data from the production database. The vendor said it was rolling out automatic separation of development and production databases, and pointed to its existing one-click restore (reported in [The Register, 2025-07](https://www.theregister.com/2025/07/22/replit_saastr_response/), a secondary account of the vendor's post that the row links).
+- INC-005: no agent drove the CI compromise (the malicious packages later tried to use victims' local AI tools). An attacker used a shell injection through a pull-request title to take a registry publish token out of a CI workflow, and malicious versions went out under the project's name for four hours before the registry removed them. It shows what a CI identity's reach allows, whoever drives it.
 
 ## Mechanism
 
@@ -65,7 +65,7 @@ The rungs follow the rule's own order: limit the reach, then make the effect rev
 - **Cost:** More credentials to issue, rotate and keep apart; a task that does need production is slower because a person has to do or approve that part.
 - **Breaks when:** A broader credential is reachable from somewhere the agent can read. In INC-006 an agent found an infrastructure token in a file unrelated to its task and used it on a volume it took to be staging, and the backups were on that volume. Fine-grained tokens also cannot cover everything: the vendor lists gaps such as packages and some APIs.
 
-### Reach: keep publish authority out of the agent's hands with trusted publishing
+### Reach: replace stored publish tokens with short-lived, workflow-bound trusted publishing
 
 - **Source:** [npm trusted publishing](https://docs.npmjs.com/trusted-publishers); the project in INC-005 [adopted it after the incident](https://nx.dev/blog/s1ngularity-postmortem)
 - **Cost:** The release workflow is rebuilt around short-lived, workflow-bound tokens; the setup is per package and per registry.
@@ -77,17 +77,17 @@ The rungs follow the rule's own order: limit the reach, then make the effect rev
 - **Cost:** A plan tier that includes the feature for private repositories; administrators lose the shortcut of rewriting a branch directly.
 - **Breaks when:** The acting identity is an administrator or is on the bypass list, so an agent running under an owner's token inherits the exemption. It protects the remote only: local, uncommitted work (INC-003) is outside it.
 
-### Reversibility: keep local work in version control, and do not rely on session checkpoints for shell deletes
+### Reversibility: keep work in a remote repository, and do not rely on session checkpoints for shell deletes
 
 - **Source:** [Claude Code checkpointing documentation](https://code.claude.com/docs/en/checkpointing), which says checkpoints are not a replacement for version control and do not track files changed by Bash commands such as `rm` and `mv`.
-- **Cost:** Committing or backing up before the agent works; a remote that holds the history.
-- **Breaks when:** The data is in no repository (a home directory, INC-001) or is uncommitted (INC-003), so there is nothing to restore from. A rewind does not help either: the documentation says a shell `rm` cannot be undone that way.
+- **Cost:** Committing and pushing before the agent works; a remote that holds the history.
+- **Breaks when:** The data is in no repository (a home directory, INC-001), is uncommitted or unpushed (INC-003), or the only repository is a local one that the same deletion takes with the files, so there is nothing to restore from. A rewind does not help either: the documentation says a shell `rm` cannot be undone that way.
 
 ### Reversibility: keep backups outside the identity's reach, and verify the recovery path
 
 - **Source:** [a practitioner write-up](https://www.bytebase.com/blog/how-to-prevent-ai-agent-from-dropping-your-production-database/) (as of 2026-09; the vendor sells a database governance layer) advises verifying the recovery path before an agent connects. That the backup should sit outside the identity's reach is inference from [the account in INC-006](https://letsdatascience.com/news/pocketos-founder-reports-ai-agent-deleted-production-databas-8f0213e2), where the backups shared the deleted volume.
-- **Cost:** Storage, a second credential or account, and the time to run a restore drill.
-- **Breaks when:** The backup shares a volume, account or credential with the data, so one call removes both (INC-006). It also breaks when nobody has restored from it, because then it is a hope, not a restore point.
+- **Cost:** Storage, a second credential or account, and the time to check that a restore works.
+- **Breaks when:** The backup shares a volume, account or credential with the data, so one call removes both (INC-006). It also breaks when nobody has checked the recovery path, which is the author's reading of the advice above: an untested backup may not restore.
 
 ### Reversibility: turn on deletion protection and versioning on the resource
 
@@ -111,13 +111,13 @@ The rungs follow the rule's own order: limit the reach, then make the effect rev
 
 - **Source:** [Terraform plan](https://developer.hashicorp.com/terraform/cli/commands/plan)
 - **Cost:** A second step and a reader for every change; the plan and the apply are two runs.
-- **Breaks when:** Nobody reads the plan, or the person approves it without understanding it. A plan previews the effect; it does not prevent it.
+- **Breaks when:** Nobody reads the plan, or the person approves it without understanding it. A plan previews the effect; it does not prevent it, and the page says that other changes to the target system in the meantime can make the final effect differ from what an earlier speculative plan showed.
 
 ### Approval: require a reviewer on the protected environment that holds the credential
 
 - **Source:** [GitHub deployment environments](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)
 - **Cost:** A named reviewer must be available for every deployment to that environment; private repositories need a paid plan.
-- **Breaks when:** Self-review is left on, so the person who triggered the run can approve it. A credential kept outside the environment, such as in repository-level secrets, is not behind the approval, because the page says only the environment's own secrets wait for the rules. One approver is enough by default, so there is no second person unless it is configured.
+- **Breaks when:** Self-review is left on, so the person who triggered the run can approve it. A credential kept outside the environment, such as in repository-level secrets, is not behind the approval, because the page says that the environment's own secrets wait for the rules and does not cover repository-level secrets. One approver is enough by default, so there is no second person unless it is configured.
 
 ### Approval: hold the change behind a required check until a person reads it
 
