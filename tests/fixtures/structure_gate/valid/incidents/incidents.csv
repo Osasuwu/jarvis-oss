@@ -1,0 +1,7 @@
+id,class,stage,source_type,evidence_strength,link
+INC-001,alpha,review,pull request,primary,https://example.com/alpha/1
+INC-002,alpha,ci,postmortem,secondary,https://example.com/alpha/2
+INC-003,alpha,code,issue,private,"private, not verifiable"
+INC-004,beta,task,pull request,primary,https://example.com/beta/1
+INC-005,beta,merge,issue,self-reported,https://example.com/beta/2
+INC-006,beta,after-merge,issue,primary,https://example.com/beta/3

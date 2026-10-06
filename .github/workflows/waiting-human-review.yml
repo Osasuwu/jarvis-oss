@@ -1,9 +1,10 @@
 name: Waiting on human review
 
-# The hold is for documents (#213): a pull request that changes a file under
-# docs/ (decision records under docs/adr/ excepted) waits for a person to
-# read it. Everything else in the repo supports those documents and
-# merges on its own gates.
+# The hold is for documents (#213): a pull request that changes a document waits
+# for a person to read it. What counts as a document is defined once, in
+# .github/hold-paths.json (docs/ without docs/adr/, incidents/, README.md), and
+# tests/structure_gate.py reads the same file (#241). Everything else in the repo
+# supports those documents and merges on its own gates.
 on:
   pull_request:
     types:
@@ -27,16 +28,41 @@ jobs:
   waiting-human-review:
     runs-on: ubuntu-latest
     steps:
+      # The path definition is a file in the repo; the script reads it from the working tree.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check review hold
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
-            // A document path. docs/adr/ holds decision records, not documents for
-            // readers; tests/structure_gate.py excludes it too.
-            const isDocPath = (p) => p.startsWith("docs/") && !p.startsWith("docs/adr/");
             const LABEL = "waiting-human-review";
+            const DEFINITION = ".github/hold-paths.json";
+
+            // A document path, by the one definition tests/structure_gate.py also reads.
+            // Same order as its is_hold_path: a listed file is held; else a path under an
+            // excluded prefix is not; else a path under a listed prefix is. A definition that
+            // cannot be read fails the check, so a broken file never lets a document through.
+            let definition;
+            try {
+              definition = JSON.parse(
+                require("fs").readFileSync(require("path").join(process.cwd(), DEFINITION), "utf8")
+              );
+            } catch (e) {
+              core.setFailed(`Cannot read ${DEFINITION} (${e.message}); the hold cannot tell documents apart.`);
+              return;
+            }
+            for (const key of ["prefixes", "excluded_prefixes", "files"]) {
+              if (!Array.isArray(definition[key])) {
+                core.setFailed(`${DEFINITION} needs '${key}' as a list; the hold cannot tell documents apart.`);
+                return;
+              }
+            }
+            const startsWithAny = (p, prefixes) => prefixes.some((x) => p.startsWith(x));
+            const isDocPath = (p) =>
+              definition.files.includes(p) ||
+              (!startsWithAny(p, definition.excluded_prefixes) &&
+                startsWithAny(p, definition.prefixes));
 
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;

@@ -1,0 +1,5 @@
+{
+  "stage": ["task", "code", "ci", "review", "merge", "after-merge"],
+  "evidence_strength": ["primary", "secondary", "self-reported", "private"],
+  "surfaces_at": ["task", "code", "ci", "review", "merge", "after-merge"]
+}
