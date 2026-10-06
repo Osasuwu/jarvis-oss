@@ -28,7 +28,7 @@ These rows come from different classes; the common thread is the effect, not the
 - INC-002: an agent rewrote the history of a branch with an open public pull request. It did ask, but the force-push appeared only as a parenthetical inside an option the person picked for another reason.
 - INC-003: an agent deleted uncommitted files and only then asked for permission to do it.
 - INC-004: an agent working in a development session deleted data from the production database. The vendor said it was rolling out automatic separation of development and production databases, and pointed to its existing one-click restore (reported in [The Register, 2025-07](https://www.theregister.com/2025/07/22/replit_saastr_response/), a secondary account of the vendor's post that the row links).
-- INC-005: no agent drove the CI compromise (the malicious packages later tried to use victims' local AI tools). An attacker used a shell injection through a pull-request title to take a registry publish token out of a CI workflow, and malicious versions went out under the project's name for four hours before the registry removed them. It shows what a CI identity's reach allows, whoever drives it.
+- INC-005: no agent drove the CI compromise (the malicious packages later tried to use victims' local AI tools). An attacker used a shell injection through a pull-request title to run commands in a CI workflow; a later run of the publish workflow exposed the registry publish token to the injected script, and malicious versions went out under the project's name for four hours before the registry removed them. It shows what a CI identity's reach allows, whoever drives it.
 
 ## Mechanism
 
@@ -81,12 +81,12 @@ The rungs follow the rule's own order: limit the reach, then make the effect rev
 
 - **Source:** [Claude Code checkpointing documentation](https://code.claude.com/docs/en/checkpointing), which says checkpoints are not a replacement for version control and do not track files changed by Bash commands such as `rm` and `mv`.
 - **Cost:** Committing and pushing before the agent works; a remote that holds the history.
-- **Breaks when:** The data is in no repository (a home directory, INC-001), is uncommitted or unpushed (INC-003), or the only repository is a local one that the same deletion takes with the files, so there is nothing to restore from. A rewind does not help either: the documentation says a shell `rm` cannot be undone that way.
+- **Breaks when:** The data is in no repository (a home directory, INC-001), is uncommitted (INC-003) or unpushed, or the only repository is a local one that the same deletion takes with the files, so there is nothing to restore from. A rewind does not help either: the documentation says a shell `rm` cannot be undone that way.
 
 ### Reversibility: keep backups outside the identity's reach, and verify the recovery path
 
 - **Source:** [a practitioner write-up](https://www.bytebase.com/blog/how-to-prevent-ai-agent-from-dropping-your-production-database/) (as of 2026-09; the vendor sells a database governance layer) advises verifying the recovery path before an agent connects. That the backup should sit outside the identity's reach is inference from [the account in INC-006](https://letsdatascience.com/news/pocketos-founder-reports-ai-agent-deleted-production-databas-8f0213e2), where the backups shared the deleted volume.
-- **Cost:** Storage, a second credential or account, and the time to check that a restore works.
+- **Cost:** Storage, a second credential or account, and the time to check the recovery path.
 - **Breaks when:** The backup shares a volume, account or credential with the data, so one call removes both (INC-006). It also breaks when nobody has checked the recovery path, which is the author's reading of the advice above: an untested backup may not restore.
 
 ### Reversibility: turn on deletion protection and versioning on the resource
@@ -117,7 +117,7 @@ The rungs follow the rule's own order: limit the reach, then make the effect rev
 
 - **Source:** [GitHub deployment environments](https://docs.github.com/en/actions/managing-workflow-runs-and-deployments/managing-deployments/managing-environments-for-deployment)
 - **Cost:** A named reviewer must be available for every deployment to that environment; private repositories need a paid plan.
-- **Breaks when:** Self-review is left on, so the person who triggered the run can approve it. A credential kept outside the environment, such as in repository-level secrets, is not behind the approval, because the page says that the environment's own secrets wait for the rules and does not cover repository-level secrets. One approver is enough by default, so there is no second person unless it is configured.
+- **Breaks when:** Self-review is left on, so the person who triggered the run can approve it. The page says that the environment's own secrets wait for the rules and does not cover repository-level secrets, so it gives no basis to think a credential kept there waits for the approval. One approver is enough by default, so there is no second person unless it is configured.
 
 ### Approval: hold the change behind a required check until a person reads it
 
