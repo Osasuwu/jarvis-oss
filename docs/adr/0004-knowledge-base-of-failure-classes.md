@@ -367,7 +367,7 @@ maintainer's repos, against 4 of 17 for the pilot. This records what it changed 
 decision 11.
 
 22. **No change to the contract.** The doc fit the contract as the pilot left it.
-    - The size cap of decision 20 holds at 30 KB. The doc is about 29.6 KB with twenty rungs,
+    - The size cap of decision 20 holds at 30 KB. The doc is about 29.8 KB with twenty rungs,
       the closest any doc has come to the cap, and nothing in it was cut to fit. The third
       calibration doc can still re-set it.
     - `source_type` stays free text. The external rows needed three values (a security
