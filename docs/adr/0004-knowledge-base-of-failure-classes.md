@@ -358,3 +358,33 @@ Considered and rejected:
   dataset already holds, which would drift from it; decision 17 generates instead.
 - **Sending the agent to the dataset.** Rejected: the reader's agent would load every row of
   every class to get one label per class.
+
+## Amendment: after the second calibration doc
+
+Date: 2026-10-07. The second calibration doc, `pattern-matched-boundaries` (C11), is written.
+Most of its evidence is external: 11 of its 17 dataset rows come from outside the
+maintainer's repos, against 4 of 17 for the pilot. This records what it changed under
+decision 11.
+
+22. **No change to the contract.** The doc fit the contract as the pilot left it.
+    - The size cap of decision 20 holds at 30 KB. The doc is about 29.9 KB with twenty rungs,
+      the closest any doc has come to the cap, and nothing in it was cut to fit. The third
+      calibration doc can still re-set it.
+    - `source_type` stays free text. The external rows needed three values (a security
+      advisory, a researcher's write-up, an issue), and free text held them.
+    - A vendor's security advisory about its own tool, and a write-up by the researcher who
+      found the bypass, count as `primary` evidence: each is the incident's own record. The
+      evidence-strength vocabulary is unchanged.
+    - The map's count of rows from the maintainer's repos, derived from the link, showed the
+      external mix without a new dataset column.
+
+Considered and rejected:
+
+- **Raising the size cap now.** Rejected: the doc fits without a cut, and raising the cap
+  before the third doc would decide on two docs what decision 11 leaves to three.
+- **Moving part of the ladder into a linked file.** Rejected: nothing had to move, and the
+  reader's agent reads one file per class.
+- **A separate evidence-strength value for vendor advisories.** Rejected: the vocabulary says
+  how close a link is to the incident, and an advisory is as close as a link gets.
+- **A dataset column for whether a row is external.** Rejected: a copy of what the link already
+  says, which decision 17 derives instead.
