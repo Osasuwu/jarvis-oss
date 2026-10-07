@@ -5,3 +5,20 @@ INC-003,approval-after-effect,code,issue,primary,https://github.com/openai/codex
 INC-004,production-data-loss,code,vendor statement,primary,https://x.com/amasad/status/1946986468586721478
 INC-005,ci-identity-publication,ci,post-mortem,primary,https://nx.dev/blog/s1ngularity-postmortem
 INC-006,production-data-loss,code,news report of the operator's account,secondary,https://letsdatascience.com/news/pocketos-founder-reports-ai-agent-deleted-production-databas-8f0213e2
+INC-007,claims-from-plausibility,code,issue,primary,https://github.com/anthropics/claude-code/issues/1501
+INC-008,claims-from-plausibility,review,issue,primary,https://github.com/anthropics/claude-code/issues/22507
+INC-009,claims-from-plausibility,code,issue,primary,https://github.com/anthropics/claude-code/issues/46940
+INC-010,claims-from-plausibility,after-merge,researcher's write-up,primary,https://www.lasso.security/blog/ai-package-hallucinations
+INC-011,claims-from-plausibility,after-merge,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/61
+INC-012,claims-from-plausibility,review,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/63
+INC-013,claims-from-plausibility,review,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/216
+INC-014,claims-from-plausibility,review,issue,primary,https://github.com/Osasuwu/jarvis/issues/651
+INC-015,claims-from-plausibility,review,pull request,primary,https://github.com/Osasuwu/jarvis/pull/1839
+INC-016,claims-from-plausibility,review,pull request,primary,https://github.com/Osasuwu/music-intel-mcp/pull/152
+INC-017,claims-from-plausibility,after-merge,issue,primary,https://github.com/Osasuwu/like-current-song/issues/120
+INC-018,claims-from-plausibility,after-merge,issue,primary,https://github.com/Osasuwu/like-current-song/issues/153
+INC-019,claims-from-plausibility,after-merge,issue,primary,https://github.com/Osasuwu/like-current-song/issues/189
+INC-020,claims-from-plausibility,code,issue,private,"private, not verifiable"
+INC-021,claims-from-plausibility,code,issue,private,"private, not verifiable"
+INC-022,claims-from-plausibility,task,issue,private,"private, not verifiable"
+INC-023,claims-from-plausibility,after-merge,issue,private,"private, not verifiable"
