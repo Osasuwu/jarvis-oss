@@ -51,7 +51,7 @@ Each statement was plausible, because it is what is usually true in a project li
 
 **A hallucinated package can be made real by someone else.** A name that does not exist fails at install, which is a check of sorts. Once someone registers the name, the install succeeds, the claim looks verified, and what runs is whatever the registrant published (INC-010). The package rungs below therefore look at a package's age and record, not only at whether the name resolves.
 
-**What protects.** A claim is safe to act on once something other than its author has checked it. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
+**What protects.** A claim is safe to act on once something other than its author has checked it against a result: a run, a diff, a registry, a required check. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
 
 ## Where it surfaces
 
@@ -81,9 +81,9 @@ Cheapest first. The first rungs ask the agent to check; the middle ones give it 
 
 ### Grounding: give the agent the documentation for the versions you use
 
-- **Source:** [Context7](https://github.com/upstash/context7), which "pulls up-to-date, version-specific documentation and code examples straight from the source — and places them directly into your prompt."; a benchmark of documentation retrieval in general, not of Context7, is in Evidence.
+- **Source:** [Context7](https://github.com/upstash/context7), which "pulls up-to-date, version-specific documentation and code examples straight from the source — and places them directly into your prompt."; a benchmark of documentation retrieval, not of Context7, is in Evidence.
 - **Cost:** Tokens for the documentation in context; setting up the server.
-- **Breaks when:** The agent does not ask for the documentation. The documentation can be wrong: [Context7](https://github.com/upstash/context7) says it "cannot guarantee the accuracy, completeness, or security of all library documentation." In a benchmark of the authors' own retrieval system, not of Context7, a weaker retriever made results worse on APIs the model already knew well (see Evidence).
+- **Breaks when:** The agent does not ask for the documentation. The documentation can be wrong: [Context7](https://github.com/upstash/context7) says it "cannot guarantee the accuracy, completeness, or security of all library documentation." In a benchmark that used the authors' own retriever set to 50% precision, not Context7, retrieval made results worse on APIs the model already knew well (see Evidence).
 
 ### Grounding: run a language server, so names that do not exist show up as errors
 
@@ -131,7 +131,7 @@ Cheapest first. The first rungs ask the agent to check; the middle ones give it 
 
 - **Source:** [Prompting Claude Fable 5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5): "Separate, fresh-context verifier subagents tend to outperform self-critique."; [Claude Code best practices](https://code.claude.com/docs/en/best-practices): "A fresh context improves code review since Claude won't be biased toward code it just wrote."
 - **Cost:** Tokens for a second agent; the time to act on what it finds.
-- **Breaks when:** The verifier only reads. One that cannot run anything judges the report on plausibility again: Google's [Jules critic](https://developers.googleblog.com/meet-jules-sharpest-critic-and-most-valuable-ally/), in its first version, "evaluates the final output in a single pass", with tool calls a stated future milestone. Models judging whether an agent succeeded were weak judges in one study, close to chance on one benchmark (see Evidence). It also finds problems in sound work: "A reviewer prompted to find gaps will usually report some, even when the work is sound, because that is what it was asked to do." ([Claude Code best practices](https://code.claude.com/docs/en/best-practices))
+- **Breaks when:** The verifier only reads. One that cannot run anything judges the report on plausibility again: Google's [Jules critic](https://developers.googleblog.com/meet-jules-sharpest-critic-and-most-valuable-ally/), in its first version (as of 2025-08), "evaluates the final output in a single pass", with tool calls a stated future milestone. Models judging whether an agent succeeded were weak judges in one study, close to chance on one benchmark (see Evidence). It also finds problems in sound work: "A reviewer prompted to find gaps will usually report some, even when the work is sound, because that is what it was asked to do." ([Claude Code best practices](https://code.claude.com/docs/en/best-practices))
 
 ### Review: check quoted text against its source mechanically
 
