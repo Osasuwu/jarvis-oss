@@ -259,7 +259,7 @@ def check_mcp(tool_name: str, tool_input: dict) -> str | None:
     # an update can silently drop the hold. Creating a new item cannot.
     labels = tool_input.get("labels")
     if isinstance(labels, list) and method != "create" and not name.startswith(("create_", "add_")):
-        if not any(isinstance(l, str) and l.strip().lower() == HOLD_LABEL for l in labels):
+        if not any(isinstance(lbl, str) and lbl.strip().lower() == HOLD_LABEL for lbl in labels):
             return (
                 f"{tool_name} replaces the label set without {HOLD_LABEL}, which can drop "
                 "the hold; add labels with `gh issue edit --add-label` instead"
