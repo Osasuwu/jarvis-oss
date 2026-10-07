@@ -408,13 +408,14 @@ decision 11, and the freeze.
     - Rungs taken from the maintainer's own fixes, which no external source describes, carry
       the label "one operator's practice", as decision 11's blind search intends.
 
-24. **The contract is frozen.** From 2026-10-07 the class-doc contract is frozen: the seven
-    sections, the frontmatter fields and their vocabularies, the Examples rule, the three rung
-    labels, the dated Cost rule, the relative-link rule and the size cap of 30 KB. The three
-    calibration docs are `claims-from-plausibility` (the pilot), `pattern-matched-boundaries`
-    (C11) and `absence-read-as-success` (C1). A later change needs a new amendment here and the
-    migration of every doc already written. The structure gate, the writing skill and the README
-    generator say so. The reviewer of decision 5 is built against this contract.
+24. **The contract is frozen.** From 2026-10-07 the class-doc contract is frozen, all of it,
+    including: the seven sections, the frontmatter fields and their vocabularies, the Examples
+    rule, the three rung labels, the dated Cost rule, the relative-link rule, the cross-cutting
+    variant of decision 13, the incident dataset's columns and vocabularies, and the size cap
+    of 30 KB. The three calibration docs are `claims-from-plausibility` (the pilot),
+    `pattern-matched-boundaries` (C11) and `absence-read-as-success` (C1). A later change needs
+    a new amendment here and the migration of every doc already written. The structure gate,
+    the writing skill and the README generator say so. The reviewer of decision 5 is built against this contract.
 
 Considered and rejected:
 

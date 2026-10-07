@@ -24,7 +24,7 @@ A check you rely on shows green, or shows nothing at all and nobody notices, and
 
 - INC-044: a review gate decided from a list of file extensions whether to review at all; a pull request touching only other file types skipped the review, the verdict step found zero review comments and passed, and the pull request could merge unreviewed.
 - INC-046: the same gate's verdict step read the absence of a review comment as a reviewer that was rightly skipped, so a reviewer that ran cleanly and posted nothing passed the check.
-- INC-042: a reviewer in CI could not run any shell command for eight days because a sandbox dependency was missing; it rebuilt the diff from earlier comments and kept posting verdicts, and the check went green or red as if it had read the change.
+- INC-042: a reviewer in CI could not run any shell command because a sandbox dependency was missing; in its follow-up reviews it rebuilt the diff from earlier comments and kept posting verdicts, and the check went green or red as if it had read the change.
 - INC-049: a review action declined to run because the pull request changed its own workflow file, logged a warning and exited 0; the required verdict check found no review and passed.
 - INC-060: a vendor's review command stopped early on a re-review because it had commented before, exited success and posted nothing, which looked the same as a review that found nothing.
 
@@ -42,11 +42,11 @@ A check you rely on shows green, or shows nothing at all and nobody notices, and
 
 **The agent repeats the rollup.** An agent asked whether the change is ready reads the checks list and reports that all checks pass. That is true of what ran. Nothing in the rollup says what was skipped for this change, and the agent has no reason to ask.
 
-**Fixes swing between this class and false blocks.** A gate made to fail on absence also fails on the legitimate cases that produce nothing: in the maintainer's record, a hook launcher made to fail closed (the fix for INC-041) then blocked every tool call on machines where `python3` was a store stub ([Osasuwu/jarvis-oss#181](https://github.com/Osasuwu/jarvis-oss/issues/181)). The relief for a false block, a carve-out or a merge around the gate, is a new path where nothing ran and the merge went through.
+**Fixes swing between this class and false blocks.** A gate made to fail on absence also fails on the legitimate cases that produce nothing: in the maintainer's record, a hook launcher made to fail closed (the fix for INC-041) then blocked every tool call it matched on machines where `python3` was a store stub ([Osasuwu/jarvis-oss#181](https://github.com/Osasuwu/jarvis-oss/issues/181)). The relief for a false block, a carve-out or a merge around the gate, is a new path where nothing ran and the merge went through.
 
 ## Where it surfaces
 
-Mostly after merge. In 12 of this class's 23 dataset rows the gap was found after the change had merged, by someone reading the reviewer's reports, by a later failure, or by an audit of the gate itself; the gate had been green throughout. In review, it shows as a pull request with a green check and no review on it, noticed by a person who expected comments (INC-059 to INC-063). In CI, it is caught only where a step already fails on a missing result, as in INC-047, where twelve reviewers ran and posted nothing and the verdict step failed closed. At merge, the sign is a check list that says skipped or neutral where a pass was expected; the merge button does not distinguish them.
+Mostly after merge. In 12 of this class's 23 dataset rows the gap was found after the change had merged, by someone reading the reviewer's reports, by a later failure, or by an audit of the gate itself; the gate had been green throughout. In review, it shows as a pull request with a green or neutral check and no review on it, noticed by a person who expected comments (INC-059 to INC-063). In CI, it is caught only where a step already fails on a missing result, as in INC-047, where twelve reviewers ran and posted nothing and the verdict step failed closed. At merge, the sign is a check list that says skipped or neutral where a pass was expected; the merge button does not distinguish them.
 
 ## Protections
 
@@ -88,9 +88,15 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 ### Preflight: fail the job when a tool the check needs is missing
 
-- **Source:** POSIX `command -v` reports the path a command name resolves to, and fails when there is none ([POSIX command](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/command.html)). For a Claude Code hook, the only exit code that blocks is 2 ([Claude Code hooks](https://code.claude.com/docs/en/hooks.md)), so a launcher that turns its own failure into exit 2, and a CI step that fails when the reviewer's sandbox cannot start, are one operator's practice.
+- **Source:** POSIX `command -v` reports the path a command name resolves to, and fails when there is none ([POSIX command](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/command.html)). For most Claude Code hook events, exit code 2 is the only exit code that blocks through the code alone ([Claude Code hooks](https://code.claude.com/docs/en/hooks.md)), so a launcher that turns its own failure into exit 2, and a CI step that fails when the reviewer's sandbox cannot start, are one operator's practice.
 - **Cost:** a check per dependency; a red job when the runner image changes.
 - **Breaks when:** the tool is present but degraded (a reviewer that loses one capability can still write a confident verdict), or the fail-closed launcher blocks legitimate work, as the maintainer's did on machines with a stub interpreter.
+
+### Heartbeat: alert when a check has not reported a result in time
+
+- **Source:** a dead man's switch: "When Healthchecks.io does not receive the HTTP request at the expected time, it notifies you" ([Healthchecks.io](https://healthchecks.io/docs/monitoring_cron_jobs/)). Watching the review volume the same way (no positive review verdict in N days while pull requests merged) is one operator's practice.
+- **Cost:** free for 20 monitored jobs (as of 2026-10, [Healthchecks.io pricing](https://healthchecks.io/pricing/)); an hour of setup; tuning the window.
+- **Breaks when:** one pull request's missing check falls inside the window; it finds the gap after the merge, not before.
 
 ### Verdict: pass only on a positive result from the expected source, for this commit
 
@@ -102,19 +108,13 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 - **Source:** one operator's practice: fixtures feed each gate a skipped job, an empty review, a cancelled run and a changed path it should watch, and assert red; they run on every change to the gate and on a schedule.
 - **Cost:** hours per gate, CI minutes on a schedule, and fixtures that change with the gate.
-- **Breaks when:** a fixture asserts something that cannot fail (in the maintainer's record, the fixture rule written after INC-043 was later followed by a guard test that compared a constant with a copy of itself), or a skip path nobody wrote a fixture for (INC-048 found four).
+- **Breaks when:** a fixture asserts something that cannot fail (in the maintainer's record, the fixture rule written after INC-043 was later followed by a guard test that compared a constant with a copy of itself, [Osasuwu/jarvis#1942](https://github.com/Osasuwu/jarvis/issues/1942)), or a path to green nobody wrote a fixture for (INC-048 lists four).
 
 ### One copy: run the same gate code in every repository
 
 - **Source:** one operator's practice, using GitHub's [reusable workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows) as the mechanism. INC-049 is a fix made in one of the maintainer's repositories and never carried to another.
 - **Cost:** a shared workflow repository and its versioning.
 - **Breaks when:** repositories pin different versions, or one keeps a local copy.
-
-### Heartbeat: alert when a check has not reported a result in time
-
-- **Source:** a dead man's switch: "When Healthchecks.io does not receive the HTTP request at the expected time, it notifies you" ([Healthchecks.io](https://healthchecks.io/docs/monitoring_cron_jobs/)). Watching the review volume the same way (no positive review verdict in N days while pull requests merged) is one operator's practice.
-- **Cost:** free for 20 monitored jobs (as of 2026-10, [Healthchecks.io pricing](https://healthchecks.io/pricing/)); an hour of setup; tuning the window.
-- **Breaks when:** one pull request's missing check falls inside the window; it finds the gap after the merge, not before.
 
 ### Merge queue: run the slow checks on the exact merge before it lands
 
@@ -124,9 +124,9 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 ## Evidence
 
-- External evidence for this class is thin. A blind search found no public record of an agent reporting that all checks pass where the checks provably never ran. The five external rows are all hosted or vendor review bots that ended green, neutral or silent with no review, from the vendors' own trackers (2026-03 to 2026-09). Gate failures are seldom filed as public incidents, so this is a reporting gap, not evidence that the class is rare. 18 of the class's 23 rows come from the maintainer's repositories, 9 of them private.
+- External evidence for this class is thin. A blind search found no public record of an agent reporting that all checks pass where the checks provably never ran, and no documented pattern for asserting that a check read more than zero files. The five external rows are all hosted or vendor review bots that ended green, neutral or silent with no review, from the vendors' own trackers (2026-03 to 2026-09). Gate failures are seldom filed as public incidents, so this is a reporting gap, not evidence that the class is rare. 18 of the class's 23 rows come from the maintainer's repositories, 9 of them private.
 - A study of 142,387 CI jobs across 81 industrial projects describes "silent failures, where build jobs are marked as successful but fail to complete all or part of their tasks", and finds that "11% of successful jobs are rerun, with 35% of these reruns occurring after more than 24 hours" (as of 2025-09, [Aïdasso et al.](https://arxiv.org/abs/2509.14347v1)). The jobs are not agent-written.
 - The same failure without an agent: a large open-source project found that "we haven't been running the tests for most of CI in CI for like three months now" (as of 2024-09, [Mesa merge request 30978](https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/30978)).
 - Adjacent: of 3,111 test-disabling changes across 15 Java systems, "41% of disabled tests are never brought back" (as of 2021-08, [ESEC/FSE 2021](https://2021.esec-fse.org/details/fse-2021-papers/78/How-Disabled-Tests-Manifest-in-Test-Maintainability-Challenges-)).
-- In the maintainer's record, the gap went unseen for between three days and six weeks per incident. Of the fixes there, every rule written as prose was followed by a recurrence or is too new to judge, while all seven mechanical gate changes held on their own incident; four left a sibling path open and one blocked legitimate work (as of 2026-10, one operator's audit, private, not verifiable).
+- In the maintainer's record, the gap went unseen for between three days and about seven weeks per incident. Of the fixes there, every rule written as prose was followed by a recurrence or is too new to judge, while all seven mechanical gate changes held on their own incident; four left a sibling path open and one blocked legitimate work (as of 2026-10, one operator's audit, private, not verifiable).
 - Every incident cited here is a row in [`incidents/incidents.csv`](../../incidents/incidents.csv); nine of the class's rows are private sources and say so in the link column.
