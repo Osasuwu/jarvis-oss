@@ -1,4 +1,4 @@
-"""Quote check — a writer's step before review-doc (#86).
+"""Quote check — a writer's step before review (#86).
 
 Lists every passage in quotation marks in a markdown doc and checks that it appears, verbatim, in
 a source linked from the same paragraph. When a paragraph has no link, the links of the paragraph
@@ -13,17 +13,19 @@ Each quote gets one verdict:
 
 - ``found`` — every piece is in one of the candidate sources.
 - ``found elsewhere`` — only a link from another part of the doc has it. Check the attribution.
-- ``NOT FOUND`` — no source linked from the doc contains it. Fix the quote, or the link. If a
-  candidate could not be fetched, it is listed; check that one by hand first.
+- ``NOT FOUND`` — every candidate source was fetched and none linked from the doc contains it.
+  Fix the quote, or the link.
 - ``no source`` — no link in this paragraph or the one right before it.
-- ``unfetchable`` — no candidate source could be fetched, or each came back near-empty (a
-  script-rendered page, a bot check, a rate limit). Check these by hand.
+- ``unfetchable`` — at least one candidate source could not be fetched, or came back near-empty
+  (a script-rendered page, a bot check, a rate limit), and no fetched source has the quote. The
+  source that carries it may be the one that failed. The ones that failed are listed; check
+  them by hand.
 
 Exits 1 if any quote is ``NOT FOUND``, and only then: an unfetchable source never fails the run.
 The last line counts the ``NOT FOUND`` quotes and the sources that could not be fetched; in
 GitHub Actions it is also added to the job summary (``$GITHUB_STEP_SUMMARY``). This checks
 wording only, not whether the doc's claim around the quote matches the source; that stays
-review-doc's job.
+the reviewer's job.
 
 ``--json PATH`` also writes the run as JSON: the counts, and every quote not marked ``found`` with
 its doc, line, verdict, candidate sources and the ones that could not be fetched. The weekly run
@@ -293,7 +295,7 @@ def check(doc: Path, fetch=fetch_url) -> list[tuple[Quote, str, tuple[str, ...]]
             verdict = "found elsewhere"
         elif not quote.urls:
             verdict = "no source"
-        elif not near:
+        elif unfetched:
             verdict = "unfetchable"
         else:
             verdict = "NOT FOUND"

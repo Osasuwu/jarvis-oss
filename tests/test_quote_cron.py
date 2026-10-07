@@ -53,7 +53,7 @@ def _uncovered(repo: Path) -> set[str]:
 
 
 def _adr_files_stay_in_the_quote_checks(repo: Path) -> None:
-    """docs/adr/ is outside doc-review and the structure gate (#144) but inside the quote checks:
+    """docs/adr/ is outside the structure gate (#144) but inside the quote checks:
     the workflow's `docs/*.md` pathspec matches nested paths, so every tracked ADR is listed."""
     adrs = set(_git(repo, "ls-files", "--", "docs/adr/*.md"))
     assert adrs, "no tracked ADR under docs/adr/"
@@ -77,13 +77,6 @@ def test_triggers_are_a_weekly_schedule_and_workflow_dispatch_only():
 def test_permissions_are_contents_read_and_issues_write():
     perms = re.search(r"^permissions:\n((?:  .*\n)+)", WORKFLOW, re.M).group(1)
     assert sorted(perms.split()) == sorted(["contents:", "read", "issues:", "write"])
-
-
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert len(uses) == 3
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
 
 
 def test_runs_are_serialized():

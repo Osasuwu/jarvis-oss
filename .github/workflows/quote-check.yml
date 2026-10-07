@@ -1,9 +1,10 @@
 name: Quote check
 
 # Runs scripts/check_quotes.py on the markdown files a PR adds or changes. It fails on NOT FOUND
-# only (the source was fetched and the quote is not in it); a source that could not be fetched
-# is counted in the job summary and does not fail the job. No paths filter: a PR that changes no
-# doc still runs the job and gets an explicit pass, so it can be made a required check later.
+# only (every credited source was fetched and none has the quote); a quote with a source that
+# could not be fetched is `unfetchable`, counted in the job summary, and does not fail the job.
+# No paths filter: a PR that changes no doc still runs the job and gets an explicit pass, so it
+# can be made a required check later.
 
 on:
   pull_request:

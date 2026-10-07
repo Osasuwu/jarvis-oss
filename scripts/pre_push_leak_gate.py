@@ -17,7 +17,31 @@ is, never the value: a file name or ref name that itself matches is withheld too
 usable list the push is blocked and the message says nothing was checked.
 
 Not scanned: commit author and committer identity (an operator's own name would block every
-push), and removed lines (deleting a leak must stay possible).
+push), and removed lines (deleting a leak must stay possible). Not covered either:
+``git push --no-verify``; a device without the hook or the list; text sent by ``curl``, the
+browser or another tool; typos, split literals, encoded forms.
+
+Install (once per device that pushes to a public repository):
+
+1. List: keep it outside every repository, one literal per line, and export it as
+   ``PERSONAL_LITERALS``. It is the same list as the CI secret the scrub reads, so update both.
+   PowerShell:
+   ``[Environment]::SetEnvironmentVariable("PERSONAL_LITERALS", (Get-Content -Raw "$HOME/.config/personal-literals.txt"), "User")``.
+   Linux/macOS: ``export PERSONAL_LITERALS="$(cat "$HOME/.config/personal-literals.txt")"``.
+2. Hook: put this line in ``.git/hooks/pre-push`` (``chmod +x`` on Linux/macOS; ``python`` in
+   place of ``python3`` where ``python3`` does not start). Worktrees share the file::
+
+       exec python3 "$(git rev-parse --show-toplevel)/scripts/pre_push_leak_gate.py" "$@"
+
+Check (after installing, and after any change to the list or the hook; ``canary-7f3c9a`` is
+made up, use your own):
+
+1. Add ``canary-7f3c9a`` to the list and export it again. A clean push prints
+   ``pre-push leak gate: clean - checked N literal(s) across M commit(s).``; no line at all
+   means the hook is not installed.
+2. On a throwaway branch commit a file containing ``CANARY_7F3C9A`` and push. The push must be
+   blocked with ``added content in <file>``.
+3. Remove the canary from the list and export it again.
 """
 
 from __future__ import annotations

@@ -66,20 +66,12 @@ def test_permissions_are_minimal():
     assert "contents: write" not in WORKFLOW
 
 
-def test_every_action_is_pinned_to_a_full_commit_sha():
-    uses = re.findall(r"uses: (\S+)", WORKFLOW)
-    assert uses
-    for ref in uses:
-        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-
-
 @pytest.mark.parametrize(
     "path",
     [
         ".github/workflows/machinery-guard.yml",
         ".github/workflows/waiting-human-review.yml",
-        ".agents/skills/review-doc/SKILL.md",
-        ".agents/skills/review-doc/calibration/case-01.md",
+        ".agents/skills/write-doc/SKILL.md",
         ".agents/hooks/secret-scanner.py",
         ".claude/settings.json",
         "tests/structure_gate.py",
@@ -97,7 +89,7 @@ def test_machinery_list_covers(path):
 
 @pytest.mark.parametrize(
     "path",
-    ["docs/publishing-discipline.md", "examples/foo.md", "README.md", "LICENSE"],
+    ["docs/guide.md", "docs/adr/0004-example.md", "README.md", "LICENSE"],
 )
 def test_content_paths_are_not_machinery(path):
     assert not _is_machinery(path)

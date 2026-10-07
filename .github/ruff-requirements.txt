@@ -1,0 +1,3 @@
+# The one place the ruff version is pinned. .github/workflows/lint.yml installs from this file;
+# bump it here (and fix any new findings in the same PR) to move the linter.
+ruff==0.14.13

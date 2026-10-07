@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.claude/settings.local.json
+.claude/worktrees/
+# Personal rules file, never committed. While it exists, Claude Code skips its native AGENTS.md read
+CLAUDE.local.md

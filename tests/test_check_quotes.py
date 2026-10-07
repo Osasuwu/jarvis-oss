@@ -117,11 +117,10 @@ def test_found(tmp_path):
     ]
 
 
-def test_not_found_when_the_linked_page_lacks_the_text(tmp_path):
-    body = 'The [docs](https://a.example) say "exit code two blocks".'
-    assert _verdicts(tmp_path, body, {"https://a.example": "exit code 2 blocks"}) == [
-        ("exit code two blocks", "NOT FOUND")
-    ]
+def test_not_found_when_every_credited_page_was_fetched_and_lacks_the_text(tmp_path):
+    body = 'See [a](https://a.example) and [b](https://b.example): "exit code two blocks".'
+    pages = {"https://a.example": "exit code 2 blocks", "https://b.example": "nothing relevant"}
+    assert _verdicts(tmp_path, body, pages) == [("exit code two blocks", "NOT FOUND")]
 
 
 def test_found_elsewhere_flags_a_quote_credited_to_the_wrong_page(tmp_path):
@@ -144,13 +143,17 @@ def test_unfetchable_when_no_linked_page_can_be_fetched(tmp_path):
     assert _verdicts(tmp_path, body, {}) == [("exit code two blocks", "unfetchable")]
 
 
-def test_not_found_names_the_sources_it_could_not_fetch(tmp_path, capsys):
+def test_unfetchable_when_one_credited_page_failed_and_the_fetched_one_lacks_the_text(
+    tmp_path, capsys
+):
     body = 'See [a](https://a.example) and [b](https://b.example): "exit code two blocks".'
     doc = _doc(tmp_path, body)
     [(_, verdict, unfetched)] = check(doc, fetch=_fetcher({"https://a.example": "nothing"}))
-    assert (verdict, unfetched) == ("NOT FOUND", ("https://b.example",))
-    main([str(doc)], fetch=_fetcher({"https://a.example": "nothing"}))
-    assert "could not fetch: https://b.example" in capsys.readouterr().out
+    assert (verdict, unfetched) == ("unfetchable", ("https://b.example",))
+    assert main([str(doc)], fetch=_fetcher({"https://a.example": "nothing"})) == 0
+    out = capsys.readouterr().out
+    assert 'unfetchable: "exit code two blocks"' in out
+    assert "could not fetch: https://b.example" in out
 
 
 def test_near_empty_page_is_unfetchable_not_a_mismatch(tmp_path):
@@ -192,7 +195,7 @@ def test_binary_local_link_is_unfetchable_not_a_crash(tmp_path):
     (tmp_path / "img.png").write_bytes(b"\x89PNG\x80\x81\x82")
     body = 'See ![diagram](img.png) and [docs](https://a.example): "wrong words entirely here".'
     assert _verdicts(tmp_path, body, {"https://a.example": "other"}) == [
-        ("wrong words entirely here", "NOT FOUND")
+        ("wrong words entirely here", "unfetchable")
     ]
 
 
@@ -273,23 +276,34 @@ def test_ci_unfetchable_source_is_counted_once_across_quotes_and_docs(tmp_path, 
 # --- JSON report for the weekly run (#105) ----------------------------------------
 
 
-def test_json_report_lists_each_quote_not_found_with_its_unfetched_sources(tmp_path):
+def test_json_report_lists_each_quote_not_marked_found_with_its_unfetched_sources(tmp_path):
     body = (
         'The [docs](https://a.example) and [b](https://b.example) say "exit code two blocks".\n\n'
-        'The [c](https://c.example) page says "this one is found".'
+        'The [c](https://c.example) page says "this one is found".\n\n'
+        'The [d](https://d.example) page says "this one is wrong".'
     )
     doc = _doc(tmp_path, body)
     report = tmp_path / "out.json"
-    pages = {"https://a.example": "other", "https://c.example": "this one is found"}
+    pages = {
+        "https://a.example": "other",
+        "https://c.example": "this one is found",
+        "https://d.example": "other",
+    }
     assert main(["--json", str(report), str(doc)], fetch=_fetcher(pages)) == 1
     data = json.loads(report.read_text(encoding="utf-8"))
-    assert (data["docs"], data["quotes"], data["not_found"]) == (1, 2, 1)
+    assert (data["docs"], data["quotes"], data["not_found"]) == (1, 3, 1)
     assert data["unfetchable_sources"] == ["https://b.example"]
-    [finding] = data["findings"]
-    assert finding == {
-        "doc": str(doc), "line": 5, "verdict": "NOT FOUND", "quote": "exit code two blocks",
-        "tried": ["https://a.example", "https://b.example"], "unfetched": ["https://b.example"],
-    }
+    assert data["findings"] == [
+        {
+            "doc": str(doc), "line": 5, "verdict": "unfetchable", "quote": "exit code two blocks",
+            "tried": ["https://a.example", "https://b.example"],
+            "unfetched": ["https://b.example"],
+        },
+        {
+            "doc": str(doc), "line": 9, "verdict": "NOT FOUND", "quote": "this one is wrong",
+            "tried": ["https://d.example"], "unfetched": [],
+        },
+    ]
 
 
 def test_json_flag_without_a_path_or_docs_prints_usage():

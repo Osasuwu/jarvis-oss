@@ -1,5 +1,10 @@
 name: Waiting on human review
 
+# The hold is for documents (#213): a pull request that changes a document waits
+# for a person to read it. What counts as a document is defined once, in
+# .github/hold-paths.json (docs/ without docs/adr/ and docs/research/, incidents/,
+# README.md), and tests/structure_gate.py reads the same file (#241). Everything else in the repo
+# supports those documents and merges on its own gates.
 on:
   pull_request:
     types:
@@ -23,12 +28,42 @@ jobs:
   waiting-human-review:
     runs-on: ubuntu-latest
     steps:
+      # The path definition is a file in the repo; the script reads it from the working tree.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Check review hold
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
+            const LABEL = "waiting-human-review";
+            const DEFINITION = ".github/hold-paths.json";
+
+            // A document path, by the one definition tests/structure_gate.py also reads.
+            // Same order as its is_hold_path: a listed file is held; else a path under an
+            // excluded prefix is not; else a path under a listed prefix is. A definition that
+            // cannot be read fails the check, so a broken file never lets a document through.
+            let definition;
+            try {
+              definition = JSON.parse(
+                require("fs").readFileSync(require("path").join(process.cwd(), DEFINITION), "utf8")
+              );
+            } catch (e) {
+              core.setFailed(`Cannot read ${DEFINITION} (${e.message}); the hold cannot tell documents apart.`);
+              return;
+            }
+            for (const key of ["prefixes", "excluded_prefixes", "files"]) {
+              if (!Array.isArray(definition[key])) {
+                core.setFailed(`${DEFINITION} needs '${key}' as a list; the hold cannot tell documents apart.`);
+                return;
+              }
+            }
+            const startsWithAny = (p, prefixes) => prefixes.some((x) => p.startsWith(x));
+            const isDocPath = (p) =>
+              definition.files.includes(p) ||
+              (!startsWithAny(p, definition.excluded_prefixes) &&
+                startsWithAny(p, definition.prefixes));
+
             const { owner, repo } = context.repo;
             const pull_number = context.payload.pull_request.number;
 
@@ -39,41 +74,71 @@ jobs:
             const hasRequestedReview =
               (pr.requested_reviewers && pr.requested_reviewers.length > 0) ||
               (pr.requested_teams && pr.requested_teams.length > 0);
-            const hasLabel = pr.labels.some((l) => l.name === "waiting-human-review");
+            let hasLabel = pr.labels.some((l) => l.name === LABEL);
 
-            const action = context.payload.action;
             // A "Re-run jobs" replays the same stored event payload, so `action` still
             // reads "opened" on attempt 2+ even though nothing about the PR changed. Gate
             // on run_attempt too, or clearing the label by hand and re-running the check
             // just puts the label straight back.
+            const action = context.payload.action;
+            const firstAttempt = process.env.RUN_ATTEMPT === "1";
             const isFreshOpen =
-              (action === "opened" || action === "ready_for_review") &&
-              process.env.RUN_ATTEMPT === "1";
+              (action === "opened" || action === "ready_for_review") && firstAttempt;
+            const isPush = action === "synchronize" && firstAttempt;
 
             // At one developer a PR author can't request review from themselves, so
-            // nothing else will ever set hasRequestedReview. Carry the hold with a label
-            // instead. This also covers N>1 PRs opened without picking a reviewer yet.
-            if (isFreshOpen && !hasRequestedReview && !hasLabel) {
-              await github.rest.issues.addLabels({
-                owner,
-                repo,
-                issue_number: pull_number,
-                labels: ["waiting-human-review"],
+            // nothing else will ever set hasRequestedReview. Carry the hold with a label.
+            let docs = [];
+            if ((isFreshOpen || isPush) && !hasRequestedReview && !hasLabel) {
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner, repo, pull_number, per_page: 100,
               });
-              core.setFailed(
-                "Human review is owed — waiting-human-review label applied. " +
-                  "A human clears it by hand after reading the PR; nothing removes it automatically."
+              // A rename counts from both ends, and a deleted document is a change to it.
+              const prDocs = new Set(
+                files
+                  .flatMap((f) => [f.filename, f.previous_filename])
+                  .filter((p) => p && isDocPath(p))
               );
-              return;
+              docs = [...prDocs];
+              if (isPush && docs.length > 0) {
+                // Only a push that changed one of the PR's documents puts the hold back:
+                // a support-file fix after the person read the documents does not. The
+                // compare also carries files merged in from the base branch; the PR's own
+                // file list filters those out. If the compare fails, or returns its cap of
+                // 300 files and so may have cut the list short, hold.
+                try {
+                  const { data: cmp } = await github.rest.repos.compareCommitsWithBasehead({
+                    owner, repo,
+                    basehead: `${context.payload.before}...${context.payload.after}`,
+                  });
+                  const pushed = cmp.files || [];
+                  if (pushed.length < 300) {
+                    docs = pushed
+                      .flatMap((f) => [f.filename, f.previous_filename])
+                      .filter((p) => p && prDocs.has(p));
+                  }
+                } catch (e) {
+                  core.warning(`Could not compare the push (${e.message}); holding.`);
+                }
+              }
+              if (docs.length > 0) {
+                await github.rest.issues.addLabels({
+                  owner, repo, issue_number: pull_number, labels: [LABEL],
+                });
+                hasLabel = true;
+              }
             }
 
+            const list = [...new Set(docs)].sort().map((p) => `  ${p}`).join("\n");
             if (hasRequestedReview || hasLabel) {
               core.setFailed(
                 "Human review is owed" +
                   (hasRequestedReview ? " (review requested, not yet given)" : "") +
-                  (hasLabel ? " (waiting-human-review label present)" : "") +
-                  "."
+                  (hasLabel ? ` (${LABEL} label present)` : "") +
+                  ". A human clears the label by hand after reading the PR; " +
+                  "nothing removes it automatically." +
+                  (list ? `\nDocuments changed:\n${list}` : "")
               );
             } else {
-              core.info("No human review owed.");
+              core.info("No human review owed: this PR changes no document, or the hold was cleared.");
             }

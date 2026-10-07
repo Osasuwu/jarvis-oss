@@ -1,273 +1,429 @@
-import subprocess
-from pathlib import Path
+"""Behaviour checks for tests/structure_gate.py, the class-doc contract of ADR-0004 (#241).
 
-from structure_gate import _SIGNOFF_ENTRY_RE, check_tree
-
-FIXTURES = Path(__file__).parent / "fixtures" / "structure_gate"
-REPO_ROOT = Path(__file__).parent.parent
-
-
-def _git(root: Path, *args: str) -> None:
-    subprocess.run(
-        ["git", "-C", str(root), *args],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-
-
-def _init_repo(root: Path) -> None:
-    _git(root, "init", "-q")
-    _git(root, "config", "user.email", "test@example.com")
-    _git(root, "config", "user.name", "Test")
-
-
-def _write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-_DOC_BODY = """---
-applies_when: fixture doc for signoff git-history tests
-applies_when_not: not applicable outside this fixture
-signed_off: 2026-09-16
----
-
-# Git-history fixture doc
+Each violating fixture is the committed `valid` tree with one edit applied in the test, and
+the test asserts the exact violation set, so a fixture trips the one rule it is named after.
 """
 
+import json
+import shutil
+from pathlib import Path
 
-def test_doc_missing_frontmatter_key_fails():
-    violations = check_tree(FIXTURES / "doc_missing_keys")
-    codes = {(v.path, v.code) for v in violations}
-    assert (
-        "docs/no-applies-when-not.md",
-        "doc_missing_key:applies_when_not",
-    ) in codes
+import pytest
 
+from structure_gate import check_tree
 
-def test_empty_tree_passes():
-    assert check_tree(FIXTURES / "empty") == []
+FIXTURES = Path(__file__).parent / "fixtures" / "structure_gate"
+VALID = FIXTURES / "valid"
+REPO_ROOT = Path(__file__).parent.parent
 
-
-def test_example_missing_fit_or_provenance_fails():
-    missing_fit = check_tree(FIXTURES / "example_missing_fit")
-    codes = {(v.path, v.code) for v in missing_fit}
-    assert ("examples/own-setup.md", "example_missing_key:fit") in codes
-
-    missing_provenance = check_tree(FIXTURES / "example_missing_provenance")
-    codes = {(v.path, v.code) for v in missing_provenance}
-    assert ("examples/orphan.md", "example_missing_provenance") in codes
+ALPHA = "docs/classes/alpha.md"
+CROSS = "docs/classes/cross.md"
+DATASET = "incidents/incidents.csv"
+VOCAB = "docs/vocabularies.json"
+HOLD_PATHS = ".github/hold-paths.json"
 
 
-def test_resource_missing_required_keys_fails():
-    violations = check_tree(FIXTURES / "resource_missing_keys")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("resources/bare.md", "resource_missing_key:pairs_with") in codes
-    assert ("resources/bare.md", "resource_missing_key:cost") in codes
-    assert ("resources/bare.md", "resource_missing_key:harnesses") not in codes
+def _tree(tmp_path: Path) -> Path:
+    root = tmp_path / "tree"
+    shutil.copytree(VALID, root)
+    return root
 
 
-def test_pairs_with_unresolvable_fails():
-    violations = check_tree(FIXTURES / "pairs_with_unresolvable")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("resources/dangling.md", "pairs_with_unresolvable") in codes
+def _edit(root: Path, rel: str, old: str, new: str) -> None:
+    path = root / rel
+    text = path.read_text(encoding="utf-8")
+    assert old in text, f"fixture edit does not apply: {old!r} not in {rel}"
+    path.write_bytes(text.replace(old, new, 1).encode("utf-8"))
 
 
-def test_example_stale_last_seen_fails():
-    violations = check_tree(FIXTURES / "example_stale_last_seen")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("examples/old.md", "example_last_seen_stale") in codes
+def _violations(root: Path) -> list[tuple[str, str]]:
+    return sorted((v.path, v.code) for v in check_tree(root))
 
 
-def test_boundary_evidence_pointer_unresolvable_fails():
-    violations = check_tree(FIXTURES / "boundary_unresolvable")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/dangling-evidence.md", "boundary_evidence_unresolvable") in codes
-
-
-def test_doc_over_size_cap_fails():
-    violations = check_tree(FIXTURES / "doc_over_size_cap")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/huge.md", "doc_over_size_cap") in codes
+# --- the tree as it stands ---------------------------------------------------
 
 
 def test_fully_valid_tree_passes():
-    assert check_tree(FIXTURES / "valid") == []
-
-
-def test_signoff_missing_ledger_entry_fails():
-    violations = check_tree(FIXTURES / "signoff_missing_entry")
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/undocumented.md", "signoff_missing_entry") in codes
-
-
-def test_signoff_entry_in_same_commit_as_doc_fails(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc and ledger entry together")
-
-    violations = check_tree(tmp_path)
-    codes = {(v.path, v.code) for v in violations}
-    assert ("docs/guide.md", "signoff_same_commit") in codes
-
-
-def test_empty_signed_off_is_drafted_not_yet_signed_and_not_a_violation():
-    # #53: `signed_off:` present but empty is the intentional "drafted, not yet signed"
-    # state, not a violation and not the same as omitting the key. Pinned here so a future
-    # edit to `_check_signoff` can't turn this into a `signoff_missing_entry` regression
-    # without a test noticing.
-    assert check_tree(FIXTURES / "signoff_empty_value") == []
-
-
-def test_signoff_entry_in_separate_commit_passes(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16; facts: human\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    violations = check_tree(tmp_path)
-    assert violations == []
-
-
-def test_signoff_entry_without_facts_fails(tmp_path):
-    # #59: a signature must say who checked facts and completeness, so an entry that names
-    # only a date is a violation even when it is otherwise valid.
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-    _write(tmp_path / "docs" / "SIGNOFF.md", "- `docs/guide.md`: 2026-09-16\n")
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
-    assert ("docs/guide.md", "signoff_missing_facts") in codes
-
-
-def test_signoff_entry_with_report_url_passes(tmp_path):
-    _init_repo(tmp_path)
-    _write(tmp_path / "docs" / "guide.md", _DOC_BODY)
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add doc body")
-    _write(
-        tmp_path / "docs" / "SIGNOFF.md",
-        "- `docs/guide.md`: 2026-09-16; facts: https://github.com/o/r/pull/1#issuecomment-1\n",
-    )
-    _git(tmp_path, "add", "-A")
-    _git(tmp_path, "commit", "-q", "-m", "add ledger entry")
-
-    assert check_tree(tmp_path) == []
-
-
-def test_real_signoff_ledger_exists_with_documented_entry_format():
-    ledger_path = REPO_ROOT / "docs" / "SIGNOFF.md"
-    assert ledger_path.is_file(), "docs/SIGNOFF.md must exist"
-    text = ledger_path.read_text(encoding="utf-8")
-    assert (
-        "- `<repo-relative path to doc>`: <signed_off date, YYYY-MM-DD>; facts: <human | report URL>"
-        in text
-    ), "docs/SIGNOFF.md must document the `- `<path>`: <date>; facts: <who>` entry format"
-    # An empty Entries section is a valid state, not a broken ledger: nothing has been signed
-    # yet, or every signature was withdrawn (#41 — all three were agent self-signatures in
-    # unreviewed PRs). This test previously required at least one live entry, which made
-    # "no doc is signed" indistinguishable from "the ledger is malformed". What must hold is
-    # that whatever entries are listed use the documented format.
-    entries_body = text.split("## Entries", 1)[1]
-    for line in entries_body.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("- "):
-            assert _SIGNOFF_ENTRY_RE.match(stripped), f"malformed ledger entry: {stripped}"
-
-
-def test_excluded_doc_dirs_skip_every_doc_check(tmp_path):
-    # A decision record under docs/adr/ has no doc frontmatter and is not a reader-facing doc
-    # (#144); the same file anywhere else under docs/ fails as a doc.
-    _write(tmp_path / "docs" / "adr" / "0001-x.md", "# ADR-0001\n\nDecided.\n")
-    _write(tmp_path / "docs" / "adr" / "nested" / "0002-y.md", "# ADR-0002\n")
-    _write(tmp_path / "docs" / "SIGNOFF.md", "# Sign-off ledger\n")
-    assert check_tree(tmp_path) == []
-    _write(tmp_path / "docs" / "other" / "0001-x.md", "# Not an ADR\n\nDecided.\n")
-    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
-    assert ("docs/other/0001-x.md", "doc_missing_key:applies_when") in codes
-    assert not any(path.startswith("docs/adr/") for path, _ in codes)
-
-
-def test_real_adr_directory_holds_a_first_record():
-    assert (REPO_ROOT / "docs" / "adr" / "0001-review-doc-calibration-2.md").is_file()
+    assert check_tree(VALID) == []
 
 
 def test_real_tree_passes_structure_gate():
+    # With no class docs and no dataset rows yet, the tree after this slice passes.
     assert check_tree(REPO_ROOT) == []
 
 
-def test_ci_workflow_fetches_enough_history_for_signoff_check():
-    workflow_path = REPO_ROOT / ".github" / "workflows" / "structure-gate.yml"
-    text = workflow_path.read_text(encoding="utf-8")
-    assert "fetch-depth: 0" in text, (
-        "structure-gate.yml must fetch full history (fetch-depth: 0) so the "
-        "signoff same-commit check can compare commits"
-    )
+# --- a scanned directory that does not exist ---------------------------------
 
 
-_MIN_DOC = """---
-applies_when: fixture
-applies_when_not: fixture
-signed_off:
----
-
-# Fixture doc
-"""
-
-
-def test_resource_pairs_with_accepts_several_comma_separated_docs(tmp_path):
-    """One resource can serve more than one doc (#41): every listed target must resolve."""
-    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
-    _write(tmp_path / "docs" / "b.md", _MIN_DOC)
-    _write(
-        tmp_path / "resources" / "shared.md",
-        "---\npairs_with: docs/a.md, docs/b.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
-    )
-    assert check_tree(tmp_path) == []
-
-
-def test_resource_pairs_with_fails_when_any_one_of_several_targets_is_missing(tmp_path):
-    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
-    _write(
-        tmp_path / "resources" / "shared.md",
-        "---\npairs_with: docs/a.md, docs/gone.md\nharnesses: all\ncost: low\n---\n\n# Shared\n",
-    )
-    violations = check_tree(tmp_path)
-    assert [(v.path, v.code) for v in violations] == [
-        ("resources/shared.md", "pairs_with_unresolvable")
+@pytest.mark.parametrize("missing", ["docs/classes", "incidents"])
+def test_a_missing_scanned_directory_fails_and_names_it(tmp_path, missing):
+    root = _tree(tmp_path)
+    shutil.rmtree(root / missing)
+    found = check_tree(root)
+    assert [(v.path, v.code) for v in found if v.code == "scan_dir_missing"] == [
+        (missing, "scan_dir_missing")
     ]
-    assert "docs/gone.md" in violations[0].message
-    assert "docs/a.md" not in violations[0].message
+    assert all(missing in v.message for v in found if v.code == "scan_dir_missing")
 
 
-def test_example_missing_pairs_with_fails(tmp_path):
-    """An example must say which doc it evidences (#41), the same as a resource."""
-    _write(
-        tmp_path / "examples" / "loose.md",
-        "---\nfit: fixture\nlast_seen: 2026-09-16\n---\n\n# Loose example\n",
-    )
-    codes = {(v.path, v.code) for v in check_tree(tmp_path)}
-    assert ("examples/loose.md", "example_missing_key:pairs_with") in codes
+def test_a_missing_dataset_file_in_an_existing_directory_fails(tmp_path):
+    root = _tree(tmp_path)
+    (root / DATASET).unlink()
+    assert (DATASET, "required_file_missing") in _violations(root)
 
 
-def test_example_pairs_with_must_resolve(tmp_path):
-    _write(tmp_path / "docs" / "a.md", _MIN_DOC)
-    _write(
-        tmp_path / "examples" / "paired.md",
-        "---\nfit: fixture\nlast_seen: 2026-09-16\npairs_with: docs/a.md, docs/gone.md\n---\n\n# Paired\n",
-    )
-    violations = check_tree(tmp_path)
-    assert [(v.path, v.code) for v in violations] == [
-        ("examples/paired.md", "pairs_with_unresolvable")
+# --- the vocabularies and the path definition are read, not hard-coded --------
+
+
+def test_the_vocabularies_come_from_the_file_not_from_the_gate(tmp_path):
+    root = _tree(tmp_path)
+    vocab = json.loads((root / VOCAB).read_text(encoding="utf-8"))
+    vocab["stage"] = [s if s != "review" else "triage" for s in vocab["stage"]]
+    (root / VOCAB).write_text(json.dumps(vocab), encoding="utf-8")
+    # INC-001 is on stage "review", which the edited vocabulary no longer lists...
+    assert _violations(root) == [(DATASET, "row_stage_not_in_vocabulary")]
+    # ...and a stage only the edited vocabulary lists is accepted.
+    _edit(root, DATASET, "INC-001,alpha,review", "INC-001,alpha,triage")
+    assert check_tree(root) == []
+
+
+@pytest.mark.parametrize("rel", [VOCAB, HOLD_PATHS])
+def test_a_missing_input_file_fails_and_names_it(tmp_path, rel):
+    root = _tree(tmp_path)
+    (root / rel).unlink()
+    found = check_tree(root)
+    assert (rel, "required_file_missing") in [(v.path, v.code) for v in found]
+    assert any(rel in v.message for v in found)
+
+
+@pytest.mark.parametrize("key", ["stage", "evidence_strength", "surfaces_at"])
+def test_a_vocabulary_that_is_not_a_list_of_words_fails(tmp_path, key):
+    root = _tree(tmp_path)
+    vocab = json.loads((root / VOCAB).read_text(encoding="utf-8"))
+    vocab[key] = "review"
+    (root / VOCAB).write_text(json.dumps(vocab), encoding="utf-8")
+    assert (VOCAB, f"vocabulary_invalid:{key}") in _violations(root)
+
+
+def test_the_gate_selects_documents_by_the_hold_path_definition(tmp_path):
+    root = _tree(tmp_path)
+    # docs/adr/ is excluded by the definition; the same file anywhere else under docs/ is a doc.
+    (root / "docs" / "adr").mkdir()
+    (root / "docs" / "adr" / "0001-x.md").write_text("# ADR-0001\n\nDecided.\n", encoding="utf-8")
+    assert check_tree(root) == []
+    (root / "docs" / "other").mkdir()
+    (root / "docs" / "other" / "0001-x.md").write_text("# Not an ADR\n", encoding="utf-8")
+    assert ("docs/other/0001-x.md", "doc_missing_key:class") in _violations(root)
+    # Moving docs/adr/ out of the exclusion list in the definition makes the ADR a doc too.
+    definition = json.loads((root / HOLD_PATHS).read_text(encoding="utf-8"))
+    definition["excluded_prefixes"] = []
+    (root / HOLD_PATHS).write_text(json.dumps(definition), encoding="utf-8")
+    assert ("docs/adr/0001-x.md", "doc_missing_key:class") in _violations(root)
+
+
+# --- class docs: frontmatter --------------------------------------------------
+
+
+def _cut(root: Path, rel: str, start: str, end: str) -> None:
+    """Remove the text from `start` up to (not including) `end`."""
+    path = root / rel
+    text = path.read_text(encoding="utf-8")
+    i, j = text.index(start), text.index(end)
+    assert i < j, f"fixture cut does not apply: {start!r} .. {end!r} in {rel}"
+    path.write_bytes((text[:i] + text[j:]).encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("key", "line"),
+    [
+        ("class", "class: alpha\n"),
+        ("surfaces_at", "surfaces_at: [review, ci]\n"),
+        ("applies_when", "applies_when: the repo lets an agent open pull requests\n"),
+        ("applies_when_not", "applies_when_not: no agent writes code in the repo\n"),
+    ],
+)
+def test_a_class_doc_without_a_required_key_fails(tmp_path, key, line):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, line, "")
+    # A doc without a class has none to hold the cited rows to; only the missing key is reported.
+    assert _violations(root) == [(ALPHA, f"doc_missing_key:{key}")]
+
+
+def test_surfaces_at_that_is_not_a_list_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "surfaces_at: [review, ci]", "surfaces_at: review")
+    assert _violations(root) == [(ALPHA, "surfaces_at_not_list")]
+
+
+def test_surfaces_at_value_outside_the_vocabulary_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "surfaces_at: [review, ci]", "surfaces_at: [review, nowhere]")
+    assert _violations(root) == [(ALPHA, "surfaces_at_not_in_vocabulary:nowhere")]
+
+
+@pytest.mark.parametrize(
+    "heading",
+    ["TL;DR", "Symptom", "Examples", "Mechanism", "Where it surfaces", "Protections", "Evidence"],
+)
+def test_a_class_doc_without_a_required_section_fails(tmp_path, heading):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, f"## {heading}\n", "")
+    assert _violations(root) == [(ALPHA, f"doc_missing_section:{heading}")]
+
+
+# --- class docs: Examples -----------------------------------------------------
+
+CROSS_EXAMPLES = "- INC-001: a case from class alpha.\n- INC-004: a case from class beta.\n"
+
+
+def _cross_cites(root: Path, ids: list[str]) -> None:
+    _edit(root, CROSS, CROSS_EXAMPLES, "".join(f"- {i}: a case.\n" for i in ids))
+
+
+def test_examples_citing_one_incident_fail(tmp_path):
+    root = _tree(tmp_path)
+    _cross_cites(root, ["INC-001"])
+    assert _violations(root) == [(CROSS, "examples_count")]
+
+
+def test_examples_citing_six_incidents_fail(tmp_path):
+    root = _tree(tmp_path)
+    _cross_cites(root, [f"INC-00{n}" for n in range(1, 7)])
+    assert _violations(root) == [(CROSS, "examples_count")]
+
+
+def test_examples_citing_five_incidents_pass(tmp_path):
+    root = _tree(tmp_path)
+    _cross_cites(root, [f"INC-00{n}" for n in range(1, 6)])
+    assert check_tree(root) == []
+
+
+def test_examples_citing_one_incident_twice_count_once(tmp_path):
+    root = _tree(tmp_path)
+    _cross_cites(root, ["INC-001", "INC-001"])
+    assert _violations(root) == [(CROSS, "examples_count")]
+
+
+def test_an_incident_cited_outside_examples_is_not_an_example(tmp_path):
+    root = _tree(tmp_path)
+    _cross_cites(root, ["INC-001"])
+    _edit(root, CROSS, "A deleted resource that cannot be restored.", "See INC-004 and INC-005.")
+    assert _violations(root) == [(CROSS, "examples_count")]
+
+
+def test_examples_citing_an_id_that_is_not_in_the_dataset_fail(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "- INC-003:", "- INC-099:")
+    assert _violations(root) == [(ALPHA, "example_unknown_id:INC-099")]
+
+
+def test_a_class_doc_citing_another_class_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "- INC-003:", "- INC-004:")
+    assert _violations(root) == [(ALPHA, "example_wrong_class:INC-004")]
+
+
+def test_a_cross_cutting_doc_may_cite_rows_of_any_class(tmp_path):
+    root = _tree(tmp_path)
+    text = (root / CROSS).read_text(encoding="utf-8")
+    assert "scope: cross-cutting" in text and "INC-001" in text and "INC-004" in text
+    assert check_tree(root) == []
+
+
+def test_a_doc_loses_the_any_class_allowance_without_the_scope_field(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, CROSS, "scope: cross-cutting\n", "")
+    assert _violations(root) == [
+        (CROSS, "example_wrong_class:INC-001"),
+        (CROSS, "example_wrong_class:INC-004"),
     ]
+
+
+def test_a_scope_other_than_cross_cutting_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "applies_when:", "scope: local\napplies_when:")
+    assert _violations(root) == [(ALPHA, "scope_invalid")]
+
+
+def test_a_cross_cutting_doc_is_held_to_the_protection_rules(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, CROSS, "- **Breaks when:** the identity is shared\n", "")
+    assert _violations(root) == [(CROSS, "rung_missing_breaks_when")]
+
+
+# --- class docs: Protections --------------------------------------------------
+
+FIRST_SOURCE = "- **Source:** [example source](https://example.com/practice)\n"
+FIRST_COST = "- **Cost:** reviewer time, no figure\n"
+FIRST_BREAKS = "- **Breaks when:** the diff is too large to read\n"
+DATED_COST = "5 CI minutes per pull request (as of 2026-09, https://example.com/ci)"
+
+
+def test_protections_without_a_rung_fail(tmp_path):
+    root = _tree(tmp_path)
+    _cut(root, ALPHA, "### Read the diff", "## Evidence")
+    assert _violations(root) == [(ALPHA, "protections_no_rungs")]
+
+
+def test_a_rung_without_a_source_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, FIRST_SOURCE, "")
+    assert _violations(root) == [(ALPHA, "rung_missing_source")]
+
+
+def test_a_rung_with_an_empty_source_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, FIRST_SOURCE, "- **Source:**\n")
+    assert _violations(root) == [(ALPHA, "rung_missing_source")]
+
+
+def test_the_label_one_operators_practice_counts_as_a_source(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, FIRST_SOURCE, "- **Source:** one operator's practice\n")
+    assert check_tree(root) == []
+
+
+def test_a_rung_without_a_cost_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, FIRST_COST, "")
+    assert _violations(root) == [(ALPHA, "rung_missing_cost")]
+
+
+def test_a_rung_without_a_breaks_when_line_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, FIRST_BREAKS, "")
+    assert _violations(root) == [(ALPHA, "rung_missing_breaks_when")]
+
+
+def test_rung_fields_are_found_without_bold_markers(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "- **Cost:** reviewer time, no figure", "- Cost: reviewer time, no figure")
+    assert check_tree(root) == []
+
+
+@pytest.mark.parametrize(
+    "cost",
+    [
+        "5 CI minutes per pull request",
+        "5 CI minutes per pull request (as of 2026-9, https://example.com/ci)",
+        "5 CI minutes per pull request (as of 2026-13, https://example.com/ci)",
+        "5 CI minutes per pull request (as of 2026-09)",
+        "5 CI minutes per pull request (as of 2026-09, )",
+    ],
+)
+def test_a_cost_figure_without_a_dated_source_fails(tmp_path, cost):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, DATED_COST, cost)
+    assert _violations(root) == [(ALPHA, "cost_figure_without_date")]
+
+
+def test_a_cost_without_a_figure_needs_no_date(tmp_path):
+    root = _tree(tmp_path)
+    assert "no figure" in (root / ALPHA).read_text(encoding="utf-8")
+    assert check_tree(root) == []
+
+
+# --- class docs: size cap and links -------------------------------------------
+
+
+def _pad_to(root: Path, rel: str, size: int) -> None:
+    path = root / rel
+    text = path.read_text(encoding="utf-8")
+    pad = size - len(path.read_bytes())
+    assert pad >= 0
+    path.write_bytes((text + "x" * pad).encode("utf-8"))
+    assert len(path.read_bytes()) == size
+
+
+def test_a_doc_over_the_size_cap_fails(tmp_path):
+    root = _tree(tmp_path)
+    _pad_to(root, ALPHA, 30_001)
+    assert _violations(root) == [(ALPHA, "doc_over_size_cap")]
+
+
+def test_a_doc_exactly_at_the_size_cap_passes(tmp_path):
+    root = _tree(tmp_path)
+    _pad_to(root, ALPHA, 30_000)
+    assert check_tree(root) == []
+
+
+def test_the_size_cap_is_one_configured_value(tmp_path, monkeypatch):
+    import structure_gate
+
+    root = _tree(tmp_path)
+    monkeypatch.setattr(structure_gate, "DOC_SIZE_CAP_BYTES", (root / CROSS).stat().st_size)
+    assert _violations(root) == [(ALPHA, "doc_over_size_cap")]
+
+
+def test_a_relative_link_that_resolves_to_no_file_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, ALPHA, "(cross.md)", "(missing.md)")
+    assert _violations(root) == [(ALPHA, "boundary_evidence_unresolvable")]
+
+
+# --- dataset rows -------------------------------------------------------------
+
+HEADER = "id,class,stage,source_type,evidence_strength,link"
+COLUMNS = HEADER.split(",")
+LAST_ROW = "INC-006,beta,after-merge,issue,primary,https://example.com/beta/3"
+
+
+@pytest.mark.parametrize("column", COLUMNS)
+def test_a_dataset_without_a_column_fails(tmp_path, column):
+    root = _tree(tmp_path)
+    renamed = ",".join(f"x_{c}" if c == column else c for c in COLUMNS)
+    _edit(root, DATASET, HEADER, renamed)
+    assert _violations(root) == [(DATASET, f"dataset_missing_column:{column}")]
+
+
+def test_a_row_with_an_empty_cell_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, LAST_ROW, "INC-006,beta,after-merge,,primary,https://example.com/beta/3")
+    assert _violations(root) == [(DATASET, "row_missing_value:source_type")]
+
+
+def test_a_row_with_fewer_fields_than_the_header_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, LAST_ROW, "INC-006,beta,after-merge,issue")
+    assert _violations(root) == [
+        (DATASET, "row_missing_value:evidence_strength"),
+        (DATASET, "row_missing_value:link"),
+    ]
+
+
+def test_a_repeated_id_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, "INC-006,beta,", "INC-005,beta,")
+    assert _violations(root) == [(DATASET, "row_duplicate_id")]
+
+
+def test_an_id_that_is_not_inc_and_digits_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, "INC-006,beta,", "INC-6,beta,")
+    assert _violations(root) == [(DATASET, "row_bad_id")]
+
+
+def test_a_stage_outside_the_vocabulary_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, "INC-001,alpha,review,", "INC-001,alpha,nowhere,")
+    assert _violations(root) == [(DATASET, "row_stage_not_in_vocabulary")]
+
+
+def test_an_evidence_strength_outside_the_vocabulary_fails(tmp_path):
+    root = _tree(tmp_path)
+    _edit(root, DATASET, "issue,private,", "issue,hearsay,")
+    assert _violations(root) == [(DATASET, "row_evidence_strength_not_in_vocabulary")]
+
+
+def test_a_row_that_no_class_doc_cites_passes(tmp_path):
+    root = _tree(tmp_path)
+    docs = [(root / ALPHA).read_text(encoding="utf-8"), (root / CROSS).read_text(encoding="utf-8")]
+    assert not any("INC-006" in doc for doc in docs)
+    assert LAST_ROW in (root / DATASET).read_text(encoding="utf-8")
+    assert check_tree(root) == []
+
+
+def test_a_quoted_cell_with_a_comma_is_one_cell(tmp_path):
+    root = _tree(tmp_path)
+    assert '"private, not verifiable"' in (root / DATASET).read_text(encoding="utf-8")
+    assert check_tree(root) == []

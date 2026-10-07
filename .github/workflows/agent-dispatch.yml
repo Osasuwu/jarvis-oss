@@ -23,9 +23,16 @@ on:
 
 # One worker per issue; re-labeling (remove + add, to retry) cancels an
 # in-flight run for the same issue instead of racing it.
+#
+# Only `agent:dispatch` events join the per-issue group. Concurrency is
+# applied before the job's `if:`, so with a plain per-issue key ANY label
+# added to the issue mid-run would join the group, cancel the worker, then
+# skip its own job: a silent kill, since a cancelled job never reaches the
+# owner-queue step. Every other label event gets a unique noop group per run
+# and cancels nothing (#234; the same fix as Osasuwu/jarvis#1936).
 concurrency:
-  group: agent-dispatch-issue-${{ github.event.issue.number }}
-  cancel-in-progress: true
+  group: ${{ github.event.label.name == 'agent:dispatch' && format('agent-dispatch-issue-{0}', github.event.issue.number) || format('agent-dispatch-noop-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event.label.name == 'agent:dispatch' }}
 
 jobs:
   worker:
@@ -59,8 +66,8 @@ jobs:
           # Fine-grained PAT scoped to this repo (contents, issues,
           # pull-requests: write), NOT the default GITHUB_TOKEN: a push or PR
           # made with GITHUB_TOKEN triggers no other workflow, so the required
-          # checks (structure-gate, gitleaks, waiting-human-review) would never
-          # report on the worker's PR and it could never merge.
+          # checks would never report on the worker's PR and it could never
+          # merge.
           github_token: ${{ secrets.AGENT_DISPATCH_PAT }}
           prompt: |
             Implement GitHub issue #${{ github.event.issue.number }} in
@@ -78,11 +85,30 @@ jobs:
                if any issue under `## Blocked by` is still open.
             3. Branch from `main`:
                `claude/issue-${{ github.event.issue.number }}-<slug>`.
-            4. Meet every acceptance-criteria checkbox. Tests verify the
-               requirement, not your implementation; never weaken a test to
-               make it pass. Run `python -m pytest tests/ -q` before each
-               commit and fix failures first. Docs follow the repo's
-               structure gate (`tests/structure_gate.py`).
+            4. Meet every acceptance-criteria checkbox. Run
+               `python -m pytest tests/ -q` before each commit and fix
+               failures first; never weaken a test to make it pass. Docs
+               follow the repo's structure gate (`tests/structure_gate.py`).
+               One question decides every test you add or change: would it
+               go red if the behaviour it is named after broke?
+               - Look for an existing test first. A rule that holds for a
+                 set of files is one test that walks the set, not a copy
+                 per file. A checkbox an existing test already guards, or
+                 one you verify by a command's output or by reading a
+                 file, needs no new test.
+               - The expected value is a literal you wrote, not a constant
+                 imported from the code under test and not the same logic
+                 written again. Assert the value, not that something is
+                 present or non-empty. No `assert` under an `if` or a loop
+                 that may not run. No test that a file exists or that
+                 prose contains a phrase.
+               - Probe each one, after committing your change: make the
+                 smallest edit to the production file that breaks the
+                 named behaviour while the code still runs (a wrong value,
+                 a flipped condition), see the test fail, restore with
+                 `git checkout -- <file>`. Edit the production file, never
+                 the test. A test that stays green is fixed or deleted,
+                 not pushed.
             5. If you are blocked (ambiguous scope, an acceptance criterion
                contradicts the code, a human decision is needed, or the
                change requires a file you are denied below), do NOT guess:
@@ -90,8 +116,12 @@ jobs:
                without opening a PR.
             6. Otherwise commit, push the branch, and open a PR whose body
                has `Closes #${{ github.event.issue.number }}` on its own
-               line, then each acceptance criterion with how it is met, the
-               test output summary, and anything left undone.
+               line, then each acceptance criterion with how it is met
+               (which test, which command output, or by reading), for
+               every test you added or changed the line
+               `<production file>:<line> <mutation> -> <test> red`, for
+               every test you deleted the test that still covers it, and
+               anything left undone. A pass count is not evidence.
 
             Never merge a PR, never touch labels, never touch branch
             protection: the human merges every PR in this repo. Never edit

@@ -12,9 +12,8 @@ is present) has no reliable signal to make that branch on from inside a hook
 subprocess, which always receives piped stdin whether or not a terminal is attached.
 The accepted consequence is that this project hook also blocks the live owner's own
 local interactive edits to canonical protected files, even where a still-present
-user-level hook alone would allow them. See docs/agent-safety-hooks.md for the
-practice this hook backs; its "Our own choice" part records this trade-off and
-why the presence-detection alternative was dropped.
+user-level hook alone would allow them. Presence detection was dropped for that
+reason: a branch on "is a human here" cannot be made reliably from inside a hook.
 
 Matches Edit/Write/NotebookEdit only: a shell command that writes a protected file
 is not seen by this hook. Exits 0 on empty or unparsable input (fails open there).
@@ -22,13 +21,27 @@ is not seen by this hook. Exits 0 on empty or unparsable input (fails open there
 Reads tool_input from stdin (JSON). Exits 2 to block if the edited path matches a
 protected file.
 
-Wire it up via the matcher in `settings.snippet.json` (same directory).
+Install: the `Edit|Write|NotebookEdit` matcher in `settings.snippet.json` (same
+directory) runs it. Merge that entry into `.claude/settings.local.json` under
+`hooks.PreToolUse`. Each command runs `python3` if it starts, else `python`, and is chained with
+`|| exit 2`, so an interpreter that fails to launch blocks instead of passing. The
+untracked `.claude/settings.local.json` is not in a fresh checkout; `.worktreeinclude`
+lists it so Claude Code copies it into the worktrees it makes, while one made by
+`git worktree add` needs a hand copy. Claude Code only as shipped; other harnesses
+need their own wiring and parsing.
+
+Check: the hook is silent when it does not fire, so a session never shows whether it
+was wired. Ask the agent to edit a `PROTECTED_CANONICAL` path; a wired hook denies
+with a `BLOCKED:` reason in the transcript, and one that fails to launch blocks with
+the shell's error text instead. `claude --debug` logs every hook invocation and exit
+code, silent exit-0 runs included, to `~/.claude/debug/<session-id>.txt`. The hook
+keeps no log of its own. `tests/test_agent_safety_hooks.py` runs it on constructed calls.
 
 CUSTOMIZE: the two sets below are placeholders. Replace them with your own repo's
 files whose own compromise would weaken review itself — secret-scanner config,
 CI gate definitions, branch-protection scripts — not just "important" files.
-Everything else should go through ordinary PR + CI + review instead (option 1,
-"Written rules only", in docs/agent-safety-hooks.md covers when that is enough).
+Everything else should go through ordinary PR + CI + review instead; a written
+rule alone is enough where compromising the file would not weaken review itself.
 """
 
 import json
@@ -44,6 +57,8 @@ PROTECTED_CANONICAL = {
     ".agents/hooks/secret-scanner.py",
     ".agents/hooks/settings.snippet.json",
     ".gitleaks.toml",
+    ".agents/hooks/literal-gate.py",
+    ".worktreeinclude",
 }
 
 # Mirror copies of the same protected content living at a second path (e.g. a
@@ -115,8 +130,8 @@ def block_reason(path: str, kind: str) -> str:
     return (
         f"BLOCKED: {path} is a protected file ({kind}). This hook has no "
         "live-operator bypass by design — it must run identically in CI, where "
-        "there is no human to have earned one. Open a PR instead; see "
-        "docs/agent-safety-hooks.md for why this file is protected this way."
+        "there is no human to have earned one. Open a PR instead; the module "
+        "docstring of protected-files.py says why this file is protected this way."
     )
 
 

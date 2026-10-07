@@ -35,10 +35,9 @@ jobs:
           RUN_ATTEMPT: ${{ github.run_attempt }}
         with:
           script: |
-            // Reviewer machinery: the workflows, the skills and their
-            // calibration set, the hooks, the agent's own settings, the
-            // gate scripts, and every test (tests are what the gates are
-            // measured against). A path matches if it starts with an entry.
+            // Reviewer machinery: the workflows, the skills, the hooks, the
+            // agent's own settings, the gate scripts, and every test (tests
+            // are what the gates are measured against). A path matches if it starts with an entry.
             const MACHINERY = [
               ".github/",
               ".agents/",
