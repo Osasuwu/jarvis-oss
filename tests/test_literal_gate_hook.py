@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -28,19 +29,30 @@ FAKE_PATH_LITERAL = r"C:\Users\zqfake"
 FAKE_VARIANTS = ("zorblax-quint", "ZORBLAX_QUINT", "ZorblaxQuint", "zorblax quint", "zqfake")
 
 
-def _run(payload, literals: str | None = f"{FAKE_LITERAL}\n{FAKE_PATH_LITERAL}", raw=None):
-    env = dict(os.environ)
-    env.pop("PERSONAL_LITERALS", None)
-    if literals is not None:
-        env["PERSONAL_LITERALS"] = literals
-    return subprocess.run(
-        [sys.executable, str(HOOK)],
-        input=raw if raw is not None else json.dumps(payload),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-    )
+def _run(
+    payload,
+    literals: str | None = f"{FAKE_LITERAL}\n{FAKE_PATH_LITERAL}",
+    raw=None,
+    home: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+):
+    """Run the hook. Home is an empty directory unless one is given, so the developer's own
+    repo allowlist never reaches a test."""
+    with tempfile.TemporaryDirectory() as empty_home:
+        env = dict(os.environ)
+        env.pop("PERSONAL_LITERALS", None)
+        if literals is not None:
+            env["PERSONAL_LITERALS"] = literals
+        env["HOME"] = env["USERPROFILE"] = str(home or empty_home)
+        env.update(extra_env or {})
+        return subprocess.run(
+            [sys.executable, str(HOOK)],
+            input=raw if raw is not None else json.dumps(payload),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+        )
 
 
 def _bash(command: str, cwd: Path | None = None) -> dict:
@@ -278,6 +290,196 @@ def test_commands_that_send_no_text_are_not_scanned(command):
 def test_other_tools_pass_through():
     result = _run({"tool_name": "Read", "tool_input": {"file_path": "/c/Users/zqfake/x"}})
     assert result.returncode == 0
+
+
+# --- chained commands: only the gh steps are sent (#233) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "ls /c/Users/zqfake && gh pr create --title fix --body clean",
+        "gh pr comment 1 --body clean; rm -rf /c/Users/zqfake/scratch",
+        "mkdir -p /c/Users/zqfake/x\ngh issue comment 2 --body clean || echo /c/Users/zqfake",
+    ],
+)
+def test_a_home_path_in_a_step_that_is_not_gh_does_not_block(command):
+    result = _run(_bash(command))
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "B='zorblax quint'; gh pr comment 1 --body \"$B\"",  # a variable set by an earlier step
+        "echo zorblax quint | xargs gh pr comment 1 --body",  # fed by a pipe
+    ],
+)
+def test_a_gh_step_that_takes_text_from_earlier_steps_is_scanned_with_them(command):
+    _assert_blocked_quietly(_run(_bash(command)))
+
+
+def test_a_separator_inside_quotes_does_not_split_the_step():
+    result = _run(_bash("gh pr comment 1 --body 'see && ls /c/Users/zqfake; done'"))
+    _assert_blocked_quietly(result)
+
+
+def test_a_heredoc_body_belongs_to_the_step_that_opens_it():
+    command = "gh pr comment 1 --body-file - <<'EOF'\nzorblax quint\nEOF\nls /tmp"
+    _assert_blocked_quietly(_run(_bash(command)))
+
+
+def test_a_command_that_cannot_be_split_is_scanned_whole():
+    command = "ls /c/Users/zqfake && gh pr create --title fix --body clean 'unclosed"
+    result = _run(_bash(command))
+    _assert_blocked_quietly(result)
+    assert "at: the command, line 1:5." in result.stderr
+
+
+# --- where the hit is, and the allowed route ------------------------------------------------
+
+
+def test_command_hit_is_located_by_line_and_column():
+    command = "ls /c/Users/zqfake && gh pr comment 1 --body 'clean\nalso zorblax quint'"
+    result = _run(_bash(command))
+    _assert_blocked_quietly(result)
+    assert "at: the command, line 2:6." in result.stderr
+
+
+def test_body_file_hit_is_located_by_line_and_column(tmp_path: Path):
+    (tmp_path / "body.md").write_text("## Summary\nhi zorblax quint\n", encoding="utf-8")
+    result = _run(_bash("gh pr comment 1 --body-file body.md", cwd=tmp_path))
+    _assert_blocked_quietly(result)
+    assert "at: body file body.md, line 2:4." in result.stderr
+
+
+def test_mcp_hit_is_located_by_field_line_and_column():
+    result = _run(_mcp("add_issue_comment", issue_number=1, body="ok\n  zorblax quint"))
+    _assert_blocked_quietly(result)
+    assert "at: field body, line 2:3." in result.stderr
+
+
+def test_bash_refusal_names_the_allowed_route_for_a_body():
+    result = _run(_bash("gh pr comment 1 --body 'zorblax quint'"))
+    _assert_blocked_quietly(result)
+    assert "outside the working tree" in result.stderr
+    assert "--body-file" in result.stderr
+
+
+def test_body_file_under_git_bash_tmp_is_read(tmp_path: Path):
+    """Git Bash's `/tmp` is the Windows temp directory; on other systems it is `/tmp`."""
+    if os.name == "nt":
+        temp_dir, extra_env = tmp_path, {"TEMP": str(tmp_path), "TMP": str(tmp_path)}
+    else:
+        temp_dir, extra_env = Path("/tmp"), {}
+    fd, name = tempfile.mkstemp(suffix=".md", dir=temp_dir)
+    os.close(fd)
+    body = Path(name)
+    try:
+        body.write_text("zorblax quint\n", encoding="utf-8")
+        command = f"gh pr create --title x --body-file /tmp/{body.name}"
+        result = _run(_bash(command), extra_env=extra_env)
+    finally:
+        body.unlink()
+    _assert_blocked_quietly(result)
+    assert f"at: body file /tmp/{body.name}, line 1:1." in result.stderr
+
+
+def test_body_file_held_in_a_shell_variable_is_refused_with_how_to_pass():
+    result = _run(_bash('gh pr create --title x --body-file "$TMP/body.md"'))
+    assert result.returncode == 2
+    assert "held in a shell variable" in result.stderr
+    assert "Pass a literal path." in result.stderr
+    assert "outside the working tree" in result.stderr
+
+
+def test_body_file_named_by_an_earlier_step_is_refused_with_how_to_pass(tmp_path: Path):
+    (tmp_path / "body.md").write_text("an old clean body\n", encoding="utf-8")
+    command = "printf 'new body' > body.md && gh pr comment 1 --body-file body.md"
+    result = _run(_bash(command, cwd=tmp_path))
+    assert result.returncode == 2
+    assert "named by an earlier step of this same command" in result.stderr
+    assert "Write the body file in a prior call" in result.stderr
+
+
+def test_missing_body_file_is_refused_with_how_to_pass(tmp_path: Path):
+    result = _run(_bash("gh pr comment 1 --body-file missing.md", cwd=tmp_path))
+    assert result.returncode == 2
+    assert "missing.md: it does not exist (yet)" in result.stderr
+    assert "Write it in a prior call." in result.stderr
+
+
+# --- scope by target repository (#233) -----------------------------------------------------
+
+
+def _home_with_allowlist(tmp_path: Path, *lines: str) -> Path:
+    home = tmp_path / "home"
+    (home / ".config").mkdir(parents=True)
+    allowlist = home / ".config" / "literal-gate-allowed-repos.txt"
+    allowlist.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return home
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh -R me/PRIV pr comment 1 --body 'zorblax quint'",
+        "gh pr comment 1 --repo=me/priv --body 'zorblax quint'",
+        "gh issue create -R https://github.com/me/priv.git -t x -b 'zorblax quint'",
+        "gh api repos/me/priv/issues -f title=x -f body='zorblax quint'",
+        "gh api -X POST repos/me/priv/issues/1/comments -f body='zorblax quint'",
+    ],
+)
+def test_write_to_an_allowlisted_repo_is_not_checked(tmp_path: Path, command):
+    home = _home_with_allowlist(tmp_path, "# private repos only", "ME/priv")
+    result = _run(_bash(command), home=home)
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr comment 1 --body 'zorblax quint'",  # no repo named: the current one
+        "gh -R o/r pr comment 1 --body 'zorblax quint'",  # not on the list
+        "gh api repos/o/r/issues -f body='zorblax quint'",
+        "gh -R me/priv pr comment 1 -R o/r --body 'zorblax quint'",  # two targets
+        "GH_REPO=o/r gh -R me/priv pr comment 1 --body 'zorblax quint'",
+        "gh -R me/priv pr comment 1 --body 'zorblax quint' )",  # cannot be split
+    ],
+)
+def test_write_to_a_repo_not_on_the_allowlist_is_checked(tmp_path: Path, command):
+    home = _home_with_allowlist(tmp_path, "me/priv")
+    _assert_blocked_quietly(_run(_bash(command), home=home))
+
+
+def test_missing_allowlist_allowlists_nothing():
+    _assert_blocked_quietly(_run(_bash("gh -R me/priv pr comment 1 --body 'zorblax quint'")))
+
+
+def test_target_is_read_per_gh_step(tmp_path: Path):
+    home = _home_with_allowlist(tmp_path, "me/priv")
+    to_private_then_public = (
+        "gh -R me/priv issue comment 2 --body 'zorblax quint' && "
+        "gh -R o/r pr comment 1 --body 'zorblax quint'"
+    )
+    result = _run(_bash(to_private_then_public), home=home)
+    _assert_blocked_quietly(result)
+    assert "at: the command, line 1:88." in result.stderr
+    clean_public_then_private = (
+        "gh -R o/r pr comment 1 --body clean && "
+        "gh -R me/priv issue comment 2 --body 'zorblax quint'"
+    )
+    assert _run(_bash(clean_public_then_private), home=home).returncode == 0
+
+
+def test_mcp_write_to_an_allowlisted_repo_is_not_checked(tmp_path: Path):
+    home = _home_with_allowlist(tmp_path, "me/priv")
+    private = _mcp(
+        "add_issue_comment", owner="Me", repo="Priv", issue_number=1, body="zorblax quint"
+    )
+    assert _run(private, home=home).returncode == 0
+    public = _mcp("add_issue_comment", owner="o", repo="r", issue_number=1, body="zorblax quint")
+    _assert_blocked_quietly(_run(public, home=home))
 
 
 # --- fail closed --------------------------------------------------------------------------
