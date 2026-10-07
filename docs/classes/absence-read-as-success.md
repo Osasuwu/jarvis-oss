@@ -102,7 +102,7 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 - **Source:** one operator's practice: fixtures feed each gate a skipped job, an empty review, a cancelled run and a changed path it should watch, and assert red; they run on every change to the gate and on a schedule.
 - **Cost:** hours per gate, CI minutes on a schedule, and fixtures that change with the gate.
-- **Breaks when:** a fixture asserts something that cannot fail (the guard of INC-043 was followed by fixtures that compared a value with itself), or a skip path nobody wrote a fixture for (INC-048 found four).
+- **Breaks when:** a fixture asserts something that cannot fail (in the maintainer's record, the fixture rule written after INC-043 was later followed by a guard test that compared a constant with a copy of itself), or a skip path nobody wrote a fixture for (INC-048 found four).
 
 ### One copy: run the same gate code in every repository
 
