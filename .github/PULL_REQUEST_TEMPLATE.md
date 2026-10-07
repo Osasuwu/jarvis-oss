@@ -15,7 +15,7 @@ Closes #N
 
 Which of these the PR touches, so the reviewer knows which hold to expect:
 
-- [ ] A document (`docs/` except `docs/adr/`, `incidents/`, `README.md`): `waiting-human-review` is applied
+- [ ] A document (`docs/` except `docs/adr/` and `docs/research/`, `incidents/`, `README.md`): `waiting-human-review` is applied
   automatically and stays red until a human removes the label. Do not remove it yourself.
 - [ ] Machinery (`.github/`, `.agents/`, `.claude/`, `scripts/`, `tests/`): `machinery-guard` holds the PR the same way.
 - [ ] Neither.

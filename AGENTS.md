@@ -33,8 +33,8 @@ issue gets `agent:dispatch`. No gate reads the PR body; the template is for the 
 
 ## Held paths
 
-- **Documents** (`docs/` except `docs/adr/`, `incidents/`, `README.md`): a PR changing one gets
-  the `waiting-human-review` label and the check stays red until a human removes it. The one
+- **Documents** (`docs/` except `docs/adr/` and `docs/research/`, `incidents/`, `README.md`): a
+  PR changing one gets the `waiting-human-review` label and the check stays red until a human removes it. The one
   definition is `.github/hold-paths.json`; do not restate it elsewhere.
 - **Machinery** (`.github/`, `.agents/`, `.claude/`, `scripts/`, `tests/`): the same hold, re-applied
   on every push. List: `.github/workflows/machinery-guard.yml`.

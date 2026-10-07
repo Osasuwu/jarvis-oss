@@ -1,8 +1,8 @@
 """Behaviour checks for .github/workflows/waiting-human-review.yml (#213).
 
 The hold applies to pull requests that change a document: a path the definition in
-.github/hold-paths.json names (docs/ without docs/adr/, incidents/, README.md; ADR-0004
-decision 4). The structure gate reads the same file (#241). The checks extract the embedded
+.github/hold-paths.json names (docs/ without docs/adr/ and docs/research/, incidents/,
+README.md; ADR-0004 decision 4). The structure gate reads the same file (#241). The checks extract the embedded
 github-script body and run it under node against a mocked `github`, `context` and `core`,
 as tests/test_machinery_guard.py does, so they test the script that actually ships. The
 script reads the definition from its working directory, as the checkout step provides it.
@@ -133,6 +133,7 @@ def _definition_in(directory: Path, definition: dict) -> None:
         ("docs/sub/guide.md", True),
         ("docs/diagram.png", True),
         ("docs/adr/0002-plumbing-only-doc-changes-get-a-full-review.md", False),
+        ("docs/research/doc-authoring-direction-2026-09-29.md", False),
         ("README.md", True),
         ("incidents/incidents.csv", True),
         ("incidents/notes/a.md", True),

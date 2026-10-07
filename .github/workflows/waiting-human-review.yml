@@ -2,8 +2,8 @@ name: Waiting on human review
 
 # The hold is for documents (#213): a pull request that changes a document waits
 # for a person to read it. What counts as a document is defined once, in
-# .github/hold-paths.json (docs/ without docs/adr/, incidents/, README.md), and
-# tests/structure_gate.py reads the same file (#241). Everything else in the repo
+# .github/hold-paths.json (docs/ without docs/adr/ and docs/research/, incidents/,
+# README.md), and tests/structure_gate.py reads the same file (#241). Everything else in the repo
 # supports those documents and merges on its own gates.
 on:
   pull_request:

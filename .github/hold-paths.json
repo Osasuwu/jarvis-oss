@@ -1,5 +1,5 @@
 {
   "prefixes": ["docs/", "incidents/"],
-  "excluded_prefixes": ["docs/adr/"],
+  "excluded_prefixes": ["docs/adr/", "docs/research/"],
   "files": ["README.md"]
 }
