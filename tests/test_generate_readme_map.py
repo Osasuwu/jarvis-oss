@@ -72,9 +72,9 @@ Read these every time, whatever your repo looks like. They apply across classes 
 
 - [irreversible-effects](docs/classes/cross.md)
 
-| Class | task | code | ci | review | merge | after-merge | Incidents | From the maintainer's repos |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|--:|--:|
-| [alpha](docs/classes/alpha.md) |  |  | ● | ● |  |  | 3 | 2 |
+| Class | task | code | ci | review | merge | after-merge | Incidents | From the maintainer's repos | Evidence strength |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|--:|--:|---|
+| [alpha](docs/classes/alpha.md) |  |  | ● | ● |  |  | 3 | 2 | 1 primary, 1 secondary, 1 private |
 
 **Candidates, not established.** No class doc and no incident evidence yet. Do not report them as classes.
 
@@ -86,8 +86,8 @@ Early version: 0 of 18 classes written. A class missing from the map is not writ
 
 No cross-cutting doc is written yet.
 
-| Class | task | code | ci | review | merge | after-merge | Incidents | From the maintainer's repos |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|--:|--:|
+| Class | task | code | ci | review | merge | after-merge | Incidents | From the maintainer's repos | Evidence strength |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|--:|--:|---|
 
 No class is written yet, so the map has no rows.
 """

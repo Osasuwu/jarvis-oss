@@ -11,10 +11,13 @@ Inputs, all read from the root and none hard-coded here:
 
 - `docs/classes/*.md` frontmatter: `class`, `surfaces_at`, and `scope: cross-cutting`. A doc with
   that scope is linked above the map, has no row and is not counted in N.
-- `incidents/incidents.csv`: the count per class, and the share that comes from the maintainer's
-  own repos. A row is the maintainer's when its link is a repository URL under one of the
-  registry's `maintainer_owners`, or is the label "private, not verifiable".
-- `docs/vocabularies.json`: the map's stage columns, in that order.
+- `incidents/incidents.csv`: the count per class, the share that comes from the maintainer's
+  own repos, and the count per evidence strength. A row is the maintainer's when its link is a
+  repository URL under one of the registry's `maintainer_owners`, or is the label "private, not
+  verifiable". The evidence strength is the label the reader's agent is told to keep (decision
+  12), so the map carries it rather than leaving it in the dataset only.
+- `docs/vocabularies.json`: the map's stage columns, in that order, and the evidence strengths, in
+  the order they are listed in a row.
 - `docs/class-registry.json`: `planned_classes` (the M), `maintainer_owners` and `candidates`
   (id, name, description). The candidate list is edited by hand: remove an entry when its class
   doc is written.
@@ -94,6 +97,21 @@ def _incident_counts(root: Path, owners: list[str]) -> dict[str, tuple[int, int]
     return counts
 
 
+def _evidence_strengths(root: Path, strengths: list[str]) -> dict[str, str]:
+    """class -> "13 primary, 4 private": the non-zero counts, in the vocabulary's order."""
+    tally: dict[str, dict[str, int]] = {}
+    text = _read(root, DATASET_FILE)
+    for row in csv.DictReader(text.splitlines()):
+        per_class = tally.setdefault(row["class"], {})
+        per_class[row["evidence_strength"]] = (
+            per_class.get(row["evidence_strength"], 0) + 1
+        )
+    return {
+        cls: ", ".join(f"{per[s]} {s}" for s in strengths if per.get(s))
+        for cls, per in tally.items()
+    }
+
+
 def _class_docs(root: Path) -> list[tuple[str, dict]]:
     docs = []
     for path in sorted((root / CLASS_DOCS_DIR).glob("*.md")):
@@ -109,8 +127,10 @@ def _class_docs(root: Path) -> list[tuple[str, dict]]:
 def render_block(root: Path) -> str:
     root = Path(root)
     registry = _load_registry(root)
-    stages = json.loads(_read(root, VOCABULARIES_FILE))["surfaces_at"]
+    vocabularies = json.loads(_read(root, VOCABULARIES_FILE))
+    stages = vocabularies["surfaces_at"]
     counts = _incident_counts(root, registry["maintainer_owners"])
+    strengths = _evidence_strengths(root, vocabularies["evidence_strength"])
     docs = _class_docs(root)
     cross = [(p, f) for p, f in docs if f.get("scope") == CROSS_CUTTING]
     classes = sorted(
@@ -141,14 +161,17 @@ def render_block(root: Path) -> str:
         "",
         "| Class | "
         + " | ".join(stages)
-        + " | Incidents | From the maintainer's repos |",
-        "|---|" + ":-:|" * len(stages) + "--:|--:|",
+        + " | Incidents | From the maintainer's repos | Evidence strength |",
+        "|---|" + ":-:|" * len(stages) + "--:|--:|---|",
     ]
     for path, fields in classes:
         surfaces = fields.get("surfaces_at") or []
         marks = " | ".join("●" if stage in surfaces else "" for stage in stages)
         total, mine = counts.get(fields["class"], (0, 0))
-        lines.append(f"| [{fields['class']}]({path}) | {marks} | {total} | {mine} |")
+        strength = strengths.get(fields["class"], "")
+        lines.append(
+            f"| [{fields['class']}]({path}) | {marks} | {total} | {mine} | {strength} |"
+        )
     if not classes:
         lines += ["", "No class is written yet, so the map has no rows."]
     if registry["candidates"]:

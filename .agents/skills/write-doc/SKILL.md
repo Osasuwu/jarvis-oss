@@ -54,7 +54,9 @@ Add the rows before the doc, so Examples can cite them.
   `stage` is where in the development cycle the incident was caught (or, if it never was, where
   it did its damage). `source_type` is free text for what the link is (an issue, a pull request,
   a post-mortem, a talk). `evidence_strength` says how close the link is to the incident; pick
-  the vocabulary value that fits, and use the private one only for a private source.
+  the vocabulary value that fits, and use the private one only for a private source. The README
+  map shows each class's count per value and the reader's agent repeats it, so the label you
+  pick is what the reader is told.
 - The maintainer's own repos are treated like any other public project: one incident, one row,
   same link rule, no special label.
 - A private source enters only with the link column set to "private, not verifiable".
