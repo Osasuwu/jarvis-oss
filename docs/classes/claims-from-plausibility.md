@@ -14,7 +14,7 @@ applies_when_not: Claims that a mechanism checks before anyone acts on them. Cod
 
 ## TL;DR
 
-An agent states something about its work or its world (the tests pass, the cause was X, this package exists) because that is what is usually true, not because it checked. What stops it is a result the claim can be held against: a tool output in the report, a check the agent has to run, and at the strong end a mechanism that checks the claim so that nobody has to believe it.
+An agent states something about its work or its world (the tests pass, the cause was X, this package exists) because that is what is usually true, not because it checked. What stops it is a result the claim can be held against: a tool output from the session, a check the agent has to run, and at the strong end a mechanism that checks the claim so that nobody has to believe it.
 
 ## Symptom
 
@@ -51,7 +51,7 @@ Each statement was plausible, because it is what is usually true in a project li
 
 **A hallucinated package can be made real by someone else.** A name that does not exist fails at install, which is a check of sorts. Once someone registers the name, the install succeeds, the claim looks verified, and what runs is whatever the registrant published (INC-010). The package rungs below therefore look at a package's age and record, not only at whether the name resolves.
 
-**What protects.** A claim can be acted on only once something other than its author has held it against a result: a run, a diff, a registry, a required check. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
+**What protects.** A claim should be acted on only after it has been held against a run, a diff, a registry or a required check: a result, not its author's account of one. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
 
 ## Where it surfaces
 
