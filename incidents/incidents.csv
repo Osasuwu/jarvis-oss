@@ -39,3 +39,26 @@ INC-037,pattern-matched-boundaries,task,issue,primary,https://github.com/Osasuwu
 INC-038,pattern-matched-boundaries,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1967
 INC-039,pattern-matched-boundaries,review,issue,private,"private, not verifiable"
 INC-040,pattern-matched-boundaries,merge,issue,private,"private, not verifiable"
+INC-041,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/74
+INC-042,absence-read-as-success,review,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/214
+INC-043,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/326
+INC-044,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1073
+INC-045,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1109
+INC-046,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1182
+INC-047,absence-read-as-success,ci,issue,primary,https://github.com/Osasuwu/jarvis/issues/1239
+INC-048,absence-read-as-success,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1964
+INC-049,absence-read-as-success,ci,issue,primary,https://github.com/Osasuwu/music-intel-mcp/issues/226
+INC-050,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-051,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-052,absence-read-as-success,merge,issue,private,"private, not verifiable"
+INC-053,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-054,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-055,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-056,absence-read-as-success,code,issue,private,"private, not verifiable"
+INC-057,absence-read-as-success,ci,issue,private,"private, not verifiable"
+INC-058,absence-read-as-success,after-merge,issue,private,"private, not verifiable"
+INC-059,absence-read-as-success,review,issue,primary,https://github.com/anthropics/claude-code/issues/32459
+INC-060,absence-read-as-success,review,issue,primary,https://github.com/anthropics/claude-code/issues/76255
+INC-061,absence-read-as-success,review,issue,primary,https://github.com/anthropics/claude-code/issues/59712
+INC-062,absence-read-as-success,review,issue,primary,https://github.com/anthropics/claude-code-action/issues/1361
+INC-063,absence-read-as-success,review,issue,primary,https://github.com/jadedm/claude-review-action/issues/15

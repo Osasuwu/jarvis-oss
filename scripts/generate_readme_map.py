@@ -22,8 +22,9 @@ Inputs, all read from the root and none hard-coded here:
   (id, name, description). The candidate list is edited by hand: remove an entry when its class
   doc is written.
 
-The generator is calibration-era (decision 11): it changes with the class-doc contract until the
-freeze after the third class doc. It imports the gate's frontmatter parser and constants from
+The class-doc contract is frozen since 2026-10-07 (ADR-0004, decision 11 and the amendment after
+the third calibration doc): a change to what the generator reads needs a new amendment there. It
+imports the gate's frontmatter parser and constants from
 `tests/structure_gate.py`, so the two read a doc the same way.
 
 Install: nothing to install; Python 3.12+ and the standard library.

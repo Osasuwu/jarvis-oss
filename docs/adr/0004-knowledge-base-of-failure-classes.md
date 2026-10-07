@@ -5,6 +5,8 @@ under *Open* are locked before the first class doc and recorded as an amendment 
 Revised before merge on 2026-10-04 after a prior-art check (see *Prior art* and *Revision*).
 Amended on 2026-10-05: the *Open* items are answered in *Amendment: the class-doc contract*.
 Amended on 2026-10-07: what the pilot changed is in *Amendment: after the pilot*.
+Amended on 2026-10-07: the second calibration doc is in *Amendment: after the second calibration
+doc*, and the contract freeze in *Amendment: after the third calibration doc*.
 Tracking: milestone "Knowledge base — first release". Supersedes ADR-0003 and ADR-0001.
 Amends ADR-0002.
 
@@ -388,3 +390,39 @@ Considered and rejected:
   how close a link is to the incident, and an advisory is as close as a link gets.
 - **A dataset column for whether a row is external.** Rejected: a copy of what the link already
   says, which decision 17 derives instead.
+
+## Amendment: after the third calibration doc
+
+Date: 2026-10-07. The third calibration doc, `absence-read-as-success` (C1), is written. Most
+of its evidence is the maintainer's: 18 of its 23 dataset rows come from the maintainer's
+repos, 9 of them private, against 6 of 17 for C11 and 13 of 17 for the pilot. External
+evidence for the class is thin, and the doc says so. This records what it changed under
+decision 11, and the freeze.
+
+23. **No change to the contract.** The doc fit the contract as the second calibration doc left
+    it.
+    - The doc is about 20 KB with twelve rungs, under the 30 KB cap of decision 20.
+    - Nine private rows entered with the link "private, not verifiable" and no project name;
+      the map's count of rows from the maintainer's repos, derived from the link, showed the
+      mix without a new column.
+    - Rungs taken from the maintainer's own fixes, which no external source describes, carry
+      the label "one operator's practice", as decision 11's blind search intends.
+
+24. **The contract is frozen.** From 2026-10-07 the class-doc contract is frozen: the seven
+    sections, the frontmatter fields and their vocabularies, the Examples rule, the three rung
+    labels, the dated Cost rule, the relative-link rule and the size cap of 30 KB. The three
+    calibration docs are `claims-from-plausibility` (the pilot), `pattern-matched-boundaries`
+    (C11) and `absence-read-as-success` (C1). A later change needs a new amendment here and the
+    migration of every doc already written. The structure gate, the writing skill and the README
+    generator say so. The reviewer of decision 5 is built against this contract.
+
+Considered and rejected:
+
+- **Raising the size cap at the freeze.** Rejected: the largest doc, C11, fits at about 29.9 KB
+  with nothing cut, and the three docs give no case that needed more room.
+- **Lowering the size cap to the C1 doc's size.** Rejected: C11 would no longer fit, and the
+  cap exists to stop a doc nobody reads, not to tighten the smallest one.
+- **A dataset column marking a row as the maintainer's.** Rejected again, as for C11: the link
+  already says it, and decision 17 derives the count.
+- **Leaving the freeze to the reviewer's build.** Rejected: decision 11 ties the freeze to the
+  third doc, and a reviewer measured against a contract still moving measures nothing stable.
