@@ -401,21 +401,22 @@ decision 11, and the freeze.
 
 23. **No change to the contract.** The doc fit the contract as the second calibration doc left
     it.
-    - The doc is about 20 KB with twelve rungs, under the 30 KB cap of decision 20.
+    - The doc is about 21 KB with twelve rungs, under the 30 KB cap of decision 20.
     - Nine private rows entered with the link "private, not verifiable" and no project name;
       the map's count of rows from the maintainer's repos, derived from the link, showed the
       mix without a new column.
     - Rungs taken from the maintainer's own fixes, which no external source describes, carry
-      the label "one operator's practice", as decision 11's blind search intends.
+      the label "one operator's practice", as decision 6's blind search intends.
 
-24. **The contract is frozen.** From 2026-10-07 the class-doc contract is frozen, all of it,
-    including: the seven sections, the frontmatter fields and their vocabularies, the Examples
-    rule, the three rung labels, the dated Cost rule, the relative-link rule, the cross-cutting
-    variant of decision 13, the incident dataset's columns and vocabularies, and the size cap
-    of 30 KB. The three calibration docs are `claims-from-plausibility` (the pilot),
-    `pattern-matched-boundaries` (C11) and `absence-read-as-success` (C1). A later change needs
-    a new amendment here and the migration of every doc already written. The structure gate,
-    the writing skill and the README generator say so. The reviewer of decision 5 is built against this contract.
+24. **The contract is frozen.** From the merge of the third calibration doc (written
+    2026-10-07) the class-doc contract is frozen, all of it, including: the seven sections, the
+    frontmatter fields and their vocabularies, the Examples rule, the three rung labels, the
+    dated Cost rule, the relative-link rule, the cross-cutting variant of decision 13, the
+    incident dataset's columns and vocabularies, and the size cap of 30 KB. The three calibration
+    docs are `claims-from-plausibility` (the pilot), `pattern-matched-boundaries` (C11) and
+    `absence-read-as-success` (C1). A later change needs a new amendment here and the migration
+    of every doc already written. The structure gate, the writing skill and the README generator
+    say so. The reviewer of decision 5 is built against this contract.
 
 Considered and rejected:
 

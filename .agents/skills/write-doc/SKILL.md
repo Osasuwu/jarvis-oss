@@ -41,7 +41,7 @@ Protections, Evidence.
 **Size**: the file, as stored, stays under 30,000 bytes. When it does not fit, move detail into a
 linked file; do not drop protections to fit.
 
-The contract is frozen since 2026-10-07 ([ADR-0004](../../../docs/adr/0004-knowledge-base-of-failure-classes.md),
+The contract is frozen since the third calibration doc merged ([ADR-0004](../../../docs/adr/0004-knowledge-base-of-failure-classes.md),
 amendment after the third calibration doc). A change to it needs a new amendment there and the
 migration of every class doc already written; do not change the gate to fit one doc.
 

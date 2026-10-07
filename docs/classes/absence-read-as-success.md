@@ -46,7 +46,7 @@ A check you rely on shows green, or shows nothing at all and nobody notices, and
 
 ## Where it surfaces
 
-Mostly after merge. In 12 of this class's 23 dataset rows the gap was found after the change had merged, by someone reading the reviewer's reports, by a later failure, or by an audit of the gate itself; the gate had been green throughout. In review, it shows as a pull request with a green or neutral check and no review on it, noticed by a person who expected comments (INC-059 to INC-063). In CI, it is caught only where a step already fails on a missing result, as in INC-047, where twelve reviewers ran and posted nothing and the verdict step failed closed. At merge, the sign is a check list that says skipped or neutral where a pass was expected; the merge button does not distinguish them.
+Mostly after merge. In 12 of this class's 23 dataset rows the gap was found after the change had merged, by someone reading the reviewer's reports, by a later failure, or by an audit of the gate itself; nothing had gone red. In review, it shows as a pull request with a green or neutral check and no review on it, noticed by a person who expected comments or found by reading the run's logs and counters (INC-059 to INC-063). In CI, it is caught only where a step already fails on a missing result, as in INC-047, where twelve reviewers ran and posted nothing and the verdict step failed closed. At merge, the sign is a check list that says skipped or neutral where a pass was expected; the merge button does not distinguish them.
 
 ## Protections
 
@@ -66,7 +66,7 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 - **Source:** with branch protection, "all required status checks must pass before collaborators can merge" ([about protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)), so a required check that is cancelled, times out or never reports blocks. Comparing the live required list against a checked-in copy on a schedule is one operator's practice.
 - **Cost:** minutes per repository; a short scheduled script for the read-back.
-- **Breaks when:** the job is skipped by a condition or its dependency failed (both pass), the check was never added to the list, or a renamed job silently drops out of it. Several of the private rows are repositories with no branch protection at all.
+- **Breaks when:** the job is skipped by a condition or its dependency failed (both can pass), the check was never added to the list, or a renamed job silently drops out of it. Several of the private rows are repositories with no branch protection at all.
 
 ### Workflow: do not require a skippable job; aggregate with a job that always runs
 
@@ -88,7 +88,7 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 ### Preflight: fail the job when a tool the check needs is missing
 
-- **Source:** POSIX `command -v` reports the path a command name resolves to, and fails when there is none ([POSIX command](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/command.html)). For most Claude Code hook events, exit code 2 is the only exit code that blocks through the code alone ([Claude Code hooks](https://code.claude.com/docs/en/hooks.md)), so a launcher that turns its own failure into exit 2, and a CI step that fails when the reviewer's sandbox cannot start, are one operator's practice.
+- **Source:** POSIX `command -v` reports the path a command name resolves to, and fails when there is none ([POSIX command](https://pubs.opengroup.org/onlinepubs/9799919799/utilities/command.html)). For `PreToolUse` and most other Claude Code hook events that can block, exit code 2 is the only exit code that blocks through the code alone ([Claude Code hooks](https://code.claude.com/docs/en/hooks.md)), so a launcher that turns its own failure into exit 2, and a CI step that fails when the reviewer's sandbox cannot start, are one operator's practice.
 - **Cost:** a check per dependency; a red job when the runner image changes.
 - **Breaks when:** the tool is present but degraded (a reviewer that loses one capability can still write a confident verdict), or the fail-closed launcher blocks legitimate work, as the maintainer's did on machines with a stub interpreter.
 
@@ -124,7 +124,7 @@ Mostly after merge. In 12 of this class's 23 dataset rows the gap was found afte
 
 ## Evidence
 
-- External evidence for this class is thin. A blind search found no public record of an agent reporting that all checks pass where the checks provably never ran, and no documented pattern for asserting that a check read more than zero files. The five external rows are all hosted or vendor review bots that ended green, neutral or silent with no review, from the vendors' own trackers (2026-03 to 2026-09). Gate failures are seldom filed as public incidents, so this is a reporting gap, not evidence that the class is rare. 18 of the class's 23 rows come from the maintainer's repositories, 9 of them private.
+- External evidence for this class is thin. A blind search found no public record of an agent reporting that all checks pass where the checks provably never ran, and no documented gate-level pattern, beyond a single tool's own flag, for asserting that a scanner or gate read more than zero files. The five external rows are all hosted or vendor review bots that ended green, neutral or silent with no review, from the tools' own trackers (2026-03 to 2026-09). Gate failures are seldom filed as public incidents, so this is a reporting gap, not evidence that the class is rare. 18 of the class's 23 rows come from the maintainer's repositories, 9 of them private.
 - A study of 142,387 CI jobs across 81 industrial projects describes "silent failures, where build jobs are marked as successful but fail to complete all or part of their tasks", and finds that "11% of successful jobs are rerun, with 35% of these reruns occurring after more than 24 hours" (as of 2025-09, [Aïdasso et al.](https://arxiv.org/abs/2509.14347v1)). The jobs are not agent-written.
 - The same failure without an agent: a large open-source project found that "we haven't been running the tests for most of CI in CI for like three months now" (as of 2024-09, [Mesa merge request 30978](https://gitlab.freedesktop.org/mesa/mesa/-/merge_requests/30978)).
 - Adjacent: of 3,111 test-disabling changes across 15 Java systems, "41% of disabled tests are never brought back" (as of 2021-08, [ESEC/FSE 2021](https://2021.esec-fse.org/details/fse-2021-papers/78/How-Disabled-Tests-Manifest-in-Test-Maintainability-Challenges-)).

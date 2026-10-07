@@ -8,7 +8,7 @@ root, never hard-coded here:
 - `docs/vocabularies.json` — the stage, evidence-strength and surfaces-at vocabularies.
 - `DOC_SIZE_CAP_BYTES` — the one configured size cap.
 
-The contract this gate checks is frozen since 2026-10-07 (ADR-0004, amendment after the third
+The contract this gate checks is frozen since the third calibration doc merged (ADR-0004, amendment after the third
 calibration doc): a change to it needs a new amendment there and the migration of every class doc
 already written. It checks structure only; ladder order, injection payloads and Evidence dates are out
 of scope for it.
