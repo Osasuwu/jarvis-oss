@@ -4,6 +4,7 @@ Date: 2026-10-04. Status: accepted for the transition; the class-doc contract de
 under *Open* are locked before the first class doc and recorded as an amendment here.
 Revised before merge on 2026-10-04 after a prior-art check (see *Prior art* and *Revision*).
 Amended on 2026-10-05: the *Open* items are answered in *Amendment: the class-doc contract*.
+Amended on 2026-10-07: what the pilot changed is in *Amendment: after the pilot*.
 Tracking: milestone "Knowledge base — first release". Supersedes ADR-0003 and ADR-0001.
 Amends ADR-0002.
 
@@ -327,3 +328,33 @@ Considered and rejected in this session:
   different mix of evidence needs.
 
 The critic's raw output is kept privately with the other research artefacts.
+
+## Amendment: after the pilot
+
+Date: 2026-10-07. The pilot class doc, `claims-from-plausibility`, and the cross-cutting
+irreversible-effects doc are written. This records what the pilot changed under decision 11.
+
+20. **The size cap.** This re-sets the cap of decision 2, as that decision required. It stays
+    at 30 KB, held as one value in the structure gate. The pilot doc is about 24 KB with
+    sixteen rungs and the irreversible-effects doc about 18 KB, so neither pressed the cap,
+    and nothing in them was cut to fit it. The two remaining calibration docs can still
+    re-set it.
+
+21. **Evidence strength on the map.** This refines decisions 12 and 17. The first reader check
+    failed on one point: the agent could not keep the evidence-strength label, because the
+    label lived only in the dataset, which the prompt does not send the agent to. The
+    generated map now carries, for each class, the count of its incidents per evidence
+    strength, in the vocabulary's order, leaving out zero counts. The prompt tells the agent
+    to keep each class's evidence strength as the map gives it. The fix is in the map and the
+    prompt, not in a reader-facing skill, as decision 12 orders. The structure gate is
+    unchanged, because the counts come from dataset rows it already checks. The writing skill
+    gains one sentence: the label a writer picks for a row is what the reader is told.
+
+Considered and rejected:
+
+- **Rewording the prompt only.** Rejected: the agent reads the map and the class docs, and
+  neither carried the label, so no wording could make it keep one.
+- **An evidence-strength field in each class doc's frontmatter.** Rejected: a copy of what the
+  dataset already holds, which would drift from it; decision 17 generates instead.
+- **Sending the agent to the dataset.** Rejected: the reader's agent would load every row of
+  every class to get one label per class.
