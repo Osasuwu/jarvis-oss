@@ -51,7 +51,7 @@ Each statement was plausible, because it is what is usually true in a project li
 
 **A hallucinated package can be made real by someone else.** A name that does not exist fails at install, which is a check of sorts. Once someone registers the name, the install succeeds, the claim looks verified, and what runs is whatever the registrant published (INC-010). The package rungs below therefore look at a package's age and record, not only at whether the name resolves.
 
-**What protects.** A claim is safe to act on once something other than its author has checked it against a result: a run, a diff, a registry, a required check. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
+**What protects.** A claim can be acted on only once something other than its author has held it against a result: a run, a diff, a registry, a required check. The ladder runs from asking the agent to check itself, through giving it checks it can run and sources it can read, to mechanisms that check without it. At that end the claim leaves this class: a claim a mechanism checks before anyone acts on it is outside `applies_when`.
 
 ## Where it surfaces
 
@@ -81,7 +81,7 @@ Cheapest first. The first rungs ask the agent to check; the middle ones give it 
 
 ### Grounding: give the agent the documentation for the versions you use
 
-- **Source:** [Context7](https://github.com/upstash/context7), which "pulls up-to-date, version-specific documentation and code examples straight from the source — and places them directly into your prompt."; a benchmark of documentation retrieval, not of Context7, is in Evidence.
+- **Source:** [Context7](https://github.com/upstash/context7), which "pulls up-to-date, version-specific documentation and code examples straight from the source — and places them directly into your prompt."; a study of documentation retrieval, not of Context7, is in Evidence.
 - **Cost:** Tokens for the documentation in context; setting up the server.
 - **Breaks when:** The agent does not ask for the documentation. The documentation can be wrong: [Context7](https://github.com/upstash/context7) says it "cannot guarantee the accuracy, completeness, or security of all library documentation." In a benchmark that used the authors' own retriever set to 50% precision, not Context7, retrieval made results worse on APIs the model already knew well (see Evidence).
 
