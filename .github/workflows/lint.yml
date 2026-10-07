@@ -1,0 +1,28 @@
+name: Lint
+
+# `ruff check` over every Python file, on every PR and every push to main. No paths filter: the
+# job always runs and reports, so it can be made a required check later without freezing merges.
+# The ruff version comes from .github/ruff-requirements.txt, the only place it is pinned.
+# Formatting (`ruff format --check`) is deliberately not run yet: see the PR that added this job.
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+      - name: Install ruff at the pinned version
+        run: pip install -r .github/ruff-requirements.txt
+      - name: Lint
+        run: ruff check .
