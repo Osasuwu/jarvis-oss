@@ -33,15 +33,40 @@ Install (once per device that pushes to a public repository):
 
        exec python3 "$(git rev-parse --show-toplevel)/scripts/pre_push_leak_gate.py" "$@"
 
+Run by hand: ``python3 scripts/pre_push_leak_gate.py --range <rev-range>`` scans exactly the
+commits ``git rev-list <rev-range>`` lists, e.g. ``--range @{u}..HEAD`` for what the next push
+of this branch would send. Unlike the hook it does not leave out commits the remote already
+has. The push lines are read from stdin only when git calls the hook, which always passes
+``<remote> <url>``; with no arguments, or with a terminal on stdin, the gate reads nothing and
+exits 2.
+
+What it prints (one line on stderr) and how it exits:
+
+- ``clean - checked N literal(s) across M new commit(s) in R pushed ref(s).``, exit 0. With
+  M = 0 the line adds that the remote already has every pushed commit, so only ref and tag
+  names were checked.
+- ``nothing checked - git sent no ref updates, so there is nothing to push.``, exit 0. Git
+  runs the hook with no push lines on an up-to-date push; nothing is sent and nothing was
+  read, which is not the same as clean. ``nothing checked - this push only deletes ...``
+  likewise.
+- ``blocked``, ``could not ...`` or ``Nothing was checked``, exit 1: the push does not happen.
+  Exit 2: the gate was called wrongly and read nothing.
+- ``clean - ... commit(s) in range <rev-range>.``, exit 0, from ``--range``; a range with no
+  commits says ``nothing checked`` and exits 1.
+
 Check (after installing, and after any change to the list or the hook; ``canary-7f3c9a`` is
 made up, use your own):
 
-1. Add ``canary-7f3c9a`` to the list and export it again. A clean push prints
-   ``pre-push leak gate: clean - checked N literal(s) across M commit(s).``; no line at all
-   means the hook is not installed.
-2. On a throwaway branch commit a file containing ``CANARY_7F3C9A`` and push. The push must be
-   blocked with ``added content in <file>``.
-3. Remove the canary from the list and export it again.
+1. On a branch the remote already has in full, ``git push`` must print
+   ``pre-push leak gate: nothing checked - git sent no ref updates, so there is nothing to
+   push.``; no line at all means the hook is not installed.
+2. Add ``canary-7f3c9a`` to the list and export it again. A push with new commits prints
+   ``pre-push leak gate: clean - checked N literal(s) across M new commit(s) in R pushed
+   ref(s).``
+3. On a throwaway branch commit a file containing ``CANARY_7F3C9A``. Before pushing,
+   ``--range @{u}..HEAD`` (or ``--range main..HEAD`` on a branch with no upstream) must
+   exit 1 with ``added content in <file>``; the push must then be blocked the same way.
+4. Remove the canary from the list and export it again.
 """
 
 from __future__ import annotations
@@ -192,29 +217,51 @@ def commits_to_scan(tip: str, remote_sha: str, remote: str | None) -> list[str]:
     return git(*args).split()
 
 
-def run(argv: list[str], stdin: str) -> int:
+def load_literals(consequence: str):
+    """The literal list and its matcher; with no usable list, say nothing was checked."""
     literals = literals_from_env()
     matcher = compile_literal_matcher(literals)
     if matcher is None:
         print(
             f"{PREFIX}: no personal literals configured. Set {LITERALS_ENV_VAR} (one literal "
-            "per line) from the list kept outside the repo. Nothing was checked, so the push "
-            "is blocked.",
+            f"per line) from the list kept outside the repo. Nothing was checked{consequence}.",
             file=sys.stderr,
         )
+    return literals, matcher
+
+
+def report_findings(scan: Scan, where: str) -> None:
+    print(
+        f"{PREFIX}: blocked. Personal literal(s) found in {where} (values withheld):",
+        file=sys.stderr,
+    )
+    for finding in scan.findings:
+        print(f"  {finding}", file=sys.stderr)
+
+
+def run(argv: list[str], stdin: str) -> int:
+    """Hook mode: ``argv`` is git's ``<remote> <url>``, ``stdin`` its push lines."""
+    literals, matcher = load_literals(", so the push is blocked")
+    if matcher is None:
         return 1
 
     remote_arg = argv[1] if len(argv) > 1 else ""
     remote = remote_arg if remote_arg in git("remote").split() else None
     scan = Scan(matcher)
     base_of_root = empty_tree()
+    pushed = deleted = unreadable = 0
     for raw in stdin.splitlines():
         parts = raw.split()
+        if not parts:
+            continue
         if len(parts) != 4:
+            unreadable += 1
             continue
         local_ref, local_sha, remote_ref, remote_sha = parts
         if is_zero(local_sha):
+            deleted += 1
             continue  # deleting a remote ref sends no content
+        pushed += 1
         scan.scan_ref_name(remote_ref)
         scan.scan_ref_name(local_ref)
         target = scan.scan_tag_objects(local_sha)
@@ -224,34 +271,104 @@ def run(argv: list[str], stdin: str) -> int:
             scan.scan_commit(commit, base_of_root)
 
     if scan.findings:
-        print(
-            f"{PREFIX}: blocked. Personal literal(s) found in what this push sends "
-            "(values withheld):",
-            file=sys.stderr,
-        )
-        for finding in scan.findings:
-            print(f"  {finding}", file=sys.stderr)
+        report_findings(scan, "what this push sends")
         print(
             "Rewrite those commits to remove them, then push again. A literal already on the "
             "remote does not block: removing it is always allowed.",
             file=sys.stderr,
         )
+    if unreadable:
+        # A line git sent but this gate cannot parse is a ref it did not check.
+        print(
+            f"{PREFIX}: could not read {unreadable} push line(s) (expected <local ref> "
+            "<local sha> <remote ref> <remote sha>). Those refs were not checked, so the push "
+            "is blocked.",
+            file=sys.stderr,
+        )
+    if scan.findings or unreadable:
+        return 1
+    if not pushed:
+        # Git runs the hook with no lines on an up-to-date push: nothing is sent, so the push
+        # may go on, but the line must not read as a scan that found nothing.
+        if deleted:
+            what = f"this push only deletes {deleted} remote ref(s), which sends no content"
+        else:
+            what = "git sent no ref updates, so there is nothing to push"
+        print(f"{PREFIX}: nothing checked - {what}.", file=sys.stderr)
+        return 0
+    line = (
+        f"{PREFIX}: clean - checked {len(literals)} literal(s) across {len(scan.commits)} new "
+        f"commit(s) in {pushed} pushed ref(s)"
+    )
+    if not scan.commits:
+        line += "; the remote already has every pushed commit, so only ref and tag names were"
+        line += " checked"
+    print(f"{line}.", file=sys.stderr)
+    return 0
+
+
+def run_range(rev_range: str) -> int:
+    """Manual mode: scan exactly the commits ``git rev-list <rev-range>`` lists."""
+    literals, matcher = load_literals("")
+    if matcher is None:
+        return 1
+    scan = Scan(matcher)
+    shown = scan.shown(rev_range)
+    commits = git("rev-list", "--end-of-options", rev_range).split()
+    if not commits:
+        print(f"{PREFIX}: nothing checked - range {shown} holds no commits.", file=sys.stderr)
+        return 1
+    base_of_root = empty_tree()
+    for commit in commits:
+        scan.scan_commit(commit, base_of_root)
+    if scan.findings:
+        report_findings(scan, f"range {shown}")
         return 1
     print(
-        f"{PREFIX}: clean - checked {len(literals)} literal(s) across "
-        f"{len(scan.commits)} commit(s).",
+        f"{PREFIX}: clean - checked {len(literals)} literal(s) across {len(scan.commits)} "
+        f"commit(s) in range {shown}.",
         file=sys.stderr,
     )
     return 0
 
 
-def main() -> int:
+NOT_RUN_BY_GIT = (
+    f"{PREFIX}: not run by git, which passes <remote> <url>, so stdin was not read. Nothing was "
+    "checked. By hand: --range <rev-range>, e.g. --range @{u}..HEAD."
+)
+RANGE_NEEDS_A_VALUE = (
+    f"{PREFIX}: --range takes exactly one <rev-range>, e.g. --range @{{u}}..HEAD. Nothing was "
+    "checked."
+)
+STDIN_IS_TERMINAL = (
+    f"{PREFIX}: stdin is a terminal, not git's push lines, so it was not read. Nothing was "
+    "checked. By hand: --range <rev-range>, e.g. --range @{u}..HEAD."
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv if argv is None else argv
+    args = argv[1:]
+    manual = bool(args) and args[0] == "--range"
     try:
-        return run(sys.argv, sys.stdin.read())
+        if manual:
+            if len(args) != 2:
+                print(RANGE_NEEDS_A_VALUE, file=sys.stderr)
+                return 2
+            return run_range(args[1])
+        if len(args) != 2:
+            print(NOT_RUN_BY_GIT, file=sys.stderr)
+            return 2
+        if sys.stdin is None or sys.stdin.isatty():
+            print(STDIN_IS_TERMINAL, file=sys.stderr)
+            return 2
+        return run(argv, sys.stdin.read())
     except (GitError, OSError, subprocess.SubprocessError) as exc:
         # Fail closed: a gate that errors out has checked nothing.
+        consequence = "" if manual else ", so the push is blocked"
         print(
-            f"{PREFIX}: could not complete the scan ({exc}); the push is blocked.", file=sys.stderr
+            f"{PREFIX}: could not complete the scan ({exc}). Nothing was checked{consequence}.",
+            file=sys.stderr,
         )
         return 1
 
