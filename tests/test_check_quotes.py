@@ -309,3 +309,113 @@ def test_json_report_lists_each_quote_not_marked_found_with_its_unfetched_source
 def test_json_flag_without_a_path_or_docs_prints_usage():
     assert main(["--json"]) == 2
     assert main(["--json", "out.json"]) == 2
+
+
+# --- #141: what csf.tools and docs.ansible.com served the checker -----------------------
+# The fixtures are those responses, saved on 2026-10-16 (see the comment at the top of each).
+# These tests run the production fetch_url with urlopen replaced, so no network is used.
+
+FIXTURES = Path(__file__).parent / "fixtures" / "check_quotes"
+CSF_URL = "https://csf.tools/reference/nist-sp-800-53/r5/cm/cm-5/cm-5-4/"
+ANSIBLE_URL = (
+    "https://docs.ansible.com/ansible/latest/collections/ansible/builtin/blockinfile_module.html"
+)
+CSF_QUOTE = "two qualified individuals approve and implement"
+ANSIBLE_QUOTE = (
+    "insert/update/remove a block of multi-line text surrounded by customizable marker lines"
+)
+
+
+def _serve(monkeypatch, responses: dict[str, tuple[int, str]]) -> tuple[list[str], list[int]]:
+    """Answer urlopen with (status, fixture file) per URL. Returns (URLs asked, sleeps)."""
+    import email.message
+    import io
+    import urllib.error
+
+    import check_quotes
+
+    asked: list[str] = []
+    sleeps: list[int] = []
+
+    class Response:
+        def __init__(self, status: int, body: bytes):
+            self.status = status
+            self._body = body
+            self.headers = email.message.Message()
+            self.headers["Content-Type"] = "text/html; charset=UTF-8"
+
+        def read(self) -> bytes:
+            return self._body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def urlopen(request, timeout=None):
+        url = request.full_url
+        asked.append(url)
+        status, name = responses[url]
+        body = (FIXTURES / name).read_bytes()
+        if status >= 400:
+            headers = email.message.Message()
+            headers["Content-Type"] = "text/html; charset=UTF-8"
+            raise urllib.error.HTTPError(url, status, "refused", headers, io.BytesIO(body))
+        return Response(status, body)
+
+    monkeypatch.setattr(check_quotes.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(check_quotes.time, "sleep", sleeps.append)
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    return asked, sleeps
+
+
+def test_csf_tools_and_ansible_pages_as_served_hold_their_quotes(tmp_path, monkeypatch):
+    _serve(
+        monkeypatch,
+        {CSF_URL: (200, "csf-tools-cm-5-4.html"), ANSIBLE_URL: (200, "ansible-blockinfile.html")},
+    )
+    body = (
+        f'CSF Tools [CM-5(4)]({CSF_URL}) wants "{CSF_QUOTE}" for each change.\n\n'
+        f'The [blockinfile docs]({ANSIBLE_URL}) say it can "{ANSIBLE_QUOTE}".'
+    )
+    assert [(q.text, v) for q, v, _ in check(_doc(tmp_path, body))] == [
+        (CSF_QUOTE, "found"),
+        (ANSIBLE_QUOTE, "found"),
+    ]
+
+
+def test_csf_tools_bot_check_page_is_unfetchable_not_not_found(tmp_path, monkeypatch, capsys):
+    # The shape of the false NOT FOUND: the paragraph credits the refused page and another
+    # page that was fetched and lacks the quote.
+    _serve(
+        monkeypatch,
+        {
+            CSF_URL: (202, "csf-tools-sgcaptcha-202.html"),
+            ANSIBLE_URL: (200, "ansible-blockinfile.html"),
+        },
+    )
+    doc = _doc(tmp_path, f'Per [CM-5(4)]({CSF_URL}) and [this]({ANSIBLE_URL}): "{CSF_QUOTE}".')
+    assert [(q.text, v, u) for q, v, u in check(doc)] == [(CSF_QUOTE, "unfetchable", (CSF_URL,))]
+    assert main([str(doc)]) == 0
+    assert f"could not fetch: {CSF_URL}" in capsys.readouterr().out
+
+
+def test_ansible_cloudflare_challenge_is_retried_then_unfetchable_not_not_found(
+    tmp_path, monkeypatch, capsys
+):
+    asked, sleeps = _serve(
+        monkeypatch,
+        {
+            ANSIBLE_URL: (429, "ansible-cloudflare-challenge-429.html"),
+            CSF_URL: (200, "csf-tools-cm-5-4.html"),
+        },
+    )
+    body = f'The [docs]({ANSIBLE_URL}) and [CM-5(4)]({CSF_URL}) say "{ANSIBLE_QUOTE}".'
+    doc = _doc(tmp_path, body)
+    assert [(q.text, v, u) for q, v, u in check(doc)] == [
+        (ANSIBLE_QUOTE, "unfetchable", (ANSIBLE_URL,))
+    ]
+    assert (asked.count(ANSIBLE_URL), sleeps) == (3, [10, 20])
+    assert main([str(doc)]) == 0
+    assert f"could not fetch: {ANSIBLE_URL}" in capsys.readouterr().out
