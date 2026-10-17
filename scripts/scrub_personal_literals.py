@@ -2,10 +2,13 @@
 
 Reads a newline-separated list of private literals from the ``PERSONAL_LITERALS``
 repository secret and fails the check if any literal appears anywhere in the
-working tree, in any of its variants: case, separators and path forms (#100). An empty or unset list fails the check: it would otherwise report
-clean while checking nothing. The list itself never lands in the tree, and matched output
-names only the file path — never the literal value that matched, so a hit is
-not re-leaked into the job log.
+working tree, in any of its variants: case, separators and path forms (#100). A file's
+path is checked as well as its content, so a literal in a file or directory name fails too
+(#84). Blank lines and lines starting with ``#`` in the list are skipped. An empty or unset
+list fails the check: it would otherwise report clean while checking nothing. The list itself
+never lands in the tree, and the job log is public, so output never contains a literal: a hit
+names the file, with every literal in its path replaced by ``[redacted]`` (or the path shown
+as a short sha256 when that is not enough), and never the literal value that matched.
 
 Run standalone in CI:
 
@@ -13,8 +16,8 @@ Run standalone in CI:
 
 Reads the literal list from the ``PERSONAL_LITERALS`` env var and scans
 ``GITHUB_WORKSPACE`` (falling back to the current directory). It walks the checkout including
-``.git``. A hit prints the path with "values withheld"; an empty list, or one with no letter or
-digit, fails.
+``.git``. A hit prints the redacted path under "values withheld"; an empty list, or one with
+no letter or digit, fails.
 
 Not covered: packed history, commit messages and PR or issue text (the pre-push gate and the
 literal-gate hook cover those before they leave the machine), typos and literals split across
@@ -36,7 +39,7 @@ Install (a step in a CI job, Python 3.12):
 Check:
 
 - A run that checked something ends ``Scrub clean — checked N literal(s); none found in the
-  tree.`` (N = non-blank secret lines). An older line without a count proves nothing: it
+  tree.`` (N = secret lines that are neither blank nor ``#`` comments). An older line without a count proves nothing: it
   printed with no list at all.
 - With no list the step fails with "No personal literals configured…"; expected on an unedited
   fork pull request.
@@ -47,6 +50,7 @@ Check:
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
@@ -70,7 +74,14 @@ LITERALS_ENV_VAR = "PERSONAL_LITERALS"
 
 
 def parse_literals(raw: str) -> list[str]:
-    return [line.strip() for line in raw.splitlines() if line.strip()]
+    """One literal per line. Blank lines and lines starting with `#` (after leading
+    whitespace) are skipped, so the list can carry notes; a literal cannot start with `#`."""
+    literals = []
+    for line in raw.splitlines():
+        entry = line.strip()
+        if entry and not entry.startswith("#"):
+            literals.append(entry)
+    return literals
 
 
 def literals_from_env() -> list[str]:
@@ -113,14 +124,37 @@ def find_literal_hits(literals: list[str], root: Path) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root):
         for filename in filenames:
             file_path = Path(dirpath) / filename
+            relative = file_path.relative_to(root).as_posix()
+            # The path is checked as well as the content: a literal in a file or directory
+            # name lands in the public tree just the same (#84).
+            if matcher.search(relative):
+                hits.add(relative)
+                continue
             content = file_path.read_text(encoding="utf-8", errors="ignore")
             if matcher.search(content):
-                hits.add(str(file_path.relative_to(root).as_posix()))
+                hits.add(relative)
     return sorted(hits)
 
 
+REDACTED = "[redacted]"
+
+
+def display_path(path: str, matcher: re.Pattern[str]) -> str:
+    """The path as the public log may show it: every literal replaced by ``[redacted]``.
+
+    If the result still matches (the marker plus its neighbours spell a literal), the path is
+    shown as a short sha256 of itself instead.
+    """
+    redacted = matcher.sub(REDACTED, path)
+    if matcher.search(redacted) is None:
+        return redacted
+    digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+    return f"sha256:{digest} (path withheld)"
+
+
 def run(literals: list[str], root: Path) -> int:
-    if compile_literal_matcher(literals) is None:
+    matcher = compile_literal_matcher(literals)
+    if matcher is None:
         # An empty list checks nothing; reporting "clean" here is a gate that cannot fail (#41).
         # A list of only punctuation compiles to nothing too, and fails the same way.
         print(
@@ -132,7 +166,7 @@ def run(literals: list[str], root: Path) -> int:
     if hits:
         print("Personal literal(s) found in the following files (values withheld):")
         for path in hits:
-            print(f"  {path}")
+            print(f"  {display_path(path, matcher)}")
         return 1
     print(f"Scrub clean — checked {len(literals)} literal(s); none found in the tree.")
     return 0
