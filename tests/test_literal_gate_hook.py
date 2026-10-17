@@ -132,6 +132,51 @@ def test_gh_write_command_with_a_literal_variant_is_blocked(command):
     _assert_blocked_quietly(_run(_bash(command)))
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh.exe pr create --title x --body 'zorblax quint'",
+        "GH.EXE issue comment 5 -b 'zorblax quint'",  # Windows resolves the name in any case
+        '"gh" issue create -t x -b "zorblax quint"',
+        "'gh.exe' pr comment 5 --body 'zorblax quint'",
+        '"gh" -R o/r pr create --title x --body "zorblax quint"',
+        '"C:/Program Files/GitHub CLI/gh.exe" pr create --title x --body "zorblax quint"',
+        "'C:\\Program Files\\GitHub CLI\\gh.exe' pr edit 5 --body 'zorblax quint'",
+        "/usr/bin/gh pr comment 5 --body 'zorblax quint'",
+        "gh.exe api repos/o/r/issues -f body='zorblax quint'",
+        "cd /tmp && \"gh.exe\" release create v1 --notes 'zorblax quint'",
+    ],
+)
+def test_gh_write_through_another_spelling_of_gh_is_blocked(command):
+    """#230: `gh.exe`, a quoted binary and a path-qualified one are the same write."""
+    _assert_blocked_quietly(_run(_bash(command)))
+
+
+def test_powershell_call_operator_on_quoted_gh_exe_is_blocked():
+    payload = {
+        "tool_name": "PowerShell",
+        "tool_input": {"command": '& "gh.exe" pr comment 5 --body "zorblax quint"'},
+    }
+    _assert_blocked_quietly(_run(payload))
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh.exe pr view 5",
+        "\"gh\" issue list --search 'zorblax quint'",
+        "'C:/Program Files/GitHub CLI/gh.exe' api 'search/issues?q=zorblax-quint'",
+        "ghost pr create --body 'zorblax quint'",  # a word that starts with gh
+        "sigh issue comment 5 --body 'zorblax quint'",  # a word that ends with gh
+        "xgh.exe pr comment 5 --body 'zorblax quint'",  # another binary ending in gh.exe
+        "ghx.exe pr create --body 'zorblax quint'",  # another binary starting with gh
+    ],
+)
+def test_non_write_gh_and_words_containing_gh_are_not_scanned(command):
+    result = _run(_bash(command))
+    assert result.returncode == 0, result.stderr
+
+
 def test_body_file_contents_are_scanned(tmp_path: Path):
     body = tmp_path / "body.md"
     body.write_text("## Summary\nthanks zorblax quint\n", encoding="utf-8")
@@ -428,6 +473,10 @@ def _home_with_allowlist(tmp_path: Path, *lines: str) -> Path:
         "gh issue create -R https://github.com/me/priv.git -t x -b 'zorblax quint'",
         "gh api repos/me/priv/issues -f title=x -f body='zorblax quint'",
         "gh api -X POST repos/me/priv/issues/1/comments -f body='zorblax quint'",
+        # #230: the target is read the same way whatever the binary is spelled.
+        "gh.exe -R me/priv pr comment 1 --body 'zorblax quint'",
+        "\"gh\" pr comment 1 --repo=me/priv --body 'zorblax quint'",
+        "'C:\\Program Files\\GitHub CLI\\gh.exe' -R me/priv issue comment 1 -b 'zorblax quint'",
     ],
 )
 def test_write_to_an_allowlisted_repo_is_not_checked(tmp_path: Path, command):

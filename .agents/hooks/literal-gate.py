@@ -8,7 +8,8 @@ pull request and issue titles and bodies, comments, reviews, release notes and `
   miss the next tool's field.
 - Bash and PowerShell (matcher `Bash|PowerShell`): only `gh` commands that send text (`gh pr|issue create/edit/comment/
   review/merge/close/reopen`, `gh release|gist create/edit`, and `gh api` with a field, an
-  input file or a write method). A chained command (`&&`, `||`, `;`, `|`, `&`, newlines) is
+  input file or a write method), with the binary spelled `gh` or `gh.exe` in any case, bare,
+  quoted or path-qualified (#230). A chained command (`&&`, `||`, `;`, `|`, `&`, newlines) is
   split, quote-aware, into steps, and only the `gh` steps are scanned: a home path in a `cd`,
   `ls` or `rm` step is not sent (#233). The scan widens to every step up to and including the
   `gh` one when that step could receive text from them: it reads a shell variable or a command
@@ -106,7 +107,12 @@ except Exception as exc:  # noqa: BLE001 - any import failure must block, not pa
 
 _ARG = r"(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
 _CD_STEP = re.compile(rf"\s*(?:cd|Set-Location)\s+{_ARG}\s*", re.IGNORECASE)
-_GH = r"\bgh\s+(?:(?:-R|--repo)(?:\s+|=)\S+\s+)?"
+# The gh binary in any spelling the shell runs (#230): `gh`, `gh.exe`, in any case (Windows
+# resolves names case-insensitively), quoted (`"gh"`, `'gh.exe'`) or path-qualified, quoted
+# path included. Same set as the authority guard's `_gh_invocations`: a token whose basename
+# is gh or gh.exe. `\b` keeps `sigh`/`xgh.exe` out; the trailing whitespace keeps `ghost` out.
+_GH_NAME = re.compile(r"(?i:gh(?:\.exe)?)")
+_GH = r"\b(?i:gh(?:\.exe)?)[\"']?\s+(?:(?:-R|--repo)(?:\s+|=)\S+\s+)?"
 _GH_WRITE = re.compile(
     _GH + r"(?:(?:pr|issue)\s+(?:create|edit|comment|review|merge|close|reopen)"
     r"|(?:release|gist)\s+(?:create|edit))\b"
@@ -394,6 +400,10 @@ def _repo_from_flag(value: str) -> str | None:
     return "/".join(parts) if len(parts) == 2 else None
 
 
+def _is_gh_binary(token: str) -> bool:
+    return bool(_GH_NAME.fullmatch(token.replace("\\", "/").rsplit("/", 1)[-1]))
+
+
 def step_target(text: str) -> str | None:
     """The one `owner/repo` a gh step writes to, lowercased, or None when it names none or
     cannot be read unambiguously (both are checked)."""
@@ -401,9 +411,9 @@ def step_target(text: str) -> str | None:
         tokens = shlex.split(text, posix=True)
     except ValueError:
         return None
-    if "gh" not in tokens:
+    at = next((i for i, token in enumerate(tokens) if _is_gh_binary(token)), None)
+    if at is None:
         return None
-    at = tokens.index("gh")
     if any(t.startswith(("GH_HOST=", "GH_REPO=")) for t in tokens[:at]):
         return None
     found: list[str | None] = []
