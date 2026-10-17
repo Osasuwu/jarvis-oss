@@ -229,11 +229,7 @@ def extract_file_write_text(tool_input: dict) -> str:
 # absolute end-of-string. Without the `\n` lookahead, a heredoc followed by
 # anything but `)`/end-of-string failed to strip at all, leaving its full
 # body exposed to BASH_DANGER_PATTERNS.
-#
-# HEREDOC_RE and strip_heredocs are shared: `gh_write.py` (same directory) loads them from
-# this file to decide which heredoc bodies hold gh calls (#285), so a change here changes
-# what the literal gate and the authority guard see too.
-HEREDOC_RE = re.compile(
+_HEREDOC_RE = re.compile(
     r"<<-?\s*'?(\w+)'?\s*\n.*?\n\s*\1\s*(?:\)|(?=\n)|$)",
     re.DOTALL,
 )
@@ -281,8 +277,12 @@ def strip_heredocs(command: str) -> str:
     `ssh host <<EOF`) is that interpreter's standard input: its body runs, so it stays in
     the text scan_bash_dangers checks (#93). scan_secrets checks the FULL command either way
     (a literal key is dangerous anywhere).
+
+    Shared: `gh_write.py` (same directory) loads this function from this file to decide
+    which heredoc bodies hold gh calls (#285), so a change here changes what the literal
+    gate and the authority guard see too.
     """
-    return HEREDOC_RE.sub(
+    return _HEREDOC_RE.sub(
         lambda m: m.group(0) if _feeds_interpreter(command, m.start()) else "",
         command,
     )

@@ -117,6 +117,9 @@ BLOCKED_SHELL = [
     "gh api -X PATCH repos/o/r/issues/5 -f labels[]=x -f body=waiting-human-review",
     "gh api -X PATCH repos/o/r/issues/5 --input body.json",
     "curl -X PATCH https://api.github.com/repos/o/r/issues/5 -d '{\"labels\":[\"x\"]}'",
+    # #285: a heredoc fed to a shell or ssh is its standard input, so raw HTTP in the body runs.
+    "bash <<'EOF'\ncurl -X PUT https://api.github.com/repos/o/r/pulls/12/merge\nEOF",
+    "ssh host <<EOF\ncurl -X DELETE https://api.github.com/repos/o/r/branches/main/protection\nEOF",
 ]
 
 ALLOWED_SHELL = [
@@ -150,6 +153,9 @@ ALLOWED_SHELL = [
     "git merge origin/main",
     "git log --grep 'gh pr merge'",
     "gh pr create --body-file - <<'EOF'\nthen gh pr merge 12 --auto\nEOF\n",
+    # #285: a heredoc that writes text is not run, so raw HTTP named in its body is not a call.
+    "cat > notes.md <<'EOF'\ncurl -X PUT https://api.github.com/repos/o/r/pulls/12/merge\nEOF",
+    "git commit -F - <<'EOF'\ndocs: curl -X DELETE https://api.github.com/repos/o/r/branches/main/protection\nEOF",
 ]
 
 

@@ -13,14 +13,17 @@ GraphQL), with global flags such as `-R` anywhere before the subcommand, raw
 HTTP to api.github.com, and every GitHub MCP tool (the matcher takes the whole
 server, see settings.snippet.json). A command run through `sh -c`/`bash -c`,
 `pwsh -Command`/`-EncodedCommand`, `cmd /c`, `eval`, `Invoke-Expression` or as
-an `ssh` remote command gets the same verdict as the bare command. Which shell
+an `ssh` remote command, or as the body of a heredoc fed to a shell, `ssh` or
+another interpreter (`bash <<EOF`), gets the same verdict as the bare command;
+the body of a heredoc that writes text (`cat > file <<EOF`) is not a command
+(#285). Which shell
 commands are gh writes is decided by `gh_write.py` (same directory), the
 detector the literal gate uses too (#278); this hook decides which of those
 writes take one of the three authorities.
 
 This is a hold, not proof. A determined bypass (an alias, a script file, a
-shell reading stdin or a heredoc, another interpreter such as `python -c`) is
-not parsed. `.github/workflows/authority-detector.yml` is the other
+shell reading a pipe, another interpreter's own syntax such as `python -c` or
+the body of `python <<EOF`) is not parsed. `.github/workflows/authority-detector.yml` is the other
 half: it reports every label removal and protection change after the fact.
 
 Reads the PreToolUse payload from stdin. Exits 2 with a deny decision to block.
@@ -52,7 +55,6 @@ from pathlib import Path
 try:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from gh_write import (
-        HEREDOC_RE,
         api_method,
         command_path,
         command_texts,
@@ -180,8 +182,9 @@ _HTTP_METHOD_RE = re.compile(
 
 
 def check_raw_http(command: str) -> str | None:
-    """Raw HTTP to the GitHub API: same REST rules, method read from the flags."""
-    command = HEREDOC_RE.sub("", command)
+    """Raw HTTP to the GitHub API: same REST rules, method read from the flags. The text
+    comes from command_texts, so a text heredoc's body is already gone and an interpreter's
+    is kept; stripping again here would drop the second too (#285)."""
     if "api.github.com" not in command or not _HTTP_TOOL_RE.search(command):
         return None
     if _GRAPHQL_RE.search(command):

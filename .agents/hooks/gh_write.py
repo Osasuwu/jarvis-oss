@@ -70,11 +70,8 @@ def _load_secret_scanner():
     return module
 
 
-_scanner = _load_secret_scanner()
-# Matches every heredoc, whatever it is fed to; the authority guard's raw-HTTP check uses it.
-HEREDOC_RE = _scanner.HEREDOC_RE
 # Drops the bodies of heredocs that write text, keeps those fed to an interpreter (#93, #285).
-strip_heredocs = _scanner.strip_heredocs
+strip_heredocs = _load_secret_scanner().strip_heredocs
 
 _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "$", "\n"}
 _POSIX_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
