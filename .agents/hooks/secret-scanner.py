@@ -53,9 +53,15 @@ SECRET_PATTERNS = [
     (r"github_pat_[A-Za-z0-9_]{22,}", "GitHub PAT"),
     # Supabase / JWT (eyJ... base64 tokens)
     (r"eyJ[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{10,}", "JWT / Supabase Key"),
-    # Generic "secret" / "password" / "token" with value assignment
+    # Generic "secret" / "password" / "token" with value assignment. A quoted value is a
+    # literal. An unquoted one is not when it is a PowerShell cmdlet name (PascalCase
+    # Verb-Noun, ending there): a `$password` variable assigned from `ConvertTo-SecureString`
+    # holds the cmdlet's output, not a secret (#281). An unquoted literal of that exact
+    # shape passes.
     (
-        r"""(?i)(?:password|secret|token|api_key|apikey)\s*[:=]\s*['"]?[A-Za-z0-9_/+.-]{16,}""",
+        r"""(?i)(?:password|secret|token|api_key|apikey)\s*[:=]\s*"""
+        r"""(?:['"]|(?!(?-i:[A-Z][a-z]+(?:[A-Z][a-z]*)*-[A-Z][A-Za-z]*)(?![\w/+.-])))"""
+        r"""[A-Za-z0-9_/+.-]{16,}""",
         "Credential assignment",
     ),
     # OpenAI-style
@@ -81,11 +87,22 @@ _SECRET_VARS = r"API_KEY|API_TOKEN|ACCESS_TOKEN|SECRET_KEY|DATABASE_URL"
 # PowerShell's two web cmdlets and their aliases.
 _PS_WEB = r"Invoke-WebRequest|iwr|Invoke-RestMethod|irm"
 
+# The rest of a pipe that ends at a network tool: the short tool names are whole words (not
+# `nc` inside `-Encoding`).
+_NET_TAIL = r".*(?:\b(?:curl|wget|nc|ncat|socat|iwr|irm)\b|http|Invoke-WebRequest|Invoke-RestMethod)"
+
 BASH_DANGER_PATTERNS = [
     # Reading .env and piping/redirecting somewhere. The reader starts a word (not `type`
     # inside `-ItemType`), and `.env` is not the start of `.Environment`
     # (`[System.Environment]`): both are everyday PowerShell.
     (r"(?<![\w-])(?:cat|type|Get-Content|gc)\s+[^\|;]*\.env(?!iron)", "Reading .env file"),
+    # The same read through a .NET file API (`[IO.File]::ReadAllText('.env')`), PowerShell's
+    # other `cat`, from either shell tool (a Bash call can run it through `pwsh -c`). Only the
+    # methods that read or open the file: `Exists` reads nothing out of it (#281).
+    (
+        r"\[(?:System\.)?IO\.File\]::(?:Read|Open)\w*\s*\(\s*['\"]?[^'\")]*\.env(?!iron)",
+        "Reading .env file",
+    ),
     # Expanding secret env vars in curl/wget/http commands. `(?:env:)?` takes PowerShell's
     # spelling of the same variable, `$env:NAME` / `${env:NAME}`.
     (
@@ -100,10 +117,11 @@ BASH_DANGER_PATTERNS = [
     # (`Get-ChildItem env:`). The head starts a word (not `set` ending `$dataset |`), and
     # the short tool names are whole words (not `nc` inside `-Encoding`).
     (
-        r"(?<![\w-])(?:env(?::\\?)?|printenv|set)\s*\|"
-        r".*(?:\b(?:curl|wget|nc|ncat|socat|iwr|irm)\b|http|Invoke-WebRequest|Invoke-RestMethod)",
+        r"(?<![\w-])(?:env(?::\\?)?|printenv|set)\s*\|" + _NET_TAIL,
         "Env dump to network",
     ),
+    # One environment variable piped the same way: `$env:API_KEY | iwr ...` (#281).
+    (r"\$\{?env:\w+\}?\s*\|" + _NET_TAIL, "Env var piped to network"),
     # Sending .env contents via curl -d / --data
     (r"curl\s.*(?:-d|--data)\s*@?\.env", "Sending .env via curl"),
     # The web cmdlets' counterpart: `-InFile .env` posts the file as the request body.
@@ -217,14 +235,53 @@ _HEREDOC_RE = re.compile(
 )
 
 
-def strip_heredocs(command: str) -> str:
-    """Remove heredoc bodies from a command string.
+# Programs that run what arrives on their standard input. A heredoc fed to one is a script,
+# and its body runs (#93). `python[\d.]*` takes `python3` and `python3.12`, `py` is the
+# Windows launcher, and `ssh` runs its stdin on the remote host.
+# CUSTOMIZE: add any other interpreter your own stack feeds heredocs to.
+_INTERPRETER_RE = re.compile(
+    r"(?:ba|z|da|k|c|tc|fi)?sh|python[\d.]*|py|node|deno|bun|perl|ruby|php|pwsh|powershell|ssh",
+    re.IGNORECASE,
+)
 
-    Heredoc content is documentation/text, not executable commands.
-    scan_bash_dangers should only check the executable parts.
-    scan_secrets still checks the FULL command (literal keys are dangerous anywhere).
+# A word on a heredoc's opening line. Shell punctuation, quotes, `$` and `=` split words, so
+# `"$(cat`, `'bash -s'` and `--shell=bash` each yield their bare words.
+_LINE_WORD_RE = re.compile(r"""[^\s;|&()<>`'"$=]+""")
+
+
+def _feeds_interpreter(command: str, start: int) -> bool:
+    """True when a word before `<<` on the heredoc's opening line names an interpreter.
+
+    Any word counts, not only the command word: `bash -c "$(cat <<EOF` runs the body that
+    `cat` prints, and `sudo -u x bash <<EOF` hides the command word behind a wrapper. A text
+    heredoc whose opening line merely mentions an interpreter is scanned too; that is the
+    safe direction. A word is compared by its basename without `.exe`, so `/usr/bin/python3`
+    counts and `deploy.sh` does not.
     """
-    return _HEREDOC_RE.sub("", command)
+    line_start = command.rfind("\n", 0, start) + 1
+    for word in _LINE_WORD_RE.findall(command[line_start:start]):
+        name = re.split(r"[/\\]", word)[-1].lower()
+        if name.endswith(".exe"):
+            name = name[: -len(".exe")]
+        if _INTERPRETER_RE.fullmatch(name):
+            return True
+    return False
+
+
+def strip_heredocs(command: str) -> str:
+    """Remove the bodies of heredocs that write text, and keep those fed to an interpreter.
+
+    A heredoc that writes text (`cat > file <<EOF`, `git commit -F - <<EOF`, a commit message
+    in `"$(cat <<EOF`) is stripped, so a body that names a dangerous command without running
+    it is not denied. A heredoc fed to an interpreter (`bash <<EOF`, `python3 - <<EOF`,
+    `ssh host <<EOF`) is that interpreter's standard input: its body runs, so it stays in
+    the text scan_bash_dangers checks (#93). scan_secrets checks the FULL command either way
+    (a literal key is dangerous anywhere).
+    """
+    return _HEREDOC_RE.sub(
+        lambda m: m.group(0) if _feeds_interpreter(command, m.start()) else "",
+        command,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -242,10 +299,10 @@ def scan_secrets(text: str) -> list[str]:
 
 
 def scan_bash_dangers(command: str) -> list[str]:
-    """Check bash command for dangerous exfiltration patterns.
+    """Check a shell command for dangerous exfiltration patterns.
 
-    Automatically strips heredoc bodies — those are text content,
-    not executable commands.
+    Strips the bodies of heredocs that write text first (strip_heredocs). The body of a
+    heredoc fed to an interpreter runs, so it is scanned with the rest of the command.
     """
     executable_part = strip_heredocs(command)
     findings = []
