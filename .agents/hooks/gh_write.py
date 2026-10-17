@@ -7,11 +7,21 @@ write against the human's authorities, the literal gate scans the text it sends.
 A gh call is found by parsing, not by matching text:
 
 - The command is tokenized as a shell would, quotes honoured, so a quoted argument such as
-  `--body "... gh pr merge ..."` stays one word and is not a call. Heredoc bodies are dropped
-  first: they are text (a PR body, a commit message), not commands. Input that cannot be
+  `--body "... gh pr merge ..."` stays one word and is not a call. Input that cannot be
   tokenized falls back to a whitespace split, so a parse error cannot hide a call. When the
   command holds a backslash it is also tokenized with the backslash kept, because PowerShell
   and Windows paths (`C:\\tools\\gh.exe`) do not use it as an escape.
+- A heredoc's body is parsed only when the heredoc is fed to an interpreter, by the rule
+  `secret-scanner.py` (same directory) applies, loaded from that file rather than copied
+  (#285). When a word on the heredoc's opening line names a shell, `python`, `node`, `ssh`
+  or another program that runs its standard input (`bash <<EOF`, `ssh host <<EOF`, and
+  `bash -c "$(cat <<EOF`, since `bash -c` runs what `cat` prints), the body runs, so its gh
+  calls count. The body of a heredoc that writes text (`cat > file <<EOF`,
+  `git commit -F - <<EOF`, a PR body on `--body-file -`) is dropped before parsing: it is
+  not a command. The choice is made once, on the whole command, where each opening line is
+  in view; only the text an `-EncodedCommand` decodes to is checked again. A heredoc whose
+  opening line merely mentions an interpreter (`--title "bash fix"`) has its body parsed
+  too, which over-blocks a gh write named in that text: the safe direction.
 - Every word is a possible program: one whose basename is `gh` or `gh.exe` in any case, bare,
   quoted or path-qualified, with backticks removed (`` `gh pr merge` `` is a substitution),
   starts a call. `ghost`, `sigh` and `xgh.exe` do not.
@@ -24,9 +34,10 @@ A gh call is found by parsing, not by matching text:
   `ssh [options] host command`. A call found inside an `-EncodedCommand` is marked `encoded`:
   its text is not in the command as the user sees it.
 
-Not parsed: an alias or function, a script file, a shell reading stdin or a heredoc, another
-interpreter (`python -c`), a command passed as one quoted word to a program not listed above
-(`watch "gh ..."`, `su -c "gh ..."`).
+Not parsed: an alias or function, a script file, a shell reading a pipe, another
+interpreter's own syntax (`python -c`, or the body of `python <<EOF`: it is parsed as shell,
+where `os.system("gh pr merge 1")` holds one quoted word, not a call), a command passed
+as one quoted word to a program not listed above (`watch "gh ..."`, `su -c "gh ..."`).
 
 A gh write is one of:
 
@@ -41,15 +52,26 @@ A gh write is one of:
 from __future__ import annotations
 
 import base64
+import importlib.util
 import re
 import shlex
+from pathlib import Path
 from typing import NamedTuple
 
-# A heredoc body is text, not a command (same stripping as secret-scanner.py).
-HEREDOC_RE = re.compile(
-    r"<<-?\s*'?(\w+)'?\s*\n.*?\n\s*\1\s*(?:\)|(?=\n)|$)",
-    re.DOTALL,
-)
+
+def _load_secret_scanner():
+    """`secret-scanner.py` (same directory) holds the heredoc rule this detector shares. Its
+    file name is not a module name, so it is loaded by path. A missing or broken file raises,
+    and both hooks that import this module then block."""
+    path = Path(__file__).resolve().parent / "secret-scanner.py"
+    spec = importlib.util.spec_from_file_location("secret_scanner", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+# Drops the bodies of heredocs that write text, keeps those fed to an interpreter (#93, #285).
+strip_heredocs = _load_secret_scanner().strip_heredocs
 
 _SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "$", "\n"}
 _POSIX_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
@@ -93,8 +115,7 @@ def is_gh_binary(token: str) -> bool:
 
 def invocations(command: str) -> list[tuple[str, list[str]]]:
     """Every word of the command as (program name, the arguments after it up to the next
-    separator)."""
-    command = HEREDOC_RE.sub("", command)
+    separator). Heredocs are read as they stand: command_texts strips them first."""
     token_lists = [_tokens(command, escape=True)]
     if "\\" in command:
         token_lists.append(_tokens(command, escape=False))
@@ -120,7 +141,8 @@ def _decode_ps(value: str) -> str:
 
 def nested_commands(prog: str, args: list[str]) -> list[tuple[str, bool]]:
     """(command text, encoded) for each command a wrapper runs. A shell reading a script file
-    or stdin is not seen."""
+    or a pipe is not seen; the body of a heredoc fed to one stays in the text it is part of
+    (strip_heredocs)."""
     if prog in _POSIX_SHELLS:
         # The first word after -c is the script, the rest are its $0, $1...; each is
         # checked, which over-blocks only a gh write passed as data.
@@ -173,11 +195,19 @@ def _ssh_remote_command(args: list[str]) -> str:
 
 
 def command_texts(command: str, encoded: bool = False) -> list[tuple[str, bool]]:
-    """The command and every command text nested in it, at any depth, as (text, encoded)."""
+    """The command and every command text nested in it, at any depth, as (text, encoded),
+    each without the bodies of its text heredocs (strip_heredocs)."""
+    return _nested_texts(strip_heredocs(command), encoded)
+
+
+def _nested_texts(command: str, encoded: bool) -> list[tuple[str, bool]]:
     texts = [(command, encoded)]
     for prog, args in invocations(command):
         for nested, enc in nested_commands(prog, args):
-            texts.extend(command_texts(nested, encoded or enc))
+            # A nested text is part of this one, already stripped with each heredoc's opening
+            # line in view; stripping it again would lose `bash -c "$(cat <<EOF`'s `bash`.
+            # Only decoded text is new.
+            texts.extend(command_texts(nested, True) if enc else _nested_texts(nested, encoded))
     return texts
 
 

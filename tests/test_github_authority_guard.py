@@ -117,6 +117,9 @@ BLOCKED_SHELL = [
     "gh api -X PATCH repos/o/r/issues/5 -f labels[]=x -f body=waiting-human-review",
     "gh api -X PATCH repos/o/r/issues/5 --input body.json",
     "curl -X PATCH https://api.github.com/repos/o/r/issues/5 -d '{\"labels\":[\"x\"]}'",
+    # #285: a heredoc fed to a shell or ssh is its standard input, so raw HTTP in the body runs.
+    "bash <<'EOF'\ncurl -X PUT https://api.github.com/repos/o/r/pulls/12/merge\nEOF",
+    "ssh host <<EOF\ncurl -X DELETE https://api.github.com/repos/o/r/branches/main/protection\nEOF",
 ]
 
 ALLOWED_SHELL = [
@@ -150,6 +153,9 @@ ALLOWED_SHELL = [
     "git merge origin/main",
     "git log --grep 'gh pr merge'",
     "gh pr create --body-file - <<'EOF'\nthen gh pr merge 12 --auto\nEOF\n",
+    # #285: a heredoc that writes text is not run, so raw HTTP named in its body is not a call.
+    "cat > notes.md <<'EOF'\ncurl -X PUT https://api.github.com/repos/o/r/pulls/12/merge\nEOF",
+    "git commit -F - <<'EOF'\ndocs: curl -X DELETE https://api.github.com/repos/o/r/branches/main/protection\nEOF",
 ]
 
 
@@ -266,6 +272,24 @@ def test_guard_commands_fail_closed_on_launch_failure():
     assert len(cmds) == 2
     for cmd in cmds:
         assert re.search(r"\|\|\s*exit\s+2\s*$", cmd), cmd
+
+
+def test_guard_blocks_when_the_shared_heredoc_rule_does_not_load(tmp_path: Path):
+    # gh_write.py loads its heredoc rule from secret-scanner.py (#285). A copy of the guard
+    # without that file must deny even a read, not run with no heredoc rule.
+    hooks = ROOT / ".agents" / "hooks"
+    for name in ("github-authority-guard.py", "gh_write.py"):
+        (tmp_path / name).write_bytes((hooks / name).read_bytes())
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "github-authority-guard.py")],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "gh pr view 1"}}),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    reason = json.loads(result.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert reason.startswith("BLOCKED: gh_write.py next to this hook did not load"), reason
+    assert "secret-scanner.py" in reason, reason
 
 
 def test_guard_script_is_protected_from_agent_edits():
