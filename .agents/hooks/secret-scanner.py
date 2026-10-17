@@ -2,16 +2,17 @@
 
 Handles three tool types:
 - GitHub MCP tools: scans every string value in the input, at any depth
-- Bash tool: scans command string for secrets and dangerous exfiltration patterns
+- Shell tools (Bash and PowerShell): scans the command string for secrets and dangerous
+  exfiltration patterns, the same scan for either tool
 - File writes (Edit/Write/NotebookEdit): scans the text being written to disk
 
 Reads tool_input from stdin (JSON). Exits 2 to block if secrets detected.
 Does NOT scan for personal data — only credentials that grant access.
 
-Install: the matchers in `settings.snippet.json` (same directory) run it: `Bash`,
-`Edit|Write|NotebookEdit` and `^mcp__github__` (the whole server, since a list of write
-tools fails open when the server renames one; change the prefix if your server has
-another name). Merge those entries into `.claude/settings.local.json` under
+Install: the matchers in `settings.snippet.json` (same directory) run it: `Bash|PowerShell`
+(both shell tools; PowerShell is the primary one on Windows), `Edit|Write|NotebookEdit` and
+`^mcp__github__` (the whole server, since a list of write tools fails open when the server
+renames one; change the prefix if your server has another name). Merge those entries into `.claude/settings.local.json` under
 `hooks.PreToolUse`. Each command runs `python3` if it starts, else `python`, and is chained with
 `|| exit 2`, so an interpreter that fails to launch blocks instead of passing. The
 untracked `.claude/settings.local.json` is not in a fresh checkout; `.worktreeinclude`
@@ -27,8 +28,8 @@ every hook invocation and exit code, silent exit-0 runs included, to
 `~/.claude/debug/<session-id>.txt`. The hook keeps no log of its own.
 `tests/test_agent_safety_hooks.py` runs it on constructed calls.
 
-Limit: it sees only what its matchers name. A file write made with `echo >` in the
-shell is scanned as a `Bash` command, not as a file write.
+Limit: it sees only what its matchers name. A file write made with `echo >` or
+`Set-Content` in the shell is scanned as a shell command, not as a file write.
 
 CUSTOMIZE: SECRET_PATTERNS and _SECRET_VARS below name a specific set of
 providers. Add or remove entries for whatever your own project's stack uses.
@@ -68,7 +69,8 @@ SECRET_PATTERNS = [
 COMPILED_SECRETS = [(re.compile(p), label) for p, label in SECRET_PATTERNS]
 
 # ---------------------------------------------------------------------------
-# Bash-specific: dangerous command patterns that exfiltrate secrets.
+# Shell-specific: dangerous command patterns that exfiltrate secrets, run on Bash and
+# PowerShell commands alike, so each pattern takes both shells' spelling of its shape.
 # These match the COMMAND STRING, not secret values themselves.
 # ---------------------------------------------------------------------------
 
@@ -76,27 +78,43 @@ COMPILED_SECRETS = [(re.compile(p), label) for p, label in SECRET_PATTERNS]
 # CUSTOMIZE: list whichever env vars your own project stores credentials in.
 _SECRET_VARS = r"API_KEY|API_TOKEN|ACCESS_TOKEN|SECRET_KEY|DATABASE_URL"
 
+# PowerShell's two web cmdlets and their aliases.
+_PS_WEB = r"Invoke-WebRequest|iwr|Invoke-RestMethod|irm"
+
 BASH_DANGER_PATTERNS = [
-    # Reading .env and piping/redirecting somewhere
-    (r"(?:cat|type|Get-Content|gc)\s+[^\|;]*\.env", "Reading .env file"),
-    # Expanding secret env vars in curl/wget/http commands
+    # Reading .env and piping/redirecting somewhere. The reader starts a word (not `type`
+    # inside `-ItemType`), and `.env` is not the start of `.Environment`
+    # (`[System.Environment]`): both are everyday PowerShell.
+    (r"(?<![\w-])(?:cat|type|Get-Content|gc)\s+[^\|;]*\.env(?!iron)", "Reading .env file"),
+    # Expanding secret env vars in curl/wget/http commands. `(?:env:)?` takes PowerShell's
+    # spelling of the same variable, `$env:NAME` / `${env:NAME}`.
     (
-        rf"(?:curl|wget|http|Invoke-WebRequest|iwr)\s.*\$(?:{_SECRET_VARS})",
+        rf"(?:curl|wget|http|{_PS_WEB})\s.*\$(?:env:)?(?:{_SECRET_VARS})",
         "Secret var in HTTP command",
     ),
     (
-        rf"(?:curl|wget|http|Invoke-WebRequest|iwr)\s.*\$\{{(?:{_SECRET_VARS})\}}",
+        rf"(?:curl|wget|http|{_PS_WEB})\s.*\$\{{(?:env:)?(?:{_SECRET_VARS})\}}",
         "Secret var in HTTP command",
     ),
-    # Piping env/printenv to network tools
-    (r"(?:env|printenv|set)\s*\|.*(?:curl|wget|nc|ncat|socat|http)", "Env dump to network"),
+    # Piping env/printenv to network tools. `env:` / `env:\` is PowerShell's env drive
+    # (`Get-ChildItem env:`). The head starts a word (not `set` ending `$dataset |`), and
+    # the short tool names are whole words (not `nc` inside `-Encoding`).
+    (
+        r"(?<![\w-])(?:env(?::\\?)?|printenv|set)\s*\|"
+        r".*(?:\b(?:curl|wget|nc|ncat|socat|iwr|irm)\b|http|Invoke-WebRequest|Invoke-RestMethod)",
+        "Env dump to network",
+    ),
     # Sending .env contents via curl -d / --data
     (r"curl\s.*(?:-d|--data)\s*@?\.env", "Sending .env via curl"),
+    # The web cmdlets' counterpart: `-InFile .env` posts the file as the request body.
+    (rf"(?:{_PS_WEB})\s.*-InFile\s+\S*\.env", "Sending .env via web cmdlet"),
     # netcat/socat with .env
     (r"(?:nc|ncat|socat)\s.*\.env", "Sending .env via netcat"),
     # base64 encoding .env (obfuscation attempt)
     (r"base64\s.*\.env", "Encoding .env"),
     (r"\.env.*\|\s*base64", "Encoding .env"),
+    # PowerShell's base64: `[Convert]::ToBase64String(...)` over the file's bytes.
+    (r"ToBase64String.*\.env", "Encoding .env"),
 ]
 
 COMPILED_BASH = [(re.compile(p, re.IGNORECASE), label) for p, label in BASH_DANGER_PATTERNS]
@@ -130,8 +148,14 @@ def extract_github_text(tool_input: dict) -> str:
     return "\n".join(iter_strings(tool_input))
 
 
+# Claude Code's shell tools. Both carry the command in `command`, and both get the same
+# scan: PowerShell is the primary shell on Windows, and a call through it was never
+# scanned while the branch named `Bash` alone (#92).
+SHELL_TOOLS = ("Bash", "PowerShell")
+
+
 def extract_bash_command(tool_input: dict) -> str:
-    """Pull command string from Bash tool input."""
+    """Pull command string from a shell tool's input (Bash or PowerShell)."""
     cmd = tool_input.get("command", "")
     return cmd if isinstance(cmd, str) else ""
 
@@ -267,7 +291,7 @@ def main():
 
     findings = []
 
-    if tool_name == "Bash":
+    if tool_name in SHELL_TOOLS:
         command = extract_bash_command(tool_input)
         if not command:
             sys.exit(0)
