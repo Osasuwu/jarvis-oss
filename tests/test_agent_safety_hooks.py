@@ -226,3 +226,11 @@ def test_protected_files_blocks_the_worktree_include_list():
     # Emptying .worktreeinclude would leave every new worktree session without these hooks.
     result = _run_protected_files("Edit", {"file_path": str(ROOT / ".worktreeinclude")})
     assert result.returncode == 2
+
+
+def test_protected_files_blocks_the_shared_gh_write_detector():
+    # The authority guard and the literal gate both decide "gh write or not" in gh_write.py
+    # (#278): an edit there that misses a write disarms both hooks at once.
+    target = str(ROOT / ".agents" / "hooks" / "gh_write.py")
+    result = _run_protected_files("Write", {"file_path": target, "content": ""})
+    assert result.returncode == 2

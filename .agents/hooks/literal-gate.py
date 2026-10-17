@@ -6,11 +6,16 @@ pull request and issue titles and bodies, comments, reviews, release notes and `
 - GitHub MCP tools (matcher `^mcp__.*github`, the whole server under any prefix, as the
   authority guard wires it): every string in the tool input, at any depth. A field list would
   miss the next tool's field.
-- Bash and PowerShell (matcher `Bash|PowerShell`): only `gh` commands that send text (`gh pr|issue create/edit/comment/
-  review/merge/close/reopen`, `gh release|gist create/edit`, and `gh api` with a field, an
-  input file or a write method), with the binary spelled `gh` or `gh.exe` in any case, bare,
-  quoted or path-qualified (#230). A chained command (`&&`, `||`, `;`, `|`, `&`, newlines) is
-  split, quote-aware, into steps, and only the `gh` steps are scanned: a home path in a `cd`,
+- Bash and PowerShell (matcher `Bash|PowerShell`): only `gh` writes, found by
+  `gh_write.py` (same directory), the detector the authority guard uses too (#278): `gh
+  pr|issue create/edit/comment/review/merge/close/reopen`, `gh release|gist create/edit`,
+  `gh label delete/edit`, and `gh api` with a field, an input file or a method other than
+  GET. The binary is spelled `gh` or `gh.exe` in any case, bare, quoted
+  or path-qualified (#230), global flags such as `-R` may come before the subcommand, and a
+  call nested in `sh -c`, `pwsh -Command`, `cmd /c`, `eval`, `Invoke-Expression` or an
+  `ssh` remote command counts. A gh write inside `pwsh -EncodedCommand` blocks: its text
+  cannot be scanned. A chained command (`&&`, `||`, `;`, `|`, `&`, newlines) is split,
+  quote-aware, into steps, and only the `gh` steps are scanned: a home path in a `cd`,
   `ls` or `rm` step is not sent (#233). The scan widens to every step up to and including the
   `gh` one when that step could receive text from them: it reads a shell variable or a command
   substitution, it is fed by a pipe, or it reads its body from stdin. A command that cannot be
@@ -46,7 +51,9 @@ It is wired by `settings.snippet.json` (same directory), next to the other agent
 Not covered: `git push --no-verify`; a device without the hook or the list; text sent by
 `curl`, the browser, another harness or a session with `disableAllHooks`; author names
 and emails; typos, split literals, encoded forms; the output of a command substitution or
-of a file read by a step other than a body-file flag.
+of a file read by a step other than a body-file flag; a gh call `gh_write.py` does not parse
+(an alias, a script file, `python -c`, a command passed as one quoted word to a program that
+is not a shell or `ssh`, such as `watch "gh ..."`).
 
 Install (once per device that writes pull requests on a public repository):
 1. List: keep it outside every repository, one literal per line, and export it as
@@ -104,25 +111,15 @@ try:
 except Exception as exc:  # noqa: BLE001 - any import failure must block, not pass
     print(f"{PREFIX}: cannot load the literal matcher ({exc}); blocking.", file=sys.stderr)
     sys.exit(BLOCK)
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from gh_write import gh_writes, is_gh_binary  # noqa: E402
+except Exception as exc:  # noqa: BLE001 - any import failure must block, not pass
+    print(f"{PREFIX}: cannot load the gh-write detector ({exc}); blocking.", file=sys.stderr)
+    sys.exit(BLOCK)
 
 _ARG = r"(\"[^\"]*\"|'[^']*'|[^\s;&|]+)"
 _CD_STEP = re.compile(rf"\s*(?:cd|Set-Location)\s+{_ARG}\s*", re.IGNORECASE)
-# The gh binary in any spelling the shell runs (#230): `gh`, `gh.exe`, in any case (Windows
-# resolves names case-insensitively), quoted (`"gh"`, `'gh.exe'`) or path-qualified, quoted
-# path included. Same set as the authority guard's `_gh_invocations`: a token whose basename
-# is gh or gh.exe. `\b` keeps `sigh`/`xgh.exe` out; the trailing whitespace keeps `ghost` out.
-_GH_NAME = re.compile(r"(?i:gh(?:\.exe)?)")
-_GH = r"\b(?i:gh(?:\.exe)?)[\"']?\s+(?:(?:-R|--repo)(?:\s+|=)\S+\s+)?"
-_GH_WRITE = re.compile(
-    _GH + r"(?:(?:pr|issue)\s+(?:create|edit|comment|review|merge|close|reopen)"
-    r"|(?:release|gist)\s+(?:create|edit))\b"
-)
-_GH_API = re.compile(_GH + r"api\b")
-_API_WRITE = re.compile(
-    r"(?:^|\s)(?:-f|-F|--field|--raw-field|--input)(?:\s|=)"
-    r"|(?:^|\s)(?:-X|--method)(?:\s+|=)?['\"]?(?:POST|PATCH|PUT)\b",
-    re.IGNORECASE,
-)
 _FILE_FLAG = re.compile(
     rf"(?:(?<=\s)|^)(--body-file|--notes-file|--input|-F|--field)(?:\s+|=){_ARG}"
 )
@@ -190,9 +187,9 @@ def resolve(path: str, base: Path) -> Path:
 
 
 def is_gh_write(command: str) -> bool:
-    if _GH_WRITE.search(command):
-        return True
-    return bool(_GH_API.search(command) and _API_WRITE.search(command))
+    """Whether the command holds a gh write; the authority guard decides by the same
+    function (gh_write.py, #278)."""
+    return bool(gh_writes(command))
 
 
 def body_file_path(flag: str, value: str) -> str | None:
@@ -400,10 +397,6 @@ def _repo_from_flag(value: str) -> str | None:
     return "/".join(parts) if len(parts) == 2 else None
 
 
-def _is_gh_binary(token: str) -> bool:
-    return bool(_GH_NAME.fullmatch(token.replace("\\", "/").rsplit("/", 1)[-1]))
-
-
 def step_target(text: str) -> str | None:
     """The one `owner/repo` a gh step writes to, lowercased, or None when it names none or
     cannot be read unambiguously (both are checked)."""
@@ -411,7 +404,7 @@ def step_target(text: str) -> str | None:
         tokens = shlex.split(text, posix=True)
     except ValueError:
         return None
-    at = next((i for i, token in enumerate(tokens) if _is_gh_binary(token)), None)
+    at = next((i for i, token in enumerate(tokens) if is_gh_binary(token)), None)
     if at is None:
         return None
     if any(t.startswith(("GH_HOST=", "GH_REPO=")) for t in tokens[:at]):
@@ -456,11 +449,17 @@ def step_target(text: str) -> str | None:
 
 def check_bash(tool_input: dict, cwd: Path, powershell: bool) -> int:
     command = tool_input.get("command")
-    if not isinstance(command, str) or not is_gh_write(command):
+    writes = gh_writes(command) if isinstance(command, str) else []
+    if not writes:
         return 0
     matcher = compile_literal_matcher(literals_from_env())
     if matcher is None:
         return no_list()
+    if any(call.encoded for call in writes):
+        return deny(
+            "a gh write inside pwsh -EncodedCommand cannot be checked: its text is encoded, "
+            "so it was not scanned. Run the gh command directly."
+        )
 
     steps = split_steps(command, powershell)
     parsed = steps is not None

@@ -12,8 +12,11 @@ Routes covered: the `gh` CLI from Bash or PowerShell (`gh pr merge`,
 GraphQL), with global flags such as `-R` anywhere before the subcommand, raw
 HTTP to api.github.com, and every GitHub MCP tool (the matcher takes the whole
 server, see settings.snippet.json). A command run through `sh -c`/`bash -c`,
-`pwsh -Command`/`-EncodedCommand`, `cmd /c`, `eval` or `Invoke-Expression`
-gets the same verdict as the bare command.
+`pwsh -Command`/`-EncodedCommand`, `cmd /c`, `eval`, `Invoke-Expression` or as
+an `ssh` remote command gets the same verdict as the bare command. Which shell
+commands are gh writes is decided by `gh_write.py` (same directory), the
+detector the literal gate uses too (#278); this hook decides which of those
+writes take one of the three authorities.
 
 This is a hold, not proof. A determined bypass (an alias, a script file, a
 shell reading stdin or a heredoc, another interpreter such as `python -c`) is
@@ -41,11 +44,33 @@ hand must exit `2`:
 constructed calls.
 """
 
-import base64
 import json
 import re
-import shlex
 import sys
+from pathlib import Path
+
+try:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from gh_write import (
+        HEREDOC_RE,
+        api_method,
+        command_path,
+        command_texts,
+        flag_values,
+        gh_writes,
+    )
+except Exception as exc:  # fail closed: without the detector every gh write would pass
+    json.dump(
+        {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": f"BLOCKED: gh_write.py next to this hook did not load ({exc}).",
+            }
+        },
+        sys.stdout,
+    )
+    sys.exit(2)
 
 HOLD_LABEL = "waiting-human-review"
 
@@ -71,107 +96,9 @@ GRAPHQL_MUTATIONS = (
 )
 _GRAPHQL_RE = re.compile(r"\b(" + "|".join(GRAPHQL_MUTATIONS) + r")\b")
 
-# Same heredoc stripping as secret-scanner.py: a heredoc body is text (a PR
-# body, a commit message), not a command, and may mention `gh pr merge`.
-_HEREDOC_RE = re.compile(
-    r"<<-?\s*'?(\w+)'?\s*\n.*?\n\s*\1\s*(?:\)|(?=\n)|$)",
-    re.DOTALL,
-)
-
-_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", "$", "\n"}
-
-
 # ---------------------------------------------------------------------------
 # Shell commands
 # ---------------------------------------------------------------------------
-
-
-def _tokens(command: str) -> list[str]:
-    lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-    lexer.whitespace_split = True
-    return list(lexer)
-
-
-def _invocations(command: str) -> list[tuple[str, list[str]]]:
-    """Every word of the command as (program name, the arguments after it up
-    to the next separator). The name is lowercased, without directory, `.exe`
-    or backticks (`` `gh pr merge` `` is a command substitution).
-
-    Quoted arguments stay single tokens, so `--body "... gh pr merge ..."` is
-    not an invocation. Unparseable input falls back to a whitespace split, so
-    a parse error cannot hide a call.
-    """
-    command = _HEREDOC_RE.sub("", command)
-    try:
-        tokens = _tokens(command)
-    except ValueError:
-        tokens = command.split()
-    calls = []
-    for i, tok in enumerate(tokens):
-        base = tok.replace("`", "").replace("\\", "/").rsplit("/", 1)[-1].lower()
-        args = []
-        for t in tokens[i + 1 :]:
-            if t in _SEPARATORS or set(t) <= set(";&|()"):
-                break
-            args.append(t)
-        calls.append((base.removesuffix(".exe"), args))
-    return calls
-
-
-_POSIX_SHELLS = {"sh", "bash", "zsh", "dash", "ksh", "fish"}
-_POSIX_COMMAND_FLAG = re.compile(r"-[A-Za-z]*c[A-Za-z]*|--command")
-
-
-def _decode_ps(value: str) -> str:
-    """pwsh -EncodedCommand takes base64 of UTF-16LE text."""
-    try:
-        return base64.b64decode(value, validate=True).decode("utf-16-le")
-    except ValueError:  # binascii.Error and UnicodeDecodeError are ValueErrors
-        return ""
-
-
-def _nested_commands(prog: str, args: list[str]) -> list[str]:
-    """Command text a wrapper runs: `sh -c '...'` (and bash, zsh, ...),
-    `pwsh -Command ...`, `pwsh -EncodedCommand ...`, `cmd /c ...`, `eval ...`,
-    `Invoke-Expression ...`. A shell reading a script file or stdin is not seen.
-    """
-    if prog in _POSIX_SHELLS:
-        # The first word after -c is the script, the rest are its $0, $1...;
-        # each is checked, which over-blocks only a gh write passed as data.
-        for j, a in enumerate(args):
-            if _POSIX_COMMAND_FLAG.fullmatch(a):
-                return args[j + 1 :]
-    elif prog in ("pwsh", "powershell"):
-        for j, a in enumerate(args):
-            # Parameter names are case-insensitive, any unambiguous prefix, `-` or `/`.
-            flag = "-" + a[1:].lower() if a[:1] in ("-", "/") else ""
-            if len(flag) < 2:
-                continue
-            if flag in ("-cwa", "-commandwithargs") or "-command".startswith(flag):
-                return [" ".join(args[j + 1 :])]
-            if flag == "-ec" or "-encodedcommand".startswith(flag):
-                return [_decode_ps(v) for v in args[j + 1 : j + 2]]
-    elif prog == "cmd":
-        for j, a in enumerate(args):
-            if a.lower() in ("/c", "/k"):
-                return [" ".join(args[j + 1 :])]
-    elif prog in ("eval", "iex", "invoke-expression"):
-        return [" ".join(args)]
-    return []
-
-
-def _flag_values(args: list[str], *names: str) -> list[str]:
-    """Values of a flag given as `--name value`, `--name=value` or `-Xvalue`."""
-    values = []
-    for i, a in enumerate(args):
-        for n in names:
-            if a == n and i + 1 < len(args):
-                values.append(args[i + 1])
-            elif n.startswith("--") and a.startswith(n + "="):
-                values.append(a[len(n) + 1 :])
-            elif not n.startswith("--") and a.startswith(n) and len(a) > len(n):
-                values.append(a[len(n) :])
-    return values
 
 
 def _names_hold_label(values: list[str]) -> bool:
@@ -182,43 +109,13 @@ def _names_hold_label(values: list[str]) -> bool:
     )
 
 
-def _api_method(args: list[str]) -> str:
-    methods = _flag_values(args, "-X", "--method")
-    if methods:
-        return methods[-1].upper()
-    # gh api switches to POST when any field or input is given.
-    if _flag_values(args, "-f", "-F", "--field", "--raw-field", "--input"):
-        return "POST"
-    return "GET"
-
-
-def _command_path(args: list[str]) -> list[tuple[int, str]]:
-    """The first two positional words, with their index, found the way gh's
-    command parser (cobra) finds a subcommand: a `-X` or `--name` flag without
-    `=` consumes the next word as its value. So `gh -R o/r pr merge` and
-    `gh pr -R o/r merge` both give `pr merge`. (The boolean flags cobra knows
-    there, `--help` and `--version`, print help instead of running anything,
-    so reading them as value flags cannot hide a write.)
-    """
-    path = []
-    i = 0
-    while i < len(args) and len(path) < 2:
-        a = args[i]
-        if not a.startswith("-"):
-            path.append((i, a))
-        elif "=" not in a and (a.startswith("--") or len(a) == 2):
-            i += 1
-        i += 1
-    return path
-
-
 def check_gh(args: list[str]) -> str | None:
-    path = _command_path(args)
+    path = command_path(args)
     words = [w for _, w in path]
     if words == ["pr", "merge"]:
         return "gh pr merge: the human merges PRs"
     if words in (["pr", "edit"], ["issue", "edit"]):
-        if _names_hold_label(_flag_values(args, "--remove-label")):
+        if _names_hold_label(flag_values(args, "--remove-label")):
             return f"removing the {HOLD_LABEL} label: only the human releases the hold"
     if len(words) == 2 and words[0] == "label" and words[1] in ("delete", "edit"):
         # Any argument naming the hold label, wherever a flag puts it.
@@ -240,23 +137,22 @@ _LABEL_SET_REASON = (
 
 
 def check_api(args: list[str]) -> str | None:
-    method = _api_method(args)
     text = " ".join(args)
     if re.search(r"(^|\s)graphql(\s|$)", text):
-        if _flag_values(args, "--input"):
+        if flag_values(args, "--input"):
             return "gh api graphql --input: pass the query inline so it can be checked"
         found = _GRAPHQL_RE.search(text)
         if found:
             return f"GraphQL mutation {found.group(1)}: merges, label removal and protection are the human's"
         return None
     if _ISSUE_RE.search(text):
-        if _flag_values(args, "--input"):
+        if flag_values(args, "--input"):
             return "gh api --input to an issue: pass the fields inline so a labels list can be checked"
-        fields = _flag_values(args, "-f", "-F", "--field", "--raw-field")
+        fields = flag_values(args, "-f", "-F", "--field", "--raw-field")
         labels = [v for k, _, v in (f.partition("=") for f in fields) if re.match(r"labels(\[|$)", k)]
         if labels and not _names_hold_label(labels):
             return _LABEL_SET_REASON
-    return check_rest(method, text)
+    return check_rest(api_method(args), text)
 
 
 def check_rest(method: str, text: str) -> str | None:
@@ -285,7 +181,7 @@ _HTTP_METHOD_RE = re.compile(
 
 def check_raw_http(command: str) -> str | None:
     """Raw HTTP to the GitHub API: same REST rules, method read from the flags."""
-    command = _HEREDOC_RE.sub("", command)
+    command = HEREDOC_RE.sub("", command)
     if "api.github.com" not in command or not _HTTP_TOOL_RE.search(command):
         return None
     if _GRAPHQL_RE.search(command):
@@ -303,20 +199,16 @@ def check_raw_http(command: str) -> str | None:
 
 
 def check_shell(command: str) -> str | None:
-    calls = _invocations(command)
-    for prog, args in calls:
-        reason = check_gh(args) if prog == "gh" else None
+    """The command's gh writes (gh_write.py finds them, nested shells included), then raw
+    HTTP in the command and in every command text nested in it."""
+    for call in gh_writes(command):
+        reason = check_gh(call.args)
         if reason:
             return reason
-    reason = check_raw_http(command)
-    if reason:
-        return reason
-    # A nested shell's command text gets the same verdict as the bare command.
-    for prog, args in calls:
-        for nested in _nested_commands(prog, args):
-            reason = check_shell(nested)
-            if reason:
-                return reason
+    for text, _ in command_texts(command):
+        reason = check_raw_http(text)
+        if reason:
+            return reason
     return None
 
 
