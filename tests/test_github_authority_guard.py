@@ -268,6 +268,24 @@ def test_guard_commands_fail_closed_on_launch_failure():
         assert re.search(r"\|\|\s*exit\s+2\s*$", cmd), cmd
 
 
+def test_guard_blocks_when_the_shared_heredoc_rule_does_not_load(tmp_path: Path):
+    # gh_write.py loads its heredoc rule from secret-scanner.py (#285). A copy of the guard
+    # without that file must deny even a read, not run with no heredoc rule.
+    hooks = ROOT / ".agents" / "hooks"
+    for name in ("github-authority-guard.py", "gh_write.py"):
+        (tmp_path / name).write_bytes((hooks / name).read_bytes())
+    result = subprocess.run(
+        [sys.executable, str(tmp_path / "github-authority-guard.py")],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": "gh pr view 1"}}),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    reason = json.loads(result.stdout)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert reason.startswith("BLOCKED: gh_write.py next to this hook did not load"), reason
+    assert "secret-scanner.py" in reason, reason
+
+
 def test_guard_script_is_protected_from_agent_edits():
     text = (ROOT / ".agents" / "hooks" / "protected-files.py").read_text(encoding="utf-8")
     assert '".agents/hooks/github-authority-guard.py"' in text

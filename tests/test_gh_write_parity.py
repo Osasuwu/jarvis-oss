@@ -105,6 +105,13 @@ SHAPES = [
     ("backticks", "echo `gh {g} {v} {a}`", "Bash"),
     ("command substitution", "echo $(gh {g} {v} {a})", "Bash"),
     ("after another step", "git push && gh {g} {v} {a}", "Bash"),
+    # A heredoc fed to an interpreter is its standard input: the body runs (#285).
+    ("bash heredoc", "bash <<'EOF'\ngh {g} {v} {a}\nEOF", "Bash"),
+    ("ssh heredoc", "ssh host <<EOF\necho start\ngh {g} {v} {a}\nEOF", "Bash"),
+    ("tab-stripped heredoc to a path-qualified shell, after a step",
+     "git fetch && /usr/bin/bash -s <<-EOF\n\tgh {g} {v} {a}\n\tEOF\necho done", "Bash"),
+    # `bash -c` runs what `cat` prints, so the body is the script.
+    ("bash -c substitution of a heredoc", "bash -c \"$(cat <<'EOF'\ngh {g} {v} {a}\nEOF\n)\"", "Bash"),
 ]
 
 
@@ -120,6 +127,23 @@ def test_both_hooks_gate_the_same_shape(template, tool):
     assert clean.returncode == 0, clean.stderr
     read = _literal_gate(shape("issue", "list", f"--search {LITERAL}"), tool)
     assert read.returncode == 0, read.stderr
+
+
+# A heredoc that writes text (a file, a commit message) is not run, so a gh write named in
+# its body is not a gh write (#285). `deploy.sh` names a script file, not an interpreter.
+TEXT_HEREDOCS = {
+    "cat to file": "cat > notes.md <<'EOF'\ngh pr merge 5\nEOF",
+    "git commit -F -": "git commit -F - <<'EOF'\ndocs: gh pr merge 5\nEOF",
+    "cat to a .sh file": "cat > deploy.sh <<'EOF'\ngh pr merge 5\nEOF",
+}
+
+
+@pytest.mark.parametrize("command", TEXT_HEREDOCS.values(), ids=TEXT_HEREDOCS.keys())
+def test_neither_hook_reads_a_text_heredoc_body_as_a_gh_write(command):
+    assert not _guard_blocks(command), "guard blocked a merge that is only text"
+    # With no literal list the literal gate blocks every gh write it finds, and only those.
+    result = _literal_gate(command, literals=None)
+    assert result.returncode == 0, result.stderr
 
 
 # Writes the guard blocks whatever their text, which also carry text the literal gate scans.
