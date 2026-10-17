@@ -6,6 +6,7 @@ GitHub MCP tool names and fields checked against github/github-mcp-server's
 README on 2026-09-22.
 """
 
+import base64
 import json
 import re
 import subprocess
@@ -169,6 +170,12 @@ def test_powershell_tool_is_checked_the_same_way():
 
 def test_unbalanced_quotes_do_not_hide_a_call():
     assert _shell("gh pr merge 12 --body 'unterminated")
+
+
+def test_raw_http_inside_an_encoded_command_is_checked():
+    # Only the decoded text shows the URL, so the nested command texts are scanned too.
+    curl = "curl -X PUT https://api.github.com/repos/o/r/pulls/12/merge"
+    assert _shell("pwsh -EncodedCommand " + base64.b64encode(curl.encode("utf-16-le")).decode())
 
 
 # --- GitHub MCP -----------------------------------------------------------
