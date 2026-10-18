@@ -371,10 +371,14 @@ def test_scanner_scans_every_field_of_a_github_tool_with_memory_in_its_name():
 # that a string compare cannot see but the filesystem treats as the same file.
 
 
-def _run_protected_files(tool_name: str, tool_input: dict) -> subprocess.CompletedProcess:
+def _run_protected_files(
+    tool_name: str, tool_input: dict, home: Path | None = None
+) -> subprocess.CompletedProcess:
     payload = {"tool_name": tool_name, "tool_input": tool_input}
     run_env = os.environ.copy()
     run_env["CLAUDE_PROJECT_DIR"] = str(ROOT)
+    if home is not None:  # `~` expands to HOME on POSIX, to USERPROFILE on Windows
+        run_env["HOME"] = run_env["USERPROFILE"] = str(home)
     return subprocess.run(
         [sys.executable, str(PROTECTED_FILES)],
         input=json.dumps(payload),
@@ -430,3 +434,46 @@ def test_protected_files_blocks_the_shared_gh_write_detector():
     target = str(ROOT / ".agents" / "hooks" / "gh_write.py")
     result = _run_protected_files("Write", {"file_path": target, "content": ""})
     assert result.returncode == 2
+
+
+# literal-gate's two operator files live outside every repository (#268): the repo allowlist
+# is the whole trust decision for skipping the literal scan, and the literal list is what the
+# scan looks for. An agent that appends one line to the first, or empties the second, turns
+# the gate off for a repo or for all of them.
+LITERAL_GATE_OPERATOR_FILES = ("literal-gate-allowed-repos.txt", "personal-literals.txt")
+
+
+def _home_with_operator_files(tmp_path: Path) -> Path:
+    home = tmp_path / "home"
+    (home / ".config").mkdir(parents=True)
+    for name in LITERAL_GATE_OPERATOR_FILES:
+        (home / ".config" / name).write_text("placeholder\n", encoding="utf-8")
+    return home
+
+
+@pytest.mark.parametrize("tool", ["Edit", "Write", "NotebookEdit"])
+@pytest.mark.parametrize("name", LITERAL_GATE_OPERATOR_FILES)
+@pytest.mark.parametrize("form", ["absolute", "tilde", "other case"])
+def test_protected_files_blocks_the_literal_gate_operator_files(tmp_path, tool, name, form):
+    home = _home_with_operator_files(tmp_path)
+    target = {
+        "absolute": str(home / ".config" / name),
+        "tilde": f"~/.config/{name}",
+        "other case": str(home / ".Config" / name.upper()),
+    }[form]
+    key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+    result = _run_protected_files(tool, {key: target}, home=home)
+    assert result.returncode == 2
+    decision = json.loads(result.stdout)["hookSpecificOutput"]
+    assert decision["permissionDecision"] == "deny"
+    assert "edited by the operator by hand" in decision["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize(
+    "name", ["settings.json", "literal-gate-allowed-repos.txt.bak", "my-personal-literals.txt"]
+)
+def test_protected_files_allows_other_files_under_home_config(tmp_path, name):
+    home = _home_with_operator_files(tmp_path)
+    for target in (str(home / ".config" / name), f"~/.config/{name}"):
+        result = _run_protected_files("Write", {"file_path": target, "content": ""}, home=home)
+        assert result.returncode == 0, (target, result.stdout)

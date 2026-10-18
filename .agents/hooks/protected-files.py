@@ -16,7 +16,10 @@ user-level hook alone would allow them. Presence detection was dropped for that
 reason: a branch on "is a human here" cannot be made reliably from inside a hook.
 
 Matches Edit/Write/NotebookEdit only: a shell command that writes a protected file
-is not seen by this hook. Exits 0 on empty or unparsable input (fails open there).
+is not seen by this hook. For the two literal-gate operator files (`PROTECTED_HOME`)
+that route is closed by `literal-gate.py`, which already runs on every Bash and
+PowerShell call (#268); for the repo files below it stays open. Exits 0 on empty or
+unparsable input (fails open there).
 
 Reads tool_input from stdin (JSON). Exits 2 to block if the edited path matches a
 protected file.
@@ -69,6 +72,19 @@ PROTECTED_CANONICAL = {
 # CUSTOMIZE: leave empty if your repo has no such mirrored copies.
 PROTECTED_MIRROR: set[str] = set()
 
+# Operator files outside every repository, named from the home directory (#268):
+# literal-gate's repo allowlist, the whole trust decision for skipping its scan, and
+# the personal-literal list its install step 1 exports. One appended `owner/repo`
+# line exempts that repo; an emptied list turns the gate off. They are edited by the
+# operator by hand, never by an agent. Matched by real path, case-folded on every OS:
+# on a case-sensitive filesystem that also refuses a sibling differing only in case,
+# which costs nothing. Keep in step with `PROTECTED_CONFIG` in literal-gate.py
+# (tests/test_literal_gate_hook.py checks the two agree).
+PROTECTED_HOME = {
+    "~/.config/literal-gate-allowed-repos.txt",
+    "~/.config/personal-literals.txt",
+}
+
 FILE_WRITE_TOOLS = ("Edit", "Write", "NotebookEdit")
 
 
@@ -98,11 +114,17 @@ def _canonicalize(path: str) -> str:
 
 
 def classify(path: str) -> str | None:
-    """Return 'canonical', 'mirror', or None for an unprotected path."""
+    """Return 'canonical', 'mirror', 'operator', or None for an unprotected path."""
     project_dir = _project_dir()
+    expanded = os.path.expanduser(path)
     input_canonical = _canonicalize(
-        path if os.path.isabs(path) else os.path.join(project_dir, path)
+        expanded if os.path.isabs(expanded) else os.path.join(project_dir, expanded)
     )
+    operator_matches = {
+        _canonicalize(os.path.expanduser(p)).casefold() for p in PROTECTED_HOME
+    }
+    if input_canonical.casefold() in operator_matches:
+        return "operator"
     canonical_matches = {
         _canonicalize(os.path.join(project_dir, p)): p for p in PROTECTED_CANONICAL
     }
@@ -128,6 +150,12 @@ def classify(path: str) -> str | None:
 
 
 def block_reason(path: str, kind: str) -> str:
+    if kind == "operator":
+        return (
+            f"BLOCKED: {path} is a literal-gate operator file, outside the repository: "
+            "it decides what literal-gate checks, so it is edited by the operator by hand, "
+            "never by an agent. Ask the operator to make the change."
+        )
     return (
         f"BLOCKED: {path} is a protected file ({kind}). This hook has no "
         "live-operator bypass by design — it must run identically in CI, where "

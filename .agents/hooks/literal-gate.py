@@ -45,6 +45,18 @@ and names the allowed route for a body: a file outside the working tree passed w
 text is blocked and the message says nothing was checked; other shell calls pass. Input that
 is not valid JSON blocks.
 
+The operator files (#268): the allowlist (install step 3) and the literal list (step 1) decide
+what this hook checks, so they are edited by the operator by hand, never by an agent. An Edit,
+Write or NotebookEdit on either is refused by `protected-files.py` (its `PROTECTED_HOME`; the
+two lists must agree). A Bash or PowerShell command is refused here, before anything else, when
+it names either file by file name, in any directory and any case, and holds a write construct
+anywhere: a redirect not to the null device, `tee`/`Tee-Object`, `Set-Content`/`Add-Content`/
+`Out-File`/`Clear-Content`/`New-Item`/`Copy-Item`/`Move-Item`/`Rename-Item` and their aliases,
+`cp`, `mv`, `install`, `ln`, `rsync`, `dd`, `truncate`, an in-place `sed`/`perl`, or
+`[IO.File]::WriteAll*`/`AppendAll*`. Matching the whole command catches a name held in a
+variable by one step and written by another; it also refuses a read whose output is redirected,
+so run a read of either file alone. This holds with or without a literal list.
+
 It is wired by `settings.snippet.json` (same directory), next to the other agent-safety hooks. Each command is chained with
 `|| exit 2`, so an interpreter that fails to launch blocks instead of passing.
 
@@ -53,13 +65,16 @@ Not covered: `git push --no-verify`; a device without the hook or the list; text
 and emails; typos, split literals, encoded forms; the output of a command substitution or
 of a file read by a step other than a body-file flag; a gh call `gh_write.py` does not parse
 (an alias, a script file, `python -c`, a command passed as one quoted word to a program that
-is not a shell or `ssh`, such as `watch "gh ..."`).
+is not a shell or `ssh`, such as `watch "gh ..."`). For the operator files: a name built
+at run time (a variable set by an earlier call, a glob, a backslash escape inside the name, an
+encoded command; quotes and backticks inside it are read through), and a write by a program not listed above (`python -c`, an editor, a script file).
 
 Install (once per device that writes pull requests on a public repository):
 1. List: keep it outside every repository, one literal per line, and export it as
    `PERSONAL_LITERALS` (the same list as the CI secret, so update both). PowerShell:
    `[Environment]::SetEnvironmentVariable("PERSONAL_LITERALS", (Get-Content -Raw "$HOME/.config/personal-literals.txt"), "User")`.
    Linux/macOS: `export PERSONAL_LITERALS="$(cat "$HOME/.config/personal-literals.txt")"`.
+   The file is protected (see the operator files above): the operator edits it by hand.
 2. Merge the entries of `settings.snippet.json` into `.claude/settings.local.json` under
    `hooks.PreToolUse`. The untracked `.claude/settings.local.json` is not in a fresh
    checkout; `.worktreeinclude` lists it so Claude Code copies it into the worktrees it
@@ -70,6 +85,8 @@ Install (once per device that writes pull requests on a public repository):
    `owner/repo` per line, matched case-insensitively; blank lines and `#` comments are
    ignored, and so is a line that is not `owner/repo`. Example line: `your-user/your-private-repo`.
    List private repositories only. A missing, empty or unreadable file allowlists nothing.
+   The allowlist is protected: an agent's Edit, Write or shell write to it is refused (see the
+   operator files above), so the operator edits it by hand, outside any agent session.
 Cost per device: the variable, the merge, and a Python start per Bash or GitHub MCP call.
 
 Check (after installing and after any change to the list or hook; `canary-7f3c9a` is
@@ -95,6 +112,10 @@ BLOCK = 2
 SHELL_TOOLS = ("Bash", "PowerShell")
 PREFIX = "literal-gate"
 ALLOWLIST_FILE = "~/.config/literal-gate-allowed-repos.txt"
+LITERALS_FILE = "~/.config/personal-literals.txt"  # install step 1 exports it
+# The operator files: edited by hand, never by an agent (#268). protected-files.py refuses an
+# Edit or Write on them (its PROTECTED_HOME); this hook refuses the shell route.
+PROTECTED_CONFIG = (ALLOWLIST_FILE, LITERALS_FILE)
 ALLOWED_ROUTE = (
     "To send a body, write it to a file outside the working tree (the session scratchpad or a "
     "temp directory) in an earlier call, then pass its literal path with --body-file: the path "
@@ -128,6 +149,28 @@ _EXPANSION = re.compile(r"\$[A-Za-z0-9_{(@*]|`")
 _UNEXPANDED = re.compile(r"\$|%[A-Za-z_][A-Za-z0-9_]*%|`")
 _REPO = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+")
 _API_REPO = re.compile(r"^/?repos/([^/?#]+)/([^/?#]+)")
+# The shell route to the operator files (#268): the file named anywhere in the command, by
+# file name in any directory and any case (the directory can be spelled too many ways: `~`,
+# `$HOME`, `$env:USERPROFILE`, a drive path, a relative path after a `cd`), together with a
+# write construct anywhere in it, so a name held in a variable by one step and written by
+# another is caught too.
+_OPERATOR_FILE = re.compile(
+    r"(?<![\w.-])(?:"
+    + "|".join(re.escape(Path(p).name) for p in PROTECTED_CONFIG)
+    + r")(?![\w.-])",
+    re.IGNORECASE,
+)
+_WRITE_CONSTRUCT = re.compile(
+    r"""
+    >(?!&|>?\s*(?:/dev/null|\$null|nul)(?![\w./\\-]))  # a redirect, not to null
+    | (?<![\w-])(?:tee|tee-object|set-content|add-content|out-file|clear-content|new-item
+        |copy-item|move-item|rename-item|sc|ac|ni|cpi|mi|copy|move|cp|mv|install|ln|rsync
+        |dd|truncate)(?![\w-])
+    | (?<![\w-])(?:sed|perl)(?![\w-])[^;&|\n]*\s-(?:[a-z]*i|-in-place)  # in-place edit
+    | (?:write|append)all(?:text|lines|bytes)  # [IO.File]::WriteAllText and kin
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 _API_VALUE_FLAGS = frozenset(
     ("-X", "--method", "-H", "--header", "-f", "--raw-field", "-F", "--field", "--input",
      "-q", "--jq", "-t", "--template", "-p", "--preview", "--cache")
@@ -544,6 +587,28 @@ def check_bash(tool_input: dict, cwd: Path, powershell: bool) -> int:
     return 0
 
 
+def writes_operator_file(command: str) -> str | None:
+    """The operator file a shell command may write, or None (#268). Quotes and PowerShell
+    backticks are dropped first, so a name split by them (`repos.'txt'`) still matches."""
+    text = re.sub(r"[\"'`]", "", command)
+    named = _OPERATOR_FILE.search(text)
+    if named and _WRITE_CONSTRUCT.search(text):
+        return named.group(0)
+    return None
+
+
+def check_operator_files(command: str) -> int:
+    name = writes_operator_file(command)
+    if name is None:
+        return 0
+    return deny(
+        f"this command names {name}, a literal-gate operator file, and writes a file. That "
+        "file decides what this hook checks, so it is edited by the operator by hand, never "
+        "by an agent: ask the operator to make the change. To read it, run the read alone, "
+        "with no redirect or write in the same command."
+    )
+
+
 def check_github_mcp(tool_input: dict) -> int:
     matcher = compile_literal_matcher(literals_from_env())
     if matcher is None:
@@ -596,6 +661,9 @@ def main() -> int:
         return deny("hook input has no tool_input object, so nothing was checked.")
     if is_github:
         return check_github_mcp(tool_input)
+    command = tool_input.get("command")
+    if isinstance(command, str) and check_operator_files(command):
+        return BLOCK
     cwd = data.get("cwd")
     base = Path(cwd) if isinstance(cwd, str) and cwd else Path.cwd()
     return check_bash(tool_input, base, powershell=tool_name == "PowerShell")
