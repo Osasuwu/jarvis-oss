@@ -11,6 +11,7 @@ Every literal in this file is fake.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import subprocess
@@ -531,6 +532,63 @@ def test_mcp_write_to_an_allowlisted_repo_is_not_checked(tmp_path: Path):
     _assert_blocked_quietly(_run(public, home=home))
 
 
+# --- the operator files are not written from a shell (#268) -------------------------------
+#
+# The allowlist decides which repos skip the scan and the literal list is what the scan looks
+# for; protected-files.py refuses an Edit or Write on either, and this hook refuses the shell
+# route to the same files. Every path below is under a fake home.
+
+
+@pytest.mark.parametrize(
+    "tool, command",
+    [
+        ("Bash", "echo me/priv >> ~/.config/literal-gate-allowed-repos.txt"),
+        ("Bash", "printf '' > \"$HOME/.config/personal-literals.txt\""),
+        ("Bash", "echo me/priv | tee -a /c/Users/zqfake/.config/literal-gate-allowed-repos.txt"),
+        ("Bash", "echo me/priv &>> ~/.Config/Literal-Gate-Allowed-Repos.TXT"),
+        ("Bash", "f=~/.config/literal-gate-allowed-repos.txt; echo me/priv >> \"$f\""),
+        ("Bash", "cp /tmp/x ~/.config/personal-literals.txt"),
+        ("Bash", "sed -i '/zorblax/d' ~/.config/personal-literals.txt"),
+        ("PowerShell", r'Add-Content -Path "$HOME\.config\literal-gate-allowed-repos.txt" me/priv'),
+        ("PowerShell", r"Set-Content C:\Users\zqfake\.config\personal-literals.txt ''"),
+        ("PowerShell", "'me/priv' | Out-File -Append ~/.config/literal-gate-allowed-repos.txt"),
+        ("PowerShell", "'me/priv' >> $HOME/.config/literal-gate-allowed-repos.txt"),
+        ("PowerShell", r"Copy-Item x.txt $env:USERPROFILE\.config\personal-literals.txt"),
+        ("Bash", "echo me/priv >> ~/.config/literal-gate-allowed-repos.'txt'"),
+        ("PowerShell", "Add-Content ~/.config/personal-lit`erals.txt x"),
+        ("PowerShell", "$nullpath = '~/.config/personal-literals.txt'; 'x' > $nullpath"),
+    ],
+)
+def test_shell_write_to_an_operator_file_is_blocked(tool, command):
+    for literals in (f"{FAKE_LITERAL}\n{FAKE_PATH_LITERAL}", None):
+        result = _run({"tool_name": tool, "tool_input": {"command": command}}, literals=literals)
+        assert result.returncode == 2, (literals, result.stderr)
+        assert "edited by the operator by hand" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "tool, command",
+    [
+        ("Bash", "cat ~/.config/literal-gate-allowed-repos.txt"),
+        ("Bash", "grep -c . ~/.config/personal-literals.txt 2>&1"),
+        ("Bash", "grep -q me/priv ~/.config/literal-gate-allowed-repos.txt > /dev/null"),
+        ("Bash", 'export PERSONAL_LITERALS="$(cat "$HOME/.config/personal-literals.txt")"'),
+        ("Bash", "echo x >> ~/.config/other-tool.txt"),
+        ("Bash", "echo x | tee ~/.config/literal-gate-allowed-repos.txt.bak"),
+        ("Bash", "cp a.txt ~/.config/my-personal-literals.txt"),
+        ("PowerShell", "Get-Content -Raw \"$HOME/.config/personal-literals.txt\""),
+        ("PowerShell", "Set-Content ~/.config/other-tool.txt x"),
+        ("PowerShell", "Get-Content ~/.config/personal-literals.txt > $null"),
+        ("PowerShell", "Get-Content ~/.config/personal-literals.txt > nul"),
+        ("Bash", "tac ~/.config/personal-literals.txt"),
+        ("Bash", "ack me/priv ~/.config/literal-gate-allowed-repos.txt"),
+    ],
+)
+def test_shell_read_of_an_operator_file_or_write_to_another_file_passes(tool, command):
+    result = _run({"tool_name": tool, "tool_input": {"command": command}})
+    assert result.returncode == 0, result.stderr
+
+
 # --- fail closed --------------------------------------------------------------------------
 
 
@@ -581,3 +639,25 @@ def test_no_separate_literal_gate_snippet():
 def test_hook_script_is_protected_from_agent_edits():
     text = (ROOT / ".agents" / "hooks" / "protected-files.py").read_text(encoding="utf-8")
     assert '".agents/hooks/literal-gate.py"' in text
+
+
+def test_operator_files_shell_and_edit_routes_name_the_same_files():
+    """protected-files.py (Edit/Write) and this hook (shell) guard the same two files, and
+    they are the files the install steps name (#268). Parity between two artifacts that
+    must agree, so both sides come from production."""
+    def load(path: Path, name: str):
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    gate = load(HOOK, "literal_gate_under_test")
+    protected = load(ROOT / ".agents" / "hooks" / "protected-files.py", "protected_files_under_test")
+    assert set(gate.PROTECTED_CONFIG) == protected.PROTECTED_HOME
+    assert set(gate.PROTECTED_CONFIG) == {
+        "~/.config/literal-gate-allowed-repos.txt",
+        "~/.config/personal-literals.txt",
+    }
+    install = gate.__doc__.split("Install", 1)[1]
+    assert '"$HOME/.config/personal-literals.txt"' in install  # step 1 names the list file
+    assert "`~/.config/literal-gate-allowed-repos.txt`" in install  # step 3, the allowlist
