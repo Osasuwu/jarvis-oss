@@ -11,7 +11,10 @@ name: Agent Dispatch
 #   `waiting-human-review` from a PR (PRs are issues to that command), so it
 #   is not on the allowlist; escalation is a comment, and a deterministic
 #   post-step applies `status:owner-queue`.
-# - This repo has no AGENTS.md, so the prompt carries the whole process.
+# - The prompt carries the worker's process (claim check, branch name, test rule,
+#   escalation, forbidden paths). It does not point the worker at AGENTS.md, which
+#   the repo has since #259 and which describes the same rules for interactive
+#   agents and humans. If the two disagree, this prompt is what the worker follows.
 #
 # Only users with triage access can add a label, so a stranger's issue runs
 # nothing until someone with access routes it. The issue body is still
