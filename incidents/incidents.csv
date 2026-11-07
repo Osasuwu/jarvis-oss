@@ -1,5 +1,5 @@
 id,class,stage,source_type,evidence_strength,link
-INC-001,destructive-local-delete,code,issue,primary,https://github.com/anthropics/claude-code/issues/75859
+INC-001,destructive-op-on-computed-target,code,issue,primary,https://github.com/anthropics/claude-code/issues/75859
 INC-002,unconfirmed-history-rewrite,code,issue,primary,https://github.com/anthropics/claude-code/issues/85450
 INC-003,approval-after-effect,code,issue,primary,https://github.com/openai/codex/issues/4969
 INC-004,production-data-loss,code,vendor statement,primary,https://x.com/amasad/status/1946986468586721478
@@ -242,3 +242,9 @@ INC-553,untrusted-content-steers-the-agent,review,researcher's write-up,primary,
 INC-554,untrusted-content-steers-the-agent,after-merge,security advisory,primary,https://github.com/aws/aws-toolkit-vscode/security/advisories/GHSA-7g7f-ff96-5gcw
 INC-555,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents
 INC-556,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://adnanthekhan.com/posts/clinejection/
+INC-800,destructive-op-on-computed-target,code,issue,self-reported,https://github.com/anthropics/claude-code/issues/12637
+INC-801,destructive-op-on-computed-target,code,issue,primary,https://github.com/anthropics/claude-code/issues/76208
+INC-802,destructive-op-on-computed-target,code,issue,self-reported,https://github.com/anthropics/claude-code/issues/82471
+INC-803,destructive-op-on-computed-target,code,issue,primary,https://github.com/anthropics/claude-code/issues/93099
+INC-804,destructive-op-on-computed-target,code,issue,primary,https://github.com/openai/codex/issues/35707
+INC-805,destructive-op-on-computed-target,code,issue,self-reported,https://github.com/anthropics/claude-code/issues/30700
