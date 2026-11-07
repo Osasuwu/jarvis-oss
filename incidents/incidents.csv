@@ -242,3 +242,18 @@ INC-553,untrusted-content-steers-the-agent,review,researcher's write-up,primary,
 INC-554,untrusted-content-steers-the-agent,after-merge,security advisory,primary,https://github.com/aws/aws-toolkit-vscode/security/advisories/GHSA-7g7f-ff96-5gcw
 INC-555,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents
 INC-556,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://adnanthekhan.com/posts/clinejection/
+INC-600,gate-checks-a-proxy,after-merge,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/53
+INC-601,gate-checks-a-proxy,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1351
+INC-602,gate-checks-a-proxy,ci,issue,primary,https://github.com/Osasuwu/jarvis/issues/1550
+INC-603,gate-checks-a-proxy,ci,issue,primary,https://github.com/Osasuwu/jarvis/issues/993
+INC-604,gate-checks-a-proxy,ci,issue,primary,https://github.com/Osasuwu/music-intel-mcp/issues/133
+INC-605,gate-checks-a-proxy,merge,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/213
+INC-606,gate-checks-a-proxy,ci,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/195
+INC-607,gate-checks-a-proxy,after-merge,issue,private,"private, not verifiable"
+INC-608,gate-checks-a-proxy,after-merge,issue,private,"private, not verifiable"
+INC-610,gate-checks-a-proxy,after-merge,issue,private,"private, not verifiable"
+INC-611,gate-checks-a-proxy,ci,issue,private,"private, not verifiable"
+INC-612,gate-checks-a-proxy,after-merge,researcher's write-up,primary,https://labs.boostsecurity.io/articles/split-second-side-doors-how-bot-delegated-toctou-breaks-the-cicd-threat-model
+INC-613,gate-checks-a-proxy,after-merge,commit,primary,https://bazel.googlesource.com/continuous-integration/+/d464ae8a58fa3589bc5dea2533782cf30ec52985
+INC-614,gate-checks-a-proxy,merge,researcher's write-up,primary,https://airman604.substack.com/p/bypassing-github-branch-protection
+INC-615,gate-checks-a-proxy,after-merge,changelog,primary,https://github.blog/changelog/2023-06-06-security-enhancements-to-required-approvals-on-pull-requests/
