@@ -242,3 +242,16 @@ INC-553,untrusted-content-steers-the-agent,review,researcher's write-up,primary,
 INC-554,untrusted-content-steers-the-agent,after-merge,security advisory,primary,https://github.com/aws/aws-toolkit-vscode/security/advisories/GHSA-7g7f-ff96-5gcw
 INC-555,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents
 INC-556,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://adnanthekhan.com/posts/clinejection/
+INC-650,knowledge-not-at-point-of-action,code,issue,primary,https://github.com/Osasuwu/jarvis/issues/653
+INC-651,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/657
+INC-652,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/660
+INC-653,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1097
+INC-654,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1512
+INC-655,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/Osasuwu/jarvis/issues/1735
+INC-656,knowledge-not-at-point-of-action,ci,issue,private,"private, not verifiable"
+INC-657,knowledge-not-at-point-of-action,code,issue,primary,https://github.com/Osasuwu/like-current-song/issues/161
+INC-658,knowledge-not-at-point-of-action,task,issue,primary,https://github.com/anthropics/claude-code/issues/95745
+INC-659,knowledge-not-at-point-of-action,task,issue,primary,https://github.com/anthropics/claude-code/issues/92949
+INC-660,knowledge-not-at-point-of-action,task,issue,primary,https://github.com/anthropics/claude-code/issues/92998
+INC-661,knowledge-not-at-point-of-action,task,issue,primary,https://github.com/openai/codex/issues/43075
+INC-662,knowledge-not-at-point-of-action,after-merge,issue,primary,https://github.com/openai/codex/issues/37955
