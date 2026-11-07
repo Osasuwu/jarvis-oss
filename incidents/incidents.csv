@@ -242,3 +242,14 @@ INC-553,untrusted-content-steers-the-agent,review,researcher's write-up,primary,
 INC-554,untrusted-content-steers-the-agent,after-merge,security advisory,primary,https://github.com/aws/aws-toolkit-vscode/security/advisories/GHSA-7g7f-ff96-5gcw
 INC-555,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents
 INC-556,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://adnanthekhan.com/posts/clinejection/
+INC-750,limits-and-cost-unmeasured,ci,pull request,primary,https://github.com/Osasuwu/jarvis-oss/pull/154
+INC-751,limits-and-cost-unmeasured,ci,issue,primary,https://github.com/Osasuwu/jarvis/issues/1846
+INC-752,limits-and-cost-unmeasured,after-merge,pull request,primary,https://github.com/Osasuwu/jarvis/pull/930
+INC-753,limits-and-cost-unmeasured,ci,issue,private,"private, not verifiable"
+INC-754,limits-and-cost-unmeasured,ci,issue,private,"private, not verifiable"
+INC-755,limits-and-cost-unmeasured,after-merge,issue,private,"private, not verifiable"
+INC-756,limits-and-cost-unmeasured,task,issue,private,"private, not verifiable"
+INC-757,limits-and-cost-unmeasured,after-merge,pull request,primary,https://github.com/github/gh-aw/pull/29932
+INC-758,limits-and-cost-unmeasured,after-merge,pull request,primary,https://github.com/github/gh-aw/pull/35789
+INC-759,limits-and-cost-unmeasured,review,pull request,primary,https://github.com/encodium/.github/pull/123
+INC-760,limits-and-cost-unmeasured,ci,pull request,primary,https://github.com/github/gh-aw-firewall/pull/4082
