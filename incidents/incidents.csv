@@ -242,3 +242,13 @@ INC-553,untrusted-content-steers-the-agent,review,researcher's write-up,primary,
 INC-554,untrusted-content-steers-the-agent,after-merge,security advisory,primary,https://github.com/aws/aws-toolkit-vscode/security/advisories/GHSA-7g7f-ff96-5gcw
 INC-555,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://www.aikido.dev/blog/promptpwnd-github-actions-ai-agents
 INC-556,untrusted-content-steers-the-agent,ci,researcher's write-up,primary,https://adnanthekhan.com/posts/clinejection/
+INC-700,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/102
+INC-701,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis-oss/issues/159
+INC-702,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis/issues/1134
+INC-703,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis/issues/1154
+INC-704,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis/issues/1796
+INC-705,spec-not-grounded-in-current-state,code,issue,primary,https://github.com/Osasuwu/jarvis/issues/1815
+INC-706,spec-not-grounded-in-current-state,task,pull request,primary,https://github.com/Osasuwu/jarvis/pull/1843
+INC-707,spec-not-grounded-in-current-state,task,issue,primary,https://github.com/Osasuwu/jarvis/issues/1856
+INC-708,spec-not-grounded-in-current-state,review,issue,primary,https://github.com/Osasuwu/music-intel-mcp/issues/205
+INC-709,spec-not-grounded-in-current-state,review,pull request,private,"private, not verifiable"
